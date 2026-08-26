@@ -15,6 +15,7 @@ import {
 import { formatEnd, pct, usd } from "../lib/format";
 import type { Side } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
+import { RemoteImg } from "../components/RemoteImg";
 
 export function meta({ loaderData, matches }: Route.MetaArgs) {
   const title = loaderData?.event?.title ?? "Market";
@@ -96,16 +97,18 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto min-w-0 max-w-7xl px-3 pt-4 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:pt-6 lg:pb-8">
       <Link
         to="/"
+        prefetch="intent"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-white sm:mb-5"
       >
         <ArrowLeftIcon /> All markets
       </Link>
 
       <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-        {event.image ? (
-          <img
-            src={event.image}
-            alt=""
+        {event.icon || event.image ? (
+          <RemoteImg
+            src={event.icon ?? event.image}
+            size={56}
+            eager
             className="h-11 w-11 shrink-0 rounded-2xl object-cover ring-1 ring-white/10 sm:h-14 sm:w-14"
           />
         ) : (
@@ -177,7 +180,7 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
                 >
                   <ChanceBar
                     label={m.groupItemTitle ?? m.question}
-                    image={m.image}
+                    image={m.icon ?? m.image}
                     price={m.yes.price}
                     maxPrice={maxPrice}
                     onClick={() => setActiveId(m.id)}

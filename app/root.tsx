@@ -20,6 +20,15 @@ import {
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
+  { rel: "preload", href: "/hero-banner.jpg", as: "image" },
+  { rel: "preload", href: "/logo-full.png", as: "image" },
+  {
+    rel: "preload",
+    href: "/assets/Font/Onest/Onest-VariableFont_wght.ttf",
+    as: "font",
+    type: "font/ttf",
+    crossOrigin: "anonymous",
+  },
 ];
 
 export function loader({ request }: Route.LoaderArgs) {

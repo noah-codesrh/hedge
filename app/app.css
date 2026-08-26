@@ -222,3 +222,34 @@ body > div {
   transform-origin: left center;
   animation: bar-fill 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+@keyframes hedge-topbar-run {
+  0% {
+    width: 0;
+  }
+  15% {
+    width: 28%;
+  }
+  40% {
+    width: 58%;
+  }
+  100% {
+    width: 82%;
+  }
+}
+@keyframes hedge-topbar-finish {
+  from {
+    width: 82%;
+    opacity: 1;
+  }
+  to {
+    width: 100%;
+    opacity: 0;
+  }
+}
+.hedge-topbar-run {
+  animation: hedge-topbar-run 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hedge-topbar-finish {
+  animation: hedge-topbar-finish 0.22s ease-out forwards;
+}

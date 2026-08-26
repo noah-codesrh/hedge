@@ -469,6 +469,10 @@ function AssetMark({ asset }: { asset: ChainAsset }) {
       <img
         src={asset.logoUrl}
         alt={asset.symbol}
+        width={40}
+        height={40}
+        loading="lazy"
+        decoding="async"
         className="h-10 w-10 rounded-full bg-[#141414] object-cover"
       />
     );

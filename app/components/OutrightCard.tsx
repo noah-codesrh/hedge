@@ -1,7 +1,8 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import type { Market, PolymarketEvent } from "../lib/types";
 import { pct, usd } from "../lib/format";
 import { isLiveMarket } from "../lib/polymarket";
+import { RemoteImg } from "./RemoteImg";
 
 function rowLabel(market: Market) {
   const titled = market.groupItemTitle?.trim();
@@ -44,9 +45,9 @@ export function ChanceBar({
           style={{ width: barWidth(price, maxPrice) }}
         >
           {image ? (
-            <img
+            <RemoteImg
               src={image}
-              alt=""
+              size={20}
               className="h-4 w-5 shrink-0 rounded-[3px] object-cover"
             />
           ) : null}
@@ -86,7 +87,7 @@ export function OutrightCard({
     <ChanceBar
       key={key}
       label={row.label}
-      image={row.market.image}
+      image={row.market.icon ?? row.market.image}
       price={row.market.yes.price}
       maxPrice={maxPrice}
       onClick={() => navigate(`${href}?m=${row.market.id}`)}
@@ -95,15 +96,20 @@ export function OutrightCard({
 
   return (
     <article
-      onClick={() => navigate(href)}
       className="market-card animate-card-in relative flex h-full min-w-0 cursor-pointer flex-col gap-3 rounded-3xl bg-card px-4 py-3.5 ring-1 ring-white/5 hover:ring-white/15 sm:gap-3.5 sm:px-5 sm:py-4"
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        {event.image ? (
-          <img
-            src={event.image}
-            alt=""
+      <Link
+        to={href}
+        prefetch="intent"
+        className="absolute inset-0 z-[1] rounded-3xl"
+        aria-label={event.title}
+      />
+      <div className="relative z-[2] flex min-w-0 items-center gap-3">
+        {event.icon || event.image ? (
+          <RemoteImg
+            src={event.icon ?? event.image}
+            size={48}
             className="h-9 w-9 shrink-0 rounded-2xl bg-black/30 object-cover ring-1 ring-white/10 sm:h-12 sm:w-12"
           />
         ) : (
@@ -115,14 +121,14 @@ export function OutrightCard({
       </div>
 
       <div
-        className="space-y-1.5 md:hidden"
+        className="relative z-[2] space-y-1.5 md:hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {preview.map((row) => renderRow(row, row.market.id))}
       </div>
 
       <div
-        className="relative hidden h-[120px] overflow-hidden md:block"
+        className="relative z-[2] hidden h-[120px] overflow-hidden md:block"
         onClick={(e) => e.stopPropagation()}
       >
         <div
@@ -140,7 +146,7 @@ export function OutrightCard({
         </div>
       </div>
 
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-3 text-[12px] text-muted sm:text-[13px]">
+      <div className="relative z-[2] mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-3 text-[12px] text-muted sm:text-[13px]">
         <span className="truncate">{usd(event.volume24hr)} Vol.</span>
         <span className="shrink-0 rounded-md bg-white/5 px-2 py-0.5 font-semibold text-white">
           {event.markets.length} outcomes

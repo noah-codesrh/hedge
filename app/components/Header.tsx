@@ -63,10 +63,14 @@ function HeaderShell({
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 min-w-0 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-4">
-        <Link to="/" className="min-w-0 shrink">
+        <Link to="/" prefetch="intent" className="min-w-0 shrink">
           <img
             src="/logo-full.png"
             alt="Hedge"
+            width={160}
+            height={32}
+            fetchPriority="high"
+            decoding="async"
             className="h-7 w-auto max-w-[118px] sm:h-8 sm:max-w-none"
           />
         </Link>
@@ -74,6 +78,7 @@ function HeaderShell({
         <nav className="hidden items-center gap-1 lg:flex">
           <Link
             to="/"
+            prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
             Markets
@@ -87,6 +92,7 @@ function HeaderShell({
           {authenticated && (
             <Link
               to="/profile"
+              prefetch="intent"
               className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
             >
               Profile

@@ -20,9 +20,9 @@ export function publicOrigin(request: Request) {
 }
 
 export function originFromMatches(
-  matches: Array<{ id: string; loaderData?: unknown }>,
+  matches: Array<{ id: string; loaderData?: unknown } | undefined>,
 ) {
-  const data = matches.find((m) => m.id === "root")?.loaderData as
+  const data = matches.find((m) => m?.id === "root")?.loaderData as
     | { origin?: string }
     | undefined;
   return data?.origin;

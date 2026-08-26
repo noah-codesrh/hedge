@@ -13,6 +13,7 @@ import {
   SearchIcon,
   SparkleIcon,
 } from "./icons";
+import { RemoteImg } from "./RemoteImg";
 
 const TABS = [
   { id: "trending", label: "Trending", icon: FlameIcon },
@@ -183,13 +184,13 @@ function Chip({
           : "text-[#cfcfcf] hover:bg-white/5 hover:text-white"
       }`}
     >
-      {image ? (
-        <img
-          src={image}
-          alt=""
-          className="h-5 w-5 rounded-full object-cover"
-        />
-      ) : (
+          {image ? (
+            <RemoteImg
+              src={image}
+              size={20}
+              className="h-5 w-5 rounded-full object-cover"
+            />
+          ) : (
         <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[9px] font-bold">
           {label.slice(0, 1)}
         </span>

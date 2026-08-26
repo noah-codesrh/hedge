@@ -12,6 +12,7 @@ export interface Market {
   slug: string;
   question: string;
   image: string | null;
+  icon: string | null;
   yes: Outcome;
   no: Outcome;
   volume24hr: number;
@@ -35,6 +36,7 @@ export interface PolymarketEvent {
   title: string;
   description: string | null;
   image: string | null;
+  icon: string | null;
   volume24hr: number;
   liquidity: number;
   endDate: string | null;

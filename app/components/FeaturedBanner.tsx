@@ -1,13 +1,15 @@
 import { Link } from "react-router";
 import type { PolymarketEvent } from "../lib/types";
+import { RemoteImg } from "./RemoteImg";
 
 export function FeaturedBanner({ event }: { event: PolymarketEvent }) {
   return (
     <div className="relative h-full min-h-[140px] overflow-hidden rounded-3xl ring-1 ring-white/5 sm:min-h-[200px]">
       {event.image ? (
-        <img
+        <RemoteImg
           src={event.image}
-          alt=""
+          size={640}
+          eager
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
@@ -24,6 +26,7 @@ export function FeaturedBanner({ event }: { event: PolymarketEvent }) {
         </h3>
         <Link
           to={`/market/${event.slug}`}
+          prefetch="intent"
           className="mt-4 inline-flex w-fit rounded-full bg-gold px-4 py-2 text-sm font-semibold text-black transition hover:brightness-105"
         >
           Trade now
