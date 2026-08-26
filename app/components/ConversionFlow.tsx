@@ -54,19 +54,25 @@ function useFlowProgress(step: string, failed: boolean) {
 
 function shortError(error: string) {
   const e = error.toLowerCase();
-  if (/reject|denied|cancelled|canceled/.test(e)) return "Cancelled.";
+  // Only a dismissed wallet prompt. An order the venue rejected or cancelled
+  // also contains these words, and it needs to keep its own explanation.
+  if (
+    /wallet request was cancell?ed|\buser (?:rejected|denied|cancell?ed|disapproved)/.test(e)
+  ) {
+    return "Cancelled.";
+  }
   if (/sign in|session expired/.test(e)) return "Sign in again.";
   if (/proxy wallet|pUSD is still|pUSD is in|tap Buy again/i.test(error)) {
     const trimmed = error.replace(/\s+/g, " ").trim();
-    return trimmed.length <= 140 ? trimmed : `${trimmed.slice(0, 137)}…`;
+    return trimmed.length <= 220 ? trimmed : `${trimmed.slice(0, 217)}…`;
   }
   if (/not enough usdg|not enough pusd|insufficient (usdg|pusd|collateral)/i.test(error)) {
     return "Not enough balance.";
   }
   const trimmed = error.replace(/\s+/g, " ").trim();
   if (!trimmed) return "Couldn't complete.";
-  if (trimmed.length <= 110) return trimmed;
-  return `${trimmed.slice(0, 107)}…`;
+  if (trimmed.length <= 160) return trimmed;
+  return `${trimmed.slice(0, 157)}…`;
 }
 
 function ProgressRing({ value, failed }: { value: number; failed: boolean }) {

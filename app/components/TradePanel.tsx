@@ -6,6 +6,7 @@ import { cents, fiat, pct } from "../lib/format";
 import { addPosition, notifyBalancesChanged } from "../lib/positions";
 import { quoteConversion } from "../lib/convert";
 import { isLiveMarket } from "../lib/polymarket";
+import { trackTrade } from "../lib/track";
 import {
   findWallet,
   isEmbeddedWallet,
@@ -176,6 +177,23 @@ function TradePanelView({
               setPending((p) => (p ? { ...p, pusd } : p)),
           },
         );
+        trackTrade(accessToken, {
+          wallet: signerCash.address,
+          proxyWallet: result.depositWallet,
+          direction: "buy",
+          outcome: ticket.side,
+          outcomeLabel: ticket.side === "yes" ? "Yes" : "No",
+          eventSlug: event.slug,
+          marketSlug: market.slug ?? null,
+          tokenId,
+          title: market.groupItemTitle || market.question || event.title,
+          usdg: result.usdg,
+          pusd: result.pusd,
+          shares: result.shares,
+          price: result.entryPrice,
+          orderId: result.orderId,
+          conversionId: result.conversionId,
+        });
         addPosition({
           id: crypto.randomUUID(),
           eventId: event.id,

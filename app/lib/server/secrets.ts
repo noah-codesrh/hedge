@@ -14,6 +14,11 @@ export function serverSecrets() {
     builderCode: required("POLYMARKET_BUILDER_CODE"),
     relayerApiKeyId: required("RELAYER_API_KEY"),
     relayerApiKeyAddress: required("RELAYER_API_KEY_ADDRESS"),
+    supabaseUrl: required("SUPABASE_URL"),
+    // sb_secret_..., or the legacy service_role JWT. Either bypasses row level
+    // security, so this must never be sent to the browser.
+    supabaseServiceRoleKey:
+      required("SUPABASE_SECRET_KEY") ?? required("SUPABASE_SERVICE_ROLE_KEY"),
   };
 }
 

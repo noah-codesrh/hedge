@@ -65,16 +65,45 @@ export function embeddedWallet(wallets: ConnectedWallet[] | undefined) {
   return wallets?.find((w) => isEmbeddedWallet(w.walletClientType));
 }
 
-/** Silent for Privy embedded; external wallets still get a switch/add prompt. */
-export async function keepOnRobinhood(wallet: ConnectedWallet) {
-  if (isOnChain(wallet, RH_CHAIN_ID)) return;
+async function providerChainId(provider: Eip1193) {
   try {
-    await wallet.switchChain(RH_CHAIN_ID);
+    const raw = await provider.request({ method: "eth_chainId" });
+    return BigInt(raw as string);
   } catch {
-    if (isEmbeddedWallet(wallet.walletClientType)) return;
-    const provider = (await wallet.getEthereumProvider()) as Eip1193;
-    await ensureChain(provider, ROBINHOOD_ADD_CHAIN);
+    return null;
   }
+}
+
+/**
+ * Put a wallet on Robinhood Chain and return a provider bound to it.
+ *
+ * The provider has to be re-read after the switch, because one fetched
+ * beforehand stays bound to the old chain. The chain id is then confirmed
+ * against the provider rather than the wallet's own property: a switch that
+ * quietly does nothing would otherwise send on whichever chain the wallet was
+ * left on by the trading flow, where the user holds no gas.
+ *
+ * Silent for Privy embedded; external wallets still get a switch/add prompt.
+ */
+export async function robinhoodProvider(wallet: ConnectedWallet) {
+  let provider = (await wallet.getEthereumProvider()) as Eip1193;
+  if ((await providerChainId(provider)) !== BigInt(RH_CHAIN_ID)) {
+    try {
+      await wallet.switchChain(RH_CHAIN_ID);
+    } catch {
+      if (!isEmbeddedWallet(wallet.walletClientType)) {
+        await ensureChain(provider, ROBINHOOD_ADD_CHAIN);
+      }
+    }
+    provider = (await wallet.getEthereumProvider()) as Eip1193;
+  }
+
+  if ((await providerChainId(provider)) !== BigInt(RH_CHAIN_ID)) {
+    throw new Error(
+      "This wallet could not switch to Robinhood Chain. Switch networks in your wallet, then try again.",
+    );
+  }
+  return provider;
 }
 
 /** Email / X / Google / Discord users get a silent Privy embedded wallet. */

@@ -10,6 +10,8 @@ export type LivePosition = {
   shares: number;
   entryPrice: number;
   currentPrice: number;
+  /** Average price a closed position actually sold at. Null while open. */
+  exitPrice: number | null;
   initialValue: number;
   currentValue: number;
   pnl: number;
@@ -63,19 +65,45 @@ function mapPosition(
   status: "open" | "closed",
 ): LivePosition | null {
   const title = str(raw.title) ?? str(raw.slug) ?? "Position";
-  const shares = num(raw.size ?? raw.shares);
-  if (shares <= 0 && status === "open") return null;
   const outcome = str(raw.outcome) ?? "Yes";
   const outcomeIndex = num(raw.outcomeIndex);
   const entryPrice = asPrice(raw.avgPrice);
   const currentPrice = asPrice(raw.curPrice);
-  const initialValue =
-    num(raw.initialValue) || (shares > 0 && entryPrice > 0 ? shares * entryPrice : 0);
-  const currentValue =
-    num(raw.currentValue) ||
-    (shares > 0 && currentPrice > 0 ? shares * currentPrice : initialValue);
-  const pnl = currentValue - initialValue;
+
+  // /closed-positions describes a settled trade rather than a holding: it has
+  // no size, initialValue or currentValue, only what was paid (totalBought)
+  // and what the round trip returned (realizedPnl). Reading the open-position
+  // fields off it leaves every number at zero. realizedPnl is also the only
+  // honest source here — it reflects the prices actually sold at, so it cannot
+  // be recomputed from avgPrice and curPrice.
+  const cost = num(raw.totalBought);
+  const realized = num(raw.realizedPnl);
+  const settled = status === "closed" && cost > 0;
+
+  const shares = settled
+    ? entryPrice > 0
+      ? cost / entryPrice
+      : 0
+    : num(raw.size ?? raw.shares);
+  if (shares <= 0 && status === "open") return null;
+
+  const initialValue = settled
+    ? cost
+    : num(raw.initialValue) ||
+      (shares > 0 && entryPrice > 0 ? shares * entryPrice : 0);
+  const currentValue = settled
+    ? cost + realized
+    : num(raw.currentValue) ||
+      (shares > 0 && currentPrice > 0 ? shares * currentPrice : initialValue);
+  const pnl = settled ? realized : currentValue - initialValue;
   const pctChange = initialValue > 0 ? pnl / initialValue : 0;
+
+  // What the round trip returned per share. curPrice is the market's price
+  // today, which says nothing about what a seller got: a position sold on the
+  // way down still reports curPrice 0 alongside a positive realizedPnl.
+  // Re-entering a position can push this past $1, so only trust a real price.
+  const impliedExit = settled && shares > 0 ? currentValue / shares : 0;
+  const exitPrice = impliedExit > 0 && impliedExit <= 1 ? impliedExit : null;
   return {
     id: `${str(raw.asset) ?? str(raw.tokenId) ?? title}:${status}`,
     wallet: str(raw.proxyWallet) ?? str(raw.wallet) ?? "",
@@ -88,6 +116,7 @@ function mapPosition(
     shares,
     entryPrice,
     currentPrice,
+    exitPrice,
     initialValue,
     currentValue,
     pnl,

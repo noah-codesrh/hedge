@@ -10,13 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
-import {
-  OG_IMAGE_PATH,
-  SITE_DESCRIPTION,
-  SITE_TITLE,
-  publicOrigin,
-  siteMeta,
-} from "./lib/seo";
+import { publicOrigin, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
@@ -45,17 +39,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <meta property="og:type" content="website" />
-        <meta property="og:site_name" content={SITE_TITLE} />
-        <meta property="og:title" content={SITE_TITLE} />
-        <meta property="og:description" content={SITE_DESCRIPTION} />
-        <meta property="og:image" content={OG_IMAGE_PATH} />
-        <meta property="og:image:width" content="1024" />
-        <meta property="og:image:height" content="537" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SITE_TITLE} />
-        <meta name="twitter:description" content={SITE_DESCRIPTION} />
-        <meta name="twitter:image" content={OG_IMAGE_PATH} />
+        {/* Sharing tags come from each route's meta() so og:image is absolute.
+            Duplicating them here shadowed those with a relative path. */}
         <Meta />
         <Links />
       </head>

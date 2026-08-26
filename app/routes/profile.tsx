@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useFetcher } from "react-router";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  useAuthorizationSignature,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import type { ConnectedWallet, User } from "@privy-io/react-auth";
 import type { Route } from "./+types/profile";
 import type { loader as assetsLoader } from "./api.assets";
@@ -14,6 +18,8 @@ import {
   WalletIcon,
 } from "../components/icons";
 import { gradientFor, readNickname, writeNickname } from "../lib/nickname";
+import { trackNickname } from "../lib/track";
+import { sponsoredTokenSend } from "../lib/sponsored-send";
 import {
   encodeErc20Transfer,
   formatTokenAmount,
@@ -22,13 +28,10 @@ import {
   toHexQuantity,
   type ChainAsset,
 } from "../lib/robinhood";
-import { ROBINHOOD_ADD_CHAIN } from "../lib/chains";
-import { ensureChain } from "../lib/evm";
 import {
   isEmbeddedWallet,
-  isOnChain,
-  keepOnRobinhood,
   primaryWalletAddress,
+  robinhoodProvider,
   useEnsureCashWallet,
   useEnsureTradingWallet,
 } from "../lib/wallet";
@@ -103,7 +106,7 @@ export default function Profile() {
 }
 
 function ProfileInner() {
-  const { authenticated, user, ready } = usePrivy();
+  const { authenticated, user, ready, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const { openModal } = useAuthModal();
   const assetsFetcher = useFetcher<typeof assetsLoader>();
@@ -466,6 +469,10 @@ function ProfileInner() {
             writeNickname(userId, value);
             setNickTick((n) => n + 1);
             setNickOpen(false);
+            void (async () => {
+              const token = await getAccessToken().catch(() => null);
+              if (token) trackNickname(token, { nickname: value, wallet });
+            })();
           }}
         />
       ) : null}
@@ -701,6 +708,8 @@ function SendModal({
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { getAccessToken } = usePrivy();
+  const { generateAuthorizationSignature } = useAuthorizationSignature();
 
   const sendable = assets;
 
@@ -729,24 +738,37 @@ function SendModal({
         setBusy(false);
         return;
       }
-      const provider = await signer.getEthereumProvider();
-      if (isEmbeddedWallet(signer.walletClientType)) {
-        await keepOnRobinhood(signer);
-      } else if (!isOnChain(signer, ROBINHOOD_ADD_CHAIN.chainId)) {
-        await ensureChain(provider, ROBINHOOD_ADD_CHAIN);
+      const data = asset.address
+        ? encodeErc20Transfer(to.trim(), qty)
+        : null;
+
+      // Token sends from the embedded wallet go through Privy so the app pays
+      // gas. Native ETH is the gas, and external wallets pay their own.
+      if (data && isEmbeddedWallet(signer.walletClientType)) {
+        const accessToken = await getAccessToken();
+        if (!accessToken) throw new Error("Session expired. Sign in again.");
+        await sponsoredTokenSend({
+          accessToken,
+          from: signer.address,
+          token: asset.address!,
+          data,
+          signAuthorization: async (payload) => {
+            const { signature } =
+              await generateAuthorizationSignature(payload);
+            if (!signature) {
+              throw new Error("Could not authorize this wallet.");
+            }
+            return signature;
+          },
+        });
+        onSent();
+        return;
       }
-      const tx = asset.address
-        ? {
-            from,
-            to: asset.address,
-            data: encodeErc20Transfer(to.trim(), qty),
-            value: "0x0",
-          }
-        : {
-            from,
-            to: to.trim(),
-            value: toHexQuantity(qty),
-          };
+
+      const provider = await robinhoodProvider(signer);
+      const tx = data
+        ? { from, to: asset.address, data, value: "0x0" }
+        : { from, to: to.trim(), value: toHexQuantity(qty) };
       await provider.request({
         method: "eth_sendTransaction",
         params: [tx],

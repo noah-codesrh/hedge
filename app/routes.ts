@@ -14,9 +14,12 @@ export default [
   route("api/pm/account", "routes/api.pm.account.ts"),
   route("api/pm/status", "routes/api.pm.status.ts"),
   route("api/pm/sponsor-tx", "routes/api.pm.sponsor-tx.ts"),
+  route("api/rh/sponsor-send", "routes/api.rh.sponsor-send.ts"),
   route("api/relay/quote", "routes/api.relay.quote.ts"),
   route("api/relay/status", "routes/api.relay.status.ts"),
   route("api/relay/forward", "routes/api.relay.forward.ts"),
+  route("api/track/trade", "routes/api.track.trade.ts"),
+  route("api/track/nickname", "routes/api.track.nickname.ts"),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),

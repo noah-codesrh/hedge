@@ -141,9 +141,17 @@ export function sleep(ms: number) {
   });
 }
 
+/**
+ * Matched narrowly on purpose. The CLOB reports a rejected order and reports an
+ * unfilled FAK order as cancelled, so a bare "rejected" or "cancelled" would
+ * relabel a real venue failure as something the user did and hide the reason.
+ */
+const USER_REJECTION =
+  /\buser (?:rejected|denied|cancell?ed|disapproved)|rejected the request|request (?:was )?(?:rejected|cancell?ed)|user closed/i;
+
 export function isUserRejection(err: unknown) {
   if (!err || typeof err !== "object") {
-    return typeof err === "string" && /reject|denied|cancel/i.test(err);
+    return typeof err === "string" && USER_REJECTION.test(err);
   }
   const code = "code" in err ? Number((err as { code: unknown }).code) : NaN;
   if (code === 4001 || code === 5000) return true;
@@ -151,7 +159,5 @@ export function isUserRejection(err: unknown) {
     "message" in err && typeof (err as { message: unknown }).message === "string"
       ? (err as { message: string }).message
       : "";
-  return /user rejected|user denied|rejected the request|cancelled|canceled/i.test(
-    message,
-  );
+  return USER_REJECTION.test(message);
 }

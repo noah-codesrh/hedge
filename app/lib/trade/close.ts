@@ -65,6 +65,8 @@ export type CloseResult = {
   usdg: number;
   conversionId: string | null;
   depositWallet: string;
+  /** CLOB order id of the sell. Null on a cash out, which fills no order. */
+  orderId: string | null;
 };
 
 export class CloseError extends Error {
@@ -458,6 +460,7 @@ export async function runCashOut(
     usdg: converted.usdg,
     conversionId: converted.conversionId,
     depositWallet: session.funder,
+    orderId: null,
   };
 }
 
@@ -535,6 +538,7 @@ export async function runClosePosition(
       usdg: converted.usdg,
       conversionId: converted.conversionId,
       depositWallet: session.funder,
+      orderId: sold.orderId,
     };
   } catch (err) {
     if (err instanceof CloseError) throw err;

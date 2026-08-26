@@ -6,7 +6,7 @@ import {
   useWallets,
 } from "@privy-io/react-auth";
 import { fiat } from "../lib/format";
-import type { LivePosition } from "../lib/polymarket-portfolio";
+import { outcomeLabel, type LivePosition } from "../lib/polymarket-portfolio";
 import type { CashOutStep, CloseStep } from "../lib/trade/close";
 import {
   isEmbeddedWallet,
@@ -14,6 +14,7 @@ import {
   useEnsureTradingWallet,
 } from "../lib/wallet";
 import { notifyBalancesChanged } from "../lib/positions";
+import { trackTrade } from "../lib/track";
 import { ConversionFlow, FlowSuccess } from "./ConversionFlow";
 import { useBook } from "./Book";
 
@@ -124,6 +125,23 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
             onStep,
           },
         );
+        trackTrade(accessToken, {
+          wallet: dest,
+          proxyWallet: result.depositWallet,
+          direction: "sell",
+          outcome: next.position.side,
+          outcomeLabel: outcomeLabel(next.position),
+          eventSlug: next.position.eventSlug,
+          marketSlug: next.position.marketSlug,
+          tokenId: next.position.tokenId,
+          title: next.position.title,
+          usdg: result.usdg,
+          pusd: result.pusd,
+          shares: result.sharesSold,
+          price: next.position.currentPrice,
+          orderId: result.orderId,
+          conversionId: result.conversionId,
+        });
         setPending((p) =>
           p
             ? {

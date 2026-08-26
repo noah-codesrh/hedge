@@ -1,7 +1,7 @@
-import type { Route } from "./+types/api.pm.sponsor-tx";
+import type { Route } from "./+types/api.rh.sponsor-send";
 import { decodeFunctionData, erc20Abi, getAddress } from "viem";
-import { POLYGON_CHAIN_ID, PUSD } from "../lib/chains";
-import { deriveDepositWallet } from "../lib/pm-funder";
+import { RH_CHAIN_ID } from "../lib/chains";
+import { USDG, WETH } from "../lib/robinhood";
 import {
   embeddedWalletId,
   privyAdmin,
@@ -14,17 +14,23 @@ const DATA = /^0x[a-fA-F0-9]*$/;
 const PRIVY_API = "https://api.privy.io";
 const SIGN_WINDOW_MS = 3 * 60 * 1000;
 
-function rpcBody(data: `0x${string}`) {
+/**
+ * Tokens Hedge will pay gas for. Native ETH is deliberately absent: it is the
+ * gas, so a wallet that can hold it does not need sponsoring.
+ */
+const SPONSORED_TOKENS = new Set([USDG.toLowerCase(), WETH.toLowerCase()]);
+
+function rpcBody(token: string, data: `0x${string}`) {
   return {
     method: "eth_sendTransaction" as const,
-    caip2: "eip155:137" as const,
+    caip2: `eip155:${RH_CHAIN_ID}` as const,
     chain_type: "ethereum" as const,
     sponsor: true,
     params: {
       transaction: {
-        to: getAddress(PUSD),
+        to: getAddress(token),
         data,
-        chain_id: POLYGON_CHAIN_ID,
+        chain_id: RH_CHAIN_ID,
       },
     },
   };
@@ -32,17 +38,17 @@ function rpcBody(data: `0x${string}`) {
 
 function sponsorError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err ?? "");
-  console.error("[sponsor-tx]", err);
+  console.error("[rh-sponsor-send]", err);
   if (/invalid jwt|invalid_data/i.test(message)) {
-    return "Could not authorize the trading wallet. Sign in again and retry cash out.";
+    return "Could not authorize this wallet. Sign in again and retry the send.";
   }
   if (/authorization-signature|authorization signature|no signatures/i.test(message)) {
-    return "Could not authorize the trading wallet. Try Cash out again.";
+    return "Could not authorize this wallet. Try the send again.";
   }
   if (/sponsor|gas|insufficient/i.test(message) && !/gasless/i.test(message)) {
-    return "Could not sponsor Polygon gas. Check Privy gas credits and retry.";
+    return "Could not sponsor gas for this send. Check Privy gas credits and retry.";
   }
-  return "Could not move pUSD into the Polymarket proxy.";
+  return "Could not send this token.";
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -50,18 +56,18 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
   if (missingSecrets(["privyAppId", "privyAppSecret"]).length > 0) {
-    return Response.json({ error: "Trading is not configured." }, { status: 503 });
+    return Response.json({ error: "Sending is not configured." }, { status: 503 });
   }
 
   const { userId, user } = await requirePrivyUser(request);
   const { privyAppId } = serverSecrets();
   if (!privyAppId) {
-    return Response.json({ error: "Trading is not configured." }, { status: 503 });
+    return Response.json({ error: "Sending is not configured." }, { status: 503 });
   }
 
   let body: {
     from?: unknown;
-    to?: unknown;
+    token?: unknown;
     data?: unknown;
     chainId?: unknown;
     signature?: unknown;
@@ -74,44 +80,48 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const from = typeof body.from === "string" ? body.from.trim() : "";
-  const to = typeof body.to === "string" ? body.to.trim() : "";
+  const token = typeof body.token === "string" ? body.token.trim() : "";
   const data = typeof body.data === "string" ? body.data.trim() : "";
   const chainId = Number(body.chainId);
-  if (!ADDR.test(from) || !ADDR.test(to) || !DATA.test(data) || chainId !== POLYGON_CHAIN_ID) {
-    return Response.json({ error: "Invalid sponsored transaction." }, { status: 400 });
-  }
-  if (to.toLowerCase() !== PUSD.toLowerCase()) {
-    return Response.json({ error: "Invalid sponsored transaction." }, { status: 400 });
-  }
 
-  let recipient: string;
-  try {
-    const decoded = decodeFunctionData({ abi: erc20Abi, data: data as `0x${string}` });
-    if (decoded.functionName !== "transfer") {
-      return Response.json({ error: "Invalid sponsored transaction." }, { status: 400 });
-    }
-    recipient = getAddress(String(decoded.args[0]));
-  } catch {
-    return Response.json({ error: "Invalid sponsored transaction." }, { status: 400 });
+  if (!ADDR.test(from) || !ADDR.test(token) || !DATA.test(data)) {
+    return Response.json({ error: "Invalid sponsored send." }, { status: 400 });
   }
-
-  const proxy = deriveDepositWallet(from);
-  if (recipient.toLowerCase() !== proxy.toLowerCase()) {
+  if (chainId !== RH_CHAIN_ID) {
     return Response.json(
-      { error: "pUSD can only move into this account's Polymarket proxy." },
-      { status: 403 },
+      { error: "Sponsored sends only run on Robinhood Chain." },
+      { status: 400 },
     );
   }
+  if (!SPONSORED_TOKENS.has(token.toLowerCase())) {
+    return Response.json({ error: "That token is not sponsored." }, { status: 400 });
+  }
 
+  // Only ever sponsor a plain transfer. Without decoding, this endpoint would
+  // pay gas for arbitrary calldata aimed at the token contract.
+  try {
+    const decoded = decodeFunctionData({
+      abi: erc20Abi,
+      data: data as `0x${string}`,
+    });
+    if (decoded.functionName !== "transfer") {
+      return Response.json({ error: "Invalid sponsored send." }, { status: 400 });
+    }
+  } catch {
+    return Response.json({ error: "Invalid sponsored send." }, { status: 400 });
+  }
+
+  // Doubles as the ownership check: a wallet id only comes back for an
+  // embedded wallet belonging to this user.
   const walletId = await embeddedWalletId(userId, from, user);
   if (!walletId) {
     return Response.json(
-      { error: "That trading wallet is not linked to this account." },
+      { error: "That wallet is not linked to this account." },
       { status: 403 },
     );
   }
 
-  const rpc = rpcBody(data as `0x${string}`);
+  const rpc = rpcBody(token, data as `0x${string}`);
   const signature = typeof body.signature === "string" ? body.signature.trim() : "";
 
   if (!signature) {
@@ -133,7 +143,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const requestExpiry = Number(body.requestExpiry);
   if (!Number.isFinite(requestExpiry) || requestExpiry <= Date.now()) {
-    return Response.json({ error: "Cash out expired. Try again." }, { status: 400 });
+    return Response.json({ error: "Send expired. Try again." }, { status: 400 });
   }
 
   try {
@@ -142,8 +152,7 @@ export async function action({ request }: Route.ActionArgs) {
       request_expiry: requestExpiry,
       authorization_context: { signatures: [signature] },
     });
-    const hash =
-      result.method === "eth_sendTransaction" ? result.data.hash : "";
+    const hash = result.method === "eth_sendTransaction" ? result.data.hash : "";
     return Response.json({
       hash: typeof hash === "string" && hash.startsWith("0x") ? hash : "0x",
     });

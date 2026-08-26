@@ -173,7 +173,11 @@ export function PnlShareModal({
       href={liveHref(position)}
       outcome={outcomeLabel(position)}
       entryPrice={position.entryPrice}
-      markPrice={position.currentPrice || null}
+      markPrice={
+        (position.status === "closed"
+          ? position.exitPrice
+          : position.currentPrice) || null
+      }
       pnl={position.pnl}
       pctChange={position.pctChange}
       status={position.status}

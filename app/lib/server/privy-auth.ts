@@ -1,4 +1,5 @@
 import { PrivyClient } from "@privy-io/node";
+import { getAddress } from "viem";
 import { serverSecrets } from "./secrets";
 
 let client: PrivyClient | null = null;
@@ -45,6 +46,56 @@ export async function requirePrivyUser(request: Request) {
     if (err instanceof Response) throw err;
     throw Response.json({ error: "Session expired. Sign in again." }, { status: 401 });
   }
+}
+
+type LinkedAccounts = {
+  linked_accounts?: Array<{
+    type?: string;
+    id?: string | null;
+    address?: string;
+    connector_type?: string;
+    wallet_client_type?: string;
+  }>;
+};
+
+function linkedEmbeddedWalletId(user: LinkedAccounts, address: string) {
+  const target = address.toLowerCase();
+  for (const account of user.linked_accounts ?? []) {
+    if (account.type !== "wallet") continue;
+    if (account.address?.toLowerCase() !== target) continue;
+    const embedded =
+      account.connector_type === "embedded" ||
+      account.wallet_client_type === "privy";
+    if (embedded && typeof account.id === "string" && account.id) {
+      return account.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Privy wallet id for an embedded wallet this user owns, or null.
+ *
+ * Only embedded wallets can be driven from the server, so this doubles as the
+ * ownership check before spending gas credits on someone's behalf.
+ */
+export async function embeddedWalletId(
+  userId: string,
+  address: string,
+  user: LinkedAccounts,
+) {
+  const linked = linkedEmbeddedWalletId(user, address);
+  if (linked) return linked;
+
+  const target = address.toLowerCase();
+  for await (const wallet of privyAdmin().wallets().list({
+    user_id: userId,
+    address: getAddress(address),
+    chain_type: "ethereum",
+  })) {
+    if (wallet.address.toLowerCase() === target) return wallet.id;
+  }
+  return null;
 }
 
 export function userHasWallet(
