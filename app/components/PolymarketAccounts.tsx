@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
-import type { User } from "@privy-io/react-auth";
+import { useWallets, type User } from "@privy-io/react-auth";
 import type { loader as accountLoader } from "../routes/api.pm.account";
 import type { PolymarketAccountSnapshot } from "../lib/polymarket-account";
 import { POLYGON_EXPLORER } from "../lib/chains";
@@ -8,6 +8,7 @@ import { fiat, shorten } from "../lib/format";
 import { deriveDepositWallet, resolvePolymarketFunder } from "../lib/pm-funder";
 import { loadDepositWallet } from "../lib/pm-wallet";
 import { isEmbeddedWallet, linkedEmbeddedAddress } from "../lib/wallet";
+import { watchBalanceReloads } from "../lib/positions";
 import { CheckIcon, CopyIcon } from "./icons";
 
 function snapshotFor(
@@ -26,16 +27,20 @@ export function PolymarketAccounts({
   user: User | null;
   onCashOut?: (pusd: number) => void;
 }) {
+  const { wallets: connected } = useWallets();
   const wallets = (user?.linkedAccounts ?? []).filter(
     (account) => account.type === "wallet",
   ) as { address: string; walletClientType?: string | null }[];
   const embedded = wallets
     .filter((w) => isEmbeddedWallet(w.walletClientType))
     .map((w) => w.address);
+  const liveEmbedded = connected
+    .filter((w) => isEmbeddedWallet(w.walletClientType))
+    .map((w) => w.address);
   const linked = linkedEmbeddedAddress(user);
   const signers = [
     ...new Set(
-      [...embedded, linked].filter(
+      [...embedded, ...liveEmbedded, linked].filter(
         (a): a is string => Boolean(a && /^0x[a-fA-F0-9]{40}$/.test(a)),
       ),
     ),
@@ -99,9 +104,12 @@ export function PolymarketAccounts({
 
   useEffect(() => {
     if (addresses.length === 0) return;
-    void fetcher.load(
-      `/api/pm/account?addresses=${encodeURIComponent(addresses.join(","))}`,
-    );
+    const load = () => {
+      void fetcher.load(
+        `/api/pm/account?addresses=${encodeURIComponent(addresses.join(","))}`,
+      );
+    };
+    return watchBalanceReloads(load);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addresses.join(",")]);
 

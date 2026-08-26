@@ -1,4 +1,4 @@
-import type { AddableChain } from "./chains";
+import { POLYGON_RPC, type AddableChain } from "./chains";
 
 export type Eip1193 = {
   request: (args: { method: string; params?: any }) => Promise<any>;
@@ -92,6 +92,38 @@ export async function waitForReceipt(
       method: "eth_getTransactionReceipt",
       params: [hash],
     })) as { status?: string } | null;
+    if (receipt) {
+      if (receipt.status === "0x0") {
+        throw new Error("On-chain transaction reverted.");
+      }
+      return receipt;
+    }
+    await sleep(1_200);
+  }
+  throw new Error("Timed out waiting for the transaction to confirm.");
+}
+
+/** Watch a Polygon tx without switching the user's wallet off Robinhood. */
+export async function waitForPolygonReceipt(
+  hash: string,
+  timeoutMs = 180_000,
+) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(POLYGON_RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_getTransactionReceipt",
+        params: [hash],
+      }),
+    });
+    const json = (await res.json().catch(() => null)) as {
+      result?: { status?: string } | null;
+    } | null;
+    const receipt = json?.result ?? null;
     if (receipt) {
       if (receipt.status === "0x0") {
         throw new Error("On-chain transaction reverted.");

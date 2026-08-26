@@ -9,12 +9,7 @@ import { createOrDeriveApiKey } from "@polymarket/client/actions";
 import { signerFrom } from "@polymarket/client/viem";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { createWalletClient, custom, getAddress, type Hex } from "viem";
-import {
-  POLYGON_ADD_CHAIN,
-  POLYGON_CHAIN_HEX,
-  POLYGON_CHAIN_ID,
-  polygon,
-} from "../chains";
+import { POLYGON_ADD_CHAIN, POLYGON_CHAIN_HEX, POLYGON_CHAIN_ID, polygon } from "../chains";
 import { ensureChain, sleep, type Eip1193 } from "../evm";
 import { resolvePolymarketFunder } from "../pm-funder";
 import { saveDepositWallet } from "../pm-wallet";
@@ -238,6 +233,7 @@ export async function openTradingClient(
   }
 }
 
+/** Silent for Privy embedded (`showWalletUIs: false`). Needed for CLOB approvals. */
 export async function embeddedPolygonProvider(wallet: ConnectedWallet) {
   const provider = (await wallet.getEthereumProvider()) as Eip1193;
   const current = await provider.request({ method: "eth_chainId" }).catch(() => null);

@@ -1,21 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   useAuthorizationSignature,
-  useCreateWallet,
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
-import type { ConnectedWallet } from "@privy-io/react-auth";
 import { fiat } from "../lib/format";
 import type { LivePosition } from "../lib/polymarket-portfolio";
 import type { CashOutStep, CloseStep } from "../lib/trade/close";
 import {
-  embeddedWallet,
   isEmbeddedWallet,
-  linkedEmbeddedAddress,
   primaryWalletAddress,
+  useEnsureTradingWallet,
 } from "../lib/wallet";
+import { notifyBalancesChanged } from "../lib/positions";
 import { ConversionFlow, FlowSuccess } from "./ConversionFlow";
 import { useBook } from "./Book";
 
@@ -31,63 +29,13 @@ type Confirm =
 
 export function useCloseFlow(options?: { provisionWallet?: boolean }) {
   const provisionWallet = options?.provisionWallet !== false;
-  const { getAccessToken, user, authenticated, ready: privyReady } = usePrivy();
+  const { getAccessToken, user, ready: privyReady } = usePrivy();
   const { generateAuthorizationSignature } = useAuthorizationSignature();
   const { wallets } = useWallets();
-  const { createWallet } = useCreateWallet();
+  const { ensureTradingWallet } = useEnsureTradingWallet({
+    provision: provisionWallet,
+  });
   const { refresh } = useBook();
-  const creatingEmbedded = useRef(false);
-  const pendingEmbedded = useRef<((wallet: ConnectedWallet) => void) | null>(
-    null,
-  );
-
-  useEffect(() => {
-    const found = embeddedWallet(wallets);
-    if (found) pendingEmbedded.current?.(found);
-  }, [wallets]);
-
-  useEffect(() => {
-    if (!provisionWallet) return;
-    if (!authenticated || !privyReady || creatingEmbedded.current) return;
-    if (embeddedWallet(wallets) || linkedEmbeddedAddress(user)) return;
-    creatingEmbedded.current = true;
-    void createWallet().catch(() => {
-      creatingEmbedded.current = false;
-    });
-  }, [provisionWallet, authenticated, privyReady, wallets, user, createWallet]);
-
-  const ensureTradingWallet = async () => {
-    const existing = embeddedWallet(wallets);
-    if (existing) return existing;
-    const waited = new Promise<ConnectedWallet>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        pendingEmbedded.current = null;
-        reject(new Error("Could not create a trading wallet."));
-      }, 20_000);
-      pendingEmbedded.current = (wallet) => {
-        window.clearTimeout(timer);
-        pendingEmbedded.current = null;
-        resolve(wallet);
-      };
-    });
-    if (!creatingEmbedded.current && !linkedEmbeddedAddress(user)) {
-      creatingEmbedded.current = true;
-      try {
-        await createWallet();
-      } catch {
-        const found = embeddedWallet(wallets);
-        if (found) pendingEmbedded.current?.(found);
-      } finally {
-        creatingEmbedded.current = false;
-      }
-    }
-    const found = embeddedWallet(wallets);
-    if (found) {
-      pendingEmbedded.current?.(found);
-      return found;
-    }
-    return waited;
-  };
 
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [mode, setMode] = useState<"close" | "cashout" | null>(null);
@@ -109,7 +57,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
 
   const settled = () => {
     refresh();
-    window.dispatchEvent(new Event("hedge:positions"));
+    notifyBalancesChanged();
   };
 
   const run = async (next: Confirm) => {
@@ -131,16 +79,21 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
       if (!privyReady) {
         throw new Error("Wallet is still connecting. Try again in a moment.");
       }
-      const dest = primaryWalletAddress(user);
-      if (!dest) {
-        throw new Error("Connect the wallet that holds your USDG.");
-      }
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Session expired. Sign in again.");
       const tradingWallet = await ensureTradingWallet();
       if (!tradingWallet || !isEmbeddedWallet(tradingWallet.walletClientType)) {
         throw new Error("Could not create a trading wallet.");
       }
+      const dest =
+        primaryWalletAddress(user, wallets) ?? tradingWallet.address;
+      if (!dest) {
+        throw new Error("Your wallet isn't ready yet. Try again in a moment.");
+      }
+      const onStep = (next: CloseStep | CashOutStep) => {
+        setStep(next);
+        if (next === "convert" || next === "arrive") notifyBalancesChanged();
+      };
       const signAuthorization = async (payload: {
         version: 1;
         method: "POST";
@@ -168,7 +121,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
             signAuthorization,
           },
           {
-            onStep: setStep,
+            onStep,
           },
         );
         setPending((p) =>
@@ -194,7 +147,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
         const { runCashOut } = await import("../lib/trade/close");
         const result = await runCashOut(
           { cashAddress: dest, accessToken, tradingWallet, signAuthorization },
-          { onStep: setStep },
+          { onStep },
         );
         setPending((p) =>
           p ? { ...p, pusd: result.pusd, usdg: result.usdg } : p,

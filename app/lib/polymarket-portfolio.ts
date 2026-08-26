@@ -17,6 +17,22 @@ export type LivePosition = {
   status: "open" | "closed";
 };
 
+/**
+ * What the position is on, in the market's own terms.
+ *
+ * A position is always bought, and always long the outcome token held, so
+ * "Yes"/"No" only describes a direction on binary markets. A named outcome (a
+ * team, a candidate) is shown as-is: on "Cubs vs. Diamondbacks" both sides are
+ * longs, and calling the second one a short would be wrong.
+ */
+export function outcomeLabel(position: Pick<LivePosition, "outcome" | "side">) {
+  const name = position.outcome?.trim();
+  if (!name || /^(yes|no)$/i.test(name)) {
+    return position.side === "no" ? "No" : "Yes";
+  }
+  return name;
+}
+
 export type LiveActivity = {
   id: string;
   type: string;

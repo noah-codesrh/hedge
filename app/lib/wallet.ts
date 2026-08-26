@@ -1,30 +1,54 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
+  useCreateWallet,
   usePrivy,
   useWallets,
   type ConnectedWallet,
   type User,
 } from "@privy-io/react-auth";
+import { ROBINHOOD_ADD_CHAIN, RH_CHAIN_ID } from "./chains";
+import { ensureChain, type Eip1193 } from "./evm";
 
 export function isEmbeddedWallet(client?: string | null) {
   return client === "privy" || client === "privy-v2";
 }
 
-export function primaryWalletAddress(user: User | null | undefined) {
-  const wallets = (user?.linkedAccounts ?? []).filter(
+function linkedWallets(user: User | null | undefined) {
+  return (user?.linkedAccounts ?? []).filter(
     (account) => account.type === "wallet",
   );
-  const external = wallets.find(
+}
+
+export function externalWalletAddress(
+  user: User | null | undefined,
+  wallets?: ConnectedWallet[],
+) {
+  const fromUser = linkedWallets(user).find(
     (w) => !isEmbeddedWallet(w.walletClientType),
   );
-  return external?.address ?? user?.wallet?.address ?? null;
+  if (fromUser && "address" in fromUser) return String(fromUser.address);
+  return (
+    wallets?.find((w) => !isEmbeddedWallet(w.walletClientType))?.address ?? null
+  );
+}
+
+export function primaryWalletAddress(
+  user: User | null | undefined,
+  wallets?: ConnectedWallet[],
+) {
+  return (
+    externalWalletAddress(user, wallets) ??
+    linkedEmbeddedAddress(user) ??
+    embeddedWallet(wallets)?.address ??
+    user?.wallet?.address ??
+    null
+  );
 }
 
 export function linkedEmbeddedAddress(user: User | null | undefined) {
-  const wallets = (user?.linkedAccounts ?? []).filter(
-    (account) => account.type === "wallet",
+  const embedded = linkedWallets(user).find((w) =>
+    isEmbeddedWallet(w.walletClientType),
   );
-  const embedded = wallets.find((w) => isEmbeddedWallet(w.walletClientType));
   return embedded && "address" in embedded ? String(embedded.address) : null;
 }
 
@@ -39,6 +63,91 @@ export function findWallet(
 
 export function embeddedWallet(wallets: ConnectedWallet[] | undefined) {
   return wallets?.find((w) => isEmbeddedWallet(w.walletClientType));
+}
+
+/** Silent for Privy embedded; external wallets still get a switch/add prompt. */
+export async function keepOnRobinhood(wallet: ConnectedWallet) {
+  if (isOnChain(wallet, RH_CHAIN_ID)) return;
+  try {
+    await wallet.switchChain(RH_CHAIN_ID);
+  } catch {
+    if (isEmbeddedWallet(wallet.walletClientType)) return;
+    const provider = (await wallet.getEthereumProvider()) as Eip1193;
+    await ensureChain(provider, ROBINHOOD_ADD_CHAIN);
+  }
+}
+
+/** Email / X / Google / Discord users get a silent Privy embedded wallet. */
+let createEmbeddedInFlight: Promise<unknown> | null = null;
+
+export function useEnsureTradingWallet(options?: { provision?: boolean }) {
+  const provision = options?.provision !== false;
+  const { ready: privyReady, authenticated, user } = usePrivy();
+  const { wallets, ready: walletsReady } = useWallets();
+  const { createWallet } = useCreateWallet();
+  const pending = useRef<((wallet: ConnectedWallet) => void) | null>(null);
+
+  useEffect(() => {
+    const found = embeddedWallet(wallets);
+    if (found) pending.current?.(found);
+  }, [wallets]);
+
+  useEffect(() => {
+    if (!provision || !authenticated || !privyReady || !walletsReady) return;
+    if (embeddedWallet(wallets) || linkedEmbeddedAddress(user)) return;
+    if (createEmbeddedInFlight) return;
+    createEmbeddedInFlight = createWallet()
+      .catch(() => undefined)
+      .finally(() => {
+        createEmbeddedInFlight = null;
+      });
+  }, [
+    provision,
+    authenticated,
+    privyReady,
+    walletsReady,
+    wallets,
+    user,
+    createWallet,
+  ]);
+
+  const tradingWallet = embeddedWallet(wallets);
+  const tradingAddress =
+    tradingWallet?.address ?? linkedEmbeddedAddress(user) ?? null;
+
+  const ensureTradingWallet = useCallback(async () => {
+    const existing = embeddedWallet(wallets);
+    if (existing) return existing;
+    const waited = new Promise<ConnectedWallet>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        pending.current = null;
+        reject(new Error("Could not create a trading wallet."));
+      }, 20_000);
+      pending.current = (wallet) => {
+        window.clearTimeout(timer);
+        pending.current = null;
+        resolve(wallet);
+      };
+    });
+    if (!linkedEmbeddedAddress(user)) {
+      if (!createEmbeddedInFlight) {
+        createEmbeddedInFlight = createWallet()
+          .catch(() => undefined)
+          .finally(() => {
+            createEmbeddedInFlight = null;
+          });
+      }
+      await createEmbeddedInFlight;
+    }
+    const found = embeddedWallet(wallets);
+    if (found) {
+      pending.current?.(found);
+      return found;
+    }
+    return waited;
+  }, [wallets, user, createWallet]);
+
+  return { tradingWallet, tradingAddress, ensureTradingWallet };
 }
 
 export function isOnChain(wallet: ConnectedWallet, chainId: number) {
@@ -86,21 +195,55 @@ export function useEnsureCashWallet() {
     pending.resolve(found);
   }, [wallets]);
 
-  const cashAddress = authenticated ? primaryWalletAddress(user) : null;
+  const cashAddress = authenticated
+    ? primaryWalletAddress(user, wallets)
+    : null;
   const cashWallet = findWallet(wallets, cashAddress);
 
-  const ensureCashWallet = useCallback(async () => {
-    const address = primaryWalletAddress(user);
-    if (!address) {
-      throw new Error("Connect the wallet that holds your USDG.");
-    }
-    const already = findWallet(walletsRef.current, address);
-    if (already) return already;
-    return new Promise<ConnectedWallet>((resolve, reject) => {
+  const waitForAddress = (address: string) =>
+    new Promise<ConnectedWallet>((resolve, reject) => {
+      const already = findWallet(walletsRef.current, address);
+      if (already) {
+        resolve(already);
+        return;
+      }
       const timer = window.setTimeout(() => {
         if (!waiter.current) return;
         waiter.current = null;
-        reject(new Error("Connect the wallet that holds your USDG."));
+        reject(new Error("Your wallet is still connecting. Try again in a moment."));
+      }, 90_000);
+      waiter.current = { address, resolve, reject, timer };
+    });
+
+  const ensureCashWallet = useCallback(async () => {
+    const live = walletsRef.current;
+    const address =
+      primaryWalletAddress(user, live) ?? embeddedWallet(live)?.address ?? null;
+    if (!address) {
+      throw new Error("Your wallet is still being created. Try again in a moment.");
+    }
+    const already = findWallet(live, address);
+    if (already) {
+      return already;
+    }
+
+    const embeddedAddr = (
+      linkedEmbeddedAddress(user) ?? embeddedWallet(live)?.address ?? ""
+    ).toLowerCase();
+    const embeddedOnly =
+      !externalWalletAddress(user, live) ||
+      address.toLowerCase() === embeddedAddr;
+
+    if (embeddedOnly) {
+      const found = await waitForAddress(address);
+      return found;
+    }
+
+    const connected = await new Promise<ConnectedWallet>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        if (!waiter.current) return;
+        waiter.current = null;
+        reject(new Error("Reconnect the wallet that holds your USDG."));
       }, 90_000);
       waiter.current = { address, resolve, reject, timer };
       connectWallet({
@@ -108,6 +251,7 @@ export function useEnsureCashWallet() {
         description: "Reconnect the wallet that holds your USDG.",
       });
     });
+    return connected;
   }, [user, connectWallet]);
 
   return { privyReady, cashAddress, cashWallet, ensureCashWallet };

@@ -48,10 +48,14 @@ export async function requirePrivyUser(request: Request) {
 }
 
 export function userHasWallet(
-  user: { linked_accounts?: Array<{ type?: string; address?: string }> },
+  user: {
+    linked_accounts?: Array<{ type?: string; address?: string }>;
+    wallet?: { address?: string };
+  },
   address: string,
 ) {
   const target = address.toLowerCase();
+  if (user.wallet?.address?.toLowerCase() === target) return true;
   return (user.linked_accounts ?? []).some(
     (account) =>
       typeof account.address === "string" &&

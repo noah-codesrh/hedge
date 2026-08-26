@@ -24,7 +24,14 @@ import {
 } from "../lib/robinhood";
 import { ROBINHOOD_ADD_CHAIN } from "../lib/chains";
 import { ensureChain } from "../lib/evm";
-import { isOnChain, useEnsureCashWallet } from "../lib/wallet";
+import {
+  isEmbeddedWallet,
+  isOnChain,
+  keepOnRobinhood,
+  primaryWalletAddress,
+  useEnsureCashWallet,
+  useEnsureTradingWallet,
+} from "../lib/wallet";
 import { signedFiat, shorten } from "../lib/format";
 import { pnlLabel, pnlTone } from "../lib/pnl";
 import { knownPortfolioAddresses } from "../lib/pm-wallet";
@@ -33,14 +40,11 @@ import { LivePositionCard } from "../components/PositionPnl";
 import { PolymarketAccounts } from "../components/PolymarketAccounts";
 import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
+import { watchBalanceReloads } from "../lib/positions";
 import { originFromMatches, siteMeta } from "../lib/seo";
 
 export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({ title: "Profile - Hedge", origin: originFromMatches(matches) });
-}
-
-function isEmbeddedWallet(client?: string | null) {
-  return client === "privy" || client === "privy-v2";
 }
 
 function walletAccounts(user: User | null) {
@@ -57,6 +61,14 @@ function fiat(n: number) {
   });
 }
 
+function loginLabel(user: User | null) {
+  if (user?.twitter) return "Signed in with X";
+  if (user?.google) return "Signed in with Google";
+  if (user?.discord) return "Signed in with Discord";
+  if (user?.email) return "Signed in with email";
+  return null;
+}
+
 function displayName(
   user: User | null,
   userId: string,
@@ -67,7 +79,19 @@ function displayName(
     ?.nickname;
   const twitter = user?.twitter?.username;
   const discord = user?.discord?.username;
-  return stored || meta || twitter || discord || shorten(wallet) || "Anonymous";
+  const google =
+    user?.google?.name || user?.google?.email?.split("@")[0];
+  const email = user?.email?.address?.split("@")[0];
+  return (
+    stored ||
+    meta ||
+    twitter ||
+    discord ||
+    google ||
+    email ||
+    shorten(wallet) ||
+    "Anonymous"
+  );
 }
 
 export default function Profile() {
@@ -93,25 +117,36 @@ function ProfileInner() {
   const [nickTick, setNickTick] = useState(0);
   const closeFlow = useCloseFlow();
   const { ensureCashWallet } = useEnsureCashWallet();
+  useEnsureTradingWallet();
 
-  const walletsList = walletAccounts(user);
-  const external = walletsList.find((w) => !isEmbeddedWallet(w.walletClientType));
-  const wallet = external?.address ?? user?.wallet?.address;
+  const wallet = primaryWalletAddress(user, wallets);
   const userId = user?.id ?? wallet ?? "anon";
+  const liveKey = wallets.map((w) => w.address.toLowerCase()).sort().join(",");
 
   useEffect(() => {
     if (!wallet) return;
     const load = () => {
       void assetsFetcher.load(`/api/assets?address=${wallet}`);
-      const signers = walletsList.map((w) => w.address);
-      const derived = signers
-        .filter((addr) =>
-          isEmbeddedWallet(
-            walletsList.find((w) => w.address.toLowerCase() === addr.toLowerCase())
-              ?.walletClientType,
+      const linked = walletAccounts(user);
+      const signers = [
+        ...linked
+          .filter((w) => "address" in w)
+          .map((w) => String((w as { address: string }).address)),
+        ...wallets.map((w) => w.address),
+      ];
+      const derived = [
+        ...linked
+          .filter(
+            (w) =>
+              "address" in w && isEmbeddedWallet(w.walletClientType),
+          )
+          .map((w) =>
+            deriveDepositWallet(String((w as { address: string }).address)),
           ),
-        )
-        .map((addr) => deriveDepositWallet(addr));
+        ...wallets
+          .filter((w) => isEmbeddedWallet(w.walletClientType))
+          .map((w) => deriveDepositWallet(w.address)),
+      ];
       const owners = knownPortfolioAddresses([wallet, ...signers, ...derived]);
       if (owners.length > 0) {
         void portfolioFetcher.load(
@@ -119,15 +154,9 @@ function ProfileInner() {
         );
       }
     };
-    load();
-    window.addEventListener("hedge:positions", load);
-    window.addEventListener("storage", load);
-    return () => {
-      window.removeEventListener("hedge:positions", load);
-      window.removeEventListener("storage", load);
-    };
+    return watchBalanceReloads(load);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet]);
+  }, [wallet, liveKey, user?.id]);
 
   const copy = async (value?: string | null) => {
     if (!value) return;
@@ -159,6 +188,7 @@ function ProfileInner() {
   const assetsError = assetsFetcher.data?.error;
   const assetsLoading = assetsFetcher.state !== "idle" && assets.length === 0;
   const nickname = displayName(user, userId, wallet);
+  const signedInAs = loginLabel(user);
   void nickTick;
 
   const joined = user?.createdAt
@@ -199,24 +229,40 @@ function ProfileInner() {
                 </button>
               </div>
               <p className="mt-1 text-[13px] text-muted">
+                {signedInAs ? `${signedInAs} · ` : null}
                 {joined ? `Joined ${joined}` : "Hedge"} · {openPositions.length}{" "}
                 {openPositions.length === 1 ? "prediction" : "predictions"}
               </p>
+              {wallet ? (
+                <button
+                  type="button"
+                  onClick={() => void copy(wallet)}
+                  className="mt-1 font-mono text-[12px] text-muted transition hover:text-white"
+                >
+                  {copied ? "Copied" : shorten(wallet)}
+                </button>
+              ) : (
+                <p className="mt-1 text-[12px] text-muted">
+                  Setting up your Hedge wallet…
+                </p>
+              )}
             </div>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-2">
             <button
               type="button"
+              disabled={!wallet}
               onClick={() => setReceiveOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-gold py-3 text-sm font-semibold text-black transition hover:brightness-105"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-gold py-3 text-sm font-semibold text-black transition hover:brightness-105 disabled:opacity-50"
             >
               <ArrowDownTrayIcon /> Receive
             </button>
             <button
               type="button"
+              disabled={!wallet}
               onClick={() => setSendAsset(usdg ?? assets[0] ?? null)}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 py-3 text-sm font-semibold transition hover:bg-white/10"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 py-3 text-sm font-semibold transition hover:bg-white/10 disabled:opacity-50"
             >
               <ArrowUpTrayIcon /> Send
             </button>
@@ -343,9 +389,9 @@ function ProfileInner() {
                 </Link>
               </div>
             ) : (
-              <ul className="mt-4 space-y-2">
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
                 {shownPositions.map((p) => (
-                  <li key={p.id}>
+                  <li key={p.id} className="min-w-0">
                     <LivePositionCard
                       position={p}
                       onClose={
@@ -679,12 +725,14 @@ function SendModal({
     try {
       const signer = connected ?? (await ensureCashWallet?.());
       if (!signer) {
-        setError("Connect the wallet that holds your USDG.");
+        setError("Your wallet isn't ready yet. Try again in a moment.");
         setBusy(false);
         return;
       }
       const provider = await signer.getEthereumProvider();
-      if (!isOnChain(signer, ROBINHOOD_ADD_CHAIN.chainId)) {
+      if (isEmbeddedWallet(signer.walletClientType)) {
+        await keepOnRobinhood(signer);
+      } else if (!isOnChain(signer, ROBINHOOD_ADD_CHAIN.chainId)) {
         await ensureChain(provider, ROBINHOOD_ADD_CHAIN);
       }
       const tx = asset.address

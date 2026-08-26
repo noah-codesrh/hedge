@@ -12,7 +12,12 @@ import type { LivePosition } from "../lib/polymarket-portfolio";
 import { RH_EXPLORER } from "../lib/robinhood";
 import { knownPortfolioAddresses } from "../lib/pm-wallet";
 import { deriveDepositWallet } from "../lib/pm-funder";
-import { isEmbeddedWallet, primaryWalletAddress } from "../lib/wallet";
+import {
+  isEmbeddedWallet,
+  primaryWalletAddress,
+  useEnsureTradingWallet,
+} from "../lib/wallet";
+import { watchBalanceReloads } from "../lib/positions";
 import { ArrowDownTrayIcon, CheckIcon, CopyIcon, WalletIcon } from "./icons";
 
 type BookValue = {
@@ -52,7 +57,8 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
 function BookInner({ children }: { children: React.ReactNode }) {
   const { authenticated, user, ready } = usePrivy();
   const { wallets } = useWallets();
-  const address = authenticated ? primaryWalletAddress(user) : null;
+  useEnsureTradingWallet();
+  const address = authenticated ? primaryWalletAddress(user, wallets) : null;
   const [cash, setCash] = useState(0);
   const [positionsValue, setPositionsValue] = useState(0);
   const [openPositions, setOpenPositions] = useState<LivePosition[]>([]);
@@ -126,18 +132,8 @@ function BookInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    refresh();
+    return watchBalanceReloads(refresh);
   }, [ready, refresh]);
-
-  useEffect(() => {
-    const onPos = () => refresh();
-    window.addEventListener("hedge:positions", onPos);
-    window.addEventListener("storage", onPos);
-    return () => {
-      window.removeEventListener("hedge:positions", onPos);
-      window.removeEventListener("storage", onPos);
-    };
-  }, [refresh]);
 
   const value = useMemo<BookValue>(
     () => ({

@@ -62,21 +62,22 @@ export type RelayStep = {
   id?: string;
   kind?: string;
   requestId?: string;
-  depositAddress?: string;
+  depositAddress?: string | { address?: string };
   items?: RelayStepItem[];
 };
 
 export type RelayQuote = {
   requestId?: string;
-  depositAddress?: string;
+  depositAddress?: string | { address?: string };
   steps?: RelayStep[];
   details?: {
-    depositAddress?: string;
+    depositAddress?: string | { address?: string };
     currencyOut?: {
       amount?: string;
       currency?: { decimals?: number };
     };
   };
+  quote?: RelayQuote;
 };
 
 function stepKind(step: RelayStep, item: RelayStepItem) {
@@ -258,52 +259,20 @@ async function sendCalls(
   if (items.length === 0) return;
   const first = txCall(items[0]!);
   if (!skipChainSwitch) await ensureChain(provider, chainFor(first.chainId));
-  if (items.length === 1) {
-    await sendTx(provider, items[0]!, skipChainSwitch);
-    return;
-  }
-  const calls = items.map((item) => {
-    const tx = txCall(item);
-    return { to: tx.to, data: tx.data, value: tx.value };
-  });
-  try {
-    const id = await provider.request({
-      method: "wallet_sendCalls",
-      params: [
-        {
-          version: "2.0.0",
-          from,
-          chainId: chainFor(first.chainId).hex,
-          atomicRequired: false,
-          calls,
-        },
-      ],
-    });
-    const hash =
-      typeof id === "string"
-        ? id
-        : id && typeof id === "object" && "id" in id
-          ? String((id as { id: unknown }).id)
-          : null;
-    if (hash && hash.startsWith("0x") && hash.length === 66) {
-      await waitForReceipt(provider, hash);
-    }
-  } catch (err) {
-    if (isUserRejection(err)) throw err;
-    for (const item of items) await sendTx(provider, item, skipChainSwitch);
-  }
+  for (const item of items) await sendTx(provider, item, skipChainSwitch, from);
 }
 
 async function sendTx(
   provider: Eip1193,
   item: RelayStepItem,
   skipChainSwitch = false,
+  from = "",
 ) {
   const data = item.data;
   if (!data?.to) throw new Error("Relay transaction is missing a destination.");
   if (!skipChainSwitch) await ensureChain(provider, chainFor(data.chainId));
   const tx: Record<string, string> = {
-    from: data.from ?? "",
+    from: data.from || from,
     to: data.to,
     data: data.data || "0x",
     value: toHexQuantity(
@@ -376,18 +345,19 @@ export async function executeRelayQuote(
 ) {
   const skipChainSwitch = opts?.skipChainSwitch === true;
   const signaturesOnly = opts?.signaturesOnly === true;
+  const resolved = unwrapRelayQuote(quote);
   const queued: { item: RelayStepItem; kind: string }[] = [];
-  enqueueSteps(queued, quote.steps);
+  enqueueSteps(queued, resolved.steps);
 
-  let requestId = quote.requestId ?? null;
+  let requestId = relayRequestId(resolved);
   let i = 0;
   while (i < queued.length) {
     const cur = queued[i]!;
     try {
       if (cur.kind === "signature") {
-        // Permit digest includes domain.chainId. Switch only when the wallet
-        // is clearly on another chain; skip if already 4663 or chain is unread.
-        await ensureChain(provider, originChain(cur.item));
+        if (!skipChainSwitch) {
+          await ensureChain(provider, originChain(cur.item));
+        }
         const signature = await signItem(provider, from, cur.item);
         const post = postData(cur.item);
         if (post?.endpoint) {
@@ -437,7 +407,7 @@ export async function executeRelayQuote(
       }
       throw err instanceof Error ? err : new Error("Relay step failed.");
     }
-    requestId = requestIdFrom(quote, cur.item.check) ?? requestId;
+    requestId = requestIdFrom(resolved, cur.item.check) ?? requestId;
     i += 1;
   }
 
@@ -446,7 +416,7 @@ export async function executeRelayQuote(
 }
 
 export function quotedPusd(quote: RelayQuote) {
-  const raw = quote.details?.currencyOut?.amount;
+  const raw = unwrapRelayQuote(quote).details?.currencyOut?.amount;
   const decimals = quote.details?.currencyOut?.currency?.decimals ?? 6;
   if (!raw || !/^[0-9]+$/.test(raw)) return null;
   const n = Number(BigInt(raw)) / 10 ** decimals;
@@ -457,29 +427,52 @@ export const quotedUsdg = quotedPusd;
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
+function asAddress(value: unknown): string | null {
+  if (typeof value === "string" && ADDR.test(value)) return value;
+  if (value && typeof value === "object" && "address" in value) {
+    const inner = (value as { address?: unknown }).address;
+    if (typeof inner === "string" && ADDR.test(inner)) return inner;
+  }
+  return null;
+}
+
+export function unwrapRelayQuote(raw: unknown): RelayQuote {
+  if (!raw || typeof raw !== "object") return {};
+  const row = raw as RelayQuote & { quotes?: RelayQuote[] };
+  if (Array.isArray(row.steps)) return row;
+  if (row.quote && Array.isArray(row.quote.steps)) return row.quote;
+  if (Array.isArray(row.quotes) && row.quotes[0]) {
+    return unwrapRelayQuote(row.quotes[0]);
+  }
+  return row;
+}
+
 export function relayDepositAddress(quote: RelayQuote) {
-  const candidates = [
-    quote.depositAddress,
-    quote.details?.depositAddress,
-    ...(quote.steps ?? []).map((step) => step.depositAddress),
-    ...(quote.steps ?? []).flatMap((step) =>
-      step.id === "deposit" || step.kind === "deposit"
-        ? (step.items ?? []).map((item) => item.data?.to)
-        : [],
+  const normalized = unwrapRelayQuote(quote);
+  const candidates: unknown[] = [
+    normalized.depositAddress,
+    normalized.details?.depositAddress,
+    ...(normalized.steps ?? []).map((step) => step.depositAddress),
+    ...(normalized.steps ?? []).flatMap((step) =>
+      (step.items ?? []).map((item) => item.data?.to),
     ),
   ];
   for (const value of candidates) {
-    if (typeof value === "string" && ADDR.test(value)) return value;
+    const address = asAddress(value);
+    if (address) return address;
   }
   return null;
 }
 
 export function relayRequestId(quote: RelayQuote) {
-  if (typeof quote.requestId === "string" && quote.requestId) return quote.requestId;
-  for (const step of quote.steps ?? []) {
+  const normalized = unwrapRelayQuote(quote);
+  if (typeof normalized.requestId === "string" && normalized.requestId) {
+    return normalized.requestId;
+  }
+  for (const step of normalized.steps ?? []) {
     if (typeof step.requestId === "string" && step.requestId) return step.requestId;
     for (const item of step.items ?? []) {
-      const id = requestIdFrom(quote, item.check);
+      const id = requestIdFrom(normalized, item.check);
       if (id) return id;
     }
   }

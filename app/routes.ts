@@ -4,6 +4,7 @@ export default [
   route("api/events", "routes/api.events.ts"),
   route("api/assets", "routes/api.assets.ts"),
   route("api/quotes", "routes/api.quotes.ts"),
+  route("api/qr", "routes/api.qr.ts"),
   route("api/convert", "routes/api.convert.ts"),
   route("api/pm/builder-sign", "routes/api.pm.builder-sign.ts"),
   route("api/pm/relayer-key", "routes/api.pm.relayer-key.ts"),

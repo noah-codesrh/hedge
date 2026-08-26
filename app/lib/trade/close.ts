@@ -2,8 +2,9 @@ import { OrderSide, OrderType, WalletType } from "@polymarket/client";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { encodeFunctionData, erc20Abi } from "viem";
 import { POLYGON_CHAIN_ID, PUSD } from "../chains";
-import { isUserRejection, sleep, waitForReceipt } from "../evm";
+import { isUserRejection, sleep, waitForPolygonReceipt } from "../evm";
 import { isEmbeddedWallet } from "../wallet";
+import { clobTick } from "../format";
 import {
   authedJson,
   embeddedPolygonProvider,
@@ -19,6 +20,7 @@ import {
   quotedUsdg,
   relayDepositAddress,
   relayRequestId,
+  unwrapRelayQuote,
   type RelayQuote,
 } from "./relay-steps";
 
@@ -140,10 +142,12 @@ async function sellPosition(
   input: CloseInput,
   builderCode: string,
 ) {
-  const shares = Number(Math.max(0, input.shares).toFixed(6));
+  // Round down: a share amount above the position triggers the same CLOB
+  // balance rejection that reads as an allowance error.
+  const shares = Math.floor(Math.max(0, input.shares) * 1e6) / 1e6;
   if (shares < 0.01) throw new Error("This position is too small to close.");
 
-  let minPrice = Math.max(0.01, input.marketPrice - 0.05);
+  let minPrice = clobTick(input.marketPrice - 0.05);
   try {
     const estimate = await client.estimateMarketPrice({
       tokenId: input.tokenId,
@@ -152,7 +156,7 @@ async function sellPosition(
       orderType: OrderType.FAK,
     });
     if (Number.isFinite(estimate) && estimate > 0) {
-      minPrice = Math.max(0.01, Math.floor((estimate - 0.02) * 100) / 100);
+      minPrice = clobTick(estimate - 0.02);
     }
   } catch {
     /* use UI price buffer */
@@ -229,17 +233,19 @@ async function convertProxyViaRelay(input: {
 }) {
   let quote: RelayQuote;
   try {
-    quote = await authedJson<RelayQuote>(input.accessToken, "/api/relay/quote", {
-      method: "POST",
-      body: JSON.stringify({
-        user: input.cashAddress,
-        recipient: input.cashAddress,
-        amount: input.proxy.raw.toString(),
-        direction: "out",
-        mode: "deposit",
-        refundTo: input.funder,
+    quote = unwrapRelayQuote(
+      await authedJson<RelayQuote>(input.accessToken, "/api/relay/quote", {
+        method: "POST",
+        body: JSON.stringify({
+          user: input.funder,
+          recipient: input.cashAddress,
+          amount: input.proxy.raw.toString(),
+          direction: "out",
+          mode: "deposit",
+          refundTo: input.funder,
+        }),
       }),
-    });
+    );
   } catch (err) {
     throw new CloseError(
       `pUSD is still in the Polymarket proxy. ${friendlyCloseError(err, "Relay could not quote a cash-out route.")}`,
@@ -248,9 +254,15 @@ async function convertProxyViaRelay(input: {
   }
   const dest = relayDepositAddress(quote);
   const requestId = relayRequestId(quote);
-  if (!dest || !requestId) {
+  if (!dest) {
     throw new CloseError(
-      "Relay did not return a deposit address. Try Cash out again.",
+      "Relay could not create a cash-out address. Try Cash out again.",
+      { sold: true, pusdHeld: input.proxy.pusd },
+    );
+  }
+  if (!requestId) {
+    throw new CloseError(
+      "Relay did not return a request id. Try Cash out again.",
       { sold: true, pusdHeld: input.proxy.pusd },
     );
   }
@@ -323,8 +335,7 @@ async function sendPusdFromTrader(input: {
     hash = typeof submitted.hash === "string" ? submitted.hash : "";
   }
   if (hash.length === 66) {
-    const provider = await embeddedPolygonProvider(input.tradingWallet);
-    await waitForReceipt(provider, hash);
+    await waitForPolygonReceipt(hash);
   } else {
     await sleep(2_500);
   }
@@ -405,7 +416,7 @@ export async function runCashOut(
   hooks: { onStep: (step: CashOutStep) => void },
 ): Promise<CloseResult> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(input.cashAddress)) {
-    throw new Error("Connect the wallet that holds your USDG.");
+    throw new Error("Your wallet isn't ready yet. Try again in a moment.");
   }
   if (!isEmbeddedWallet(input.tradingWallet.walletClientType)) {
     throw new Error("Could not create a trading wallet.");
@@ -456,7 +467,7 @@ export async function runClosePosition(
 ): Promise<CloseResult> {
   if (!input.tokenId) throw new Error("This outcome is not tradeable yet.");
   if (!/^0x[a-fA-F0-9]{40}$/.test(input.cashAddress)) {
-    throw new Error("Connect the wallet that holds your USDG.");
+    throw new Error("Your wallet isn't ready yet. Try again in a moment.");
   }
   if (!isEmbeddedWallet(input.tradingWallet.walletClientType)) {
     throw new Error("Could not create a trading wallet.");
@@ -488,7 +499,7 @@ export async function runClosePosition(
     try {
       await embeddedPolygonProvider(input.tradingWallet);
     } catch {
-      /* gasless sell does not require POL */
+      /* gasless sell still runs if the signer can sign */
     }
     await client.setupTradingApprovals();
     sold = await sellPosition(client, input, builderCode);

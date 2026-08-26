@@ -56,9 +56,17 @@ function shortError(error: string) {
   const e = error.toLowerCase();
   if (/reject|denied|cancelled|canceled/.test(e)) return "Cancelled.";
   if (/sign in|session expired/.test(e)) return "Sign in again.";
-  if (/connect|wallet is still/.test(e)) return "Connect your wallet.";
-  if (/no pusd|no usdg|enough|deposit/.test(e)) return "Not enough balance.";
-  return "Couldn't complete.";
+  if (/proxy wallet|pUSD is still|pUSD is in|tap Buy again/i.test(error)) {
+    const trimmed = error.replace(/\s+/g, " ").trim();
+    return trimmed.length <= 140 ? trimmed : `${trimmed.slice(0, 137)}…`;
+  }
+  if (/not enough usdg|not enough pusd|insufficient (usdg|pusd|collateral)/i.test(error)) {
+    return "Not enough balance.";
+  }
+  const trimmed = error.replace(/\s+/g, " ").trim();
+  if (!trimmed) return "Couldn't complete.";
+  if (trimmed.length <= 110) return trimmed;
+  return `${trimmed.slice(0, 107)}…`;
 }
 
 function ProgressRing({ value, failed }: { value: number; failed: boolean }) {
@@ -115,13 +123,18 @@ export function ConversionFlow({
 
   const node = (
     <div className="fixed inset-0 z-[200] flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-black/80" />
+      <div className="absolute inset-0 bg-black/80" onClick={failed ? onDismiss : undefined} />
       <div className="relative z-10 w-full max-w-[340px] rounded-t-[28px] bg-[#1a1a1a] px-6 pb-8 pt-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.65)] ring-1 ring-white/10 animate-pop-in sm:rounded-[28px] sm:px-8">
         <ProgressRing value={pct} failed={failed} />
         <h3 className="mt-5 text-xl font-bold tracking-tight">
-          {failed ? shortError(error ?? "") : TITLES[mode]}
+          {failed ? "Couldn't complete" : TITLES[mode]}
         </h3>
         <p className="mt-1 text-[15px] tabular-nums text-muted">{amount}</p>
+        {failed ? (
+          <p className="mt-3 text-left text-[13px] leading-snug text-[#cfcfcf]">
+            {shortError(error ?? "")}
+          </p>
+        ) : null}
         {failed ? (
           <button
             type="button"

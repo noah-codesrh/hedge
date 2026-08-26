@@ -1,27 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  useCreateWallet,
-  usePrivy,
-  useWallets,
-} from "@privy-io/react-auth";
+import { useEffect, useState } from "react";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import type { Market, PolymarketEvent, Side } from "../lib/types";
 import { cents, fiat, pct } from "../lib/format";
-import { addPosition } from "../lib/positions";
+import { addPosition, notifyBalancesChanged } from "../lib/positions";
 import { quoteConversion } from "../lib/convert";
 import { isLiveMarket } from "../lib/polymarket";
 import {
-  embeddedWallet,
   findWallet,
   isEmbeddedWallet,
-  linkedEmbeddedAddress,
   useEnsureCashWallet,
+  useEnsureTradingWallet,
 } from "../lib/wallet";
 import type { LivePosition } from "../lib/polymarket-portfolio";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { useBook } from "./Book";
 import { useCloseFlow } from "./CloseFlow";
 import { ConversionFlow, FlowSuccess, type ConvertStep } from "./ConversionFlow";
+import { LivePositionCard } from "./PositionPnl";
 
 export function TradePanel(props: {
   event: PolymarketEvent;
@@ -38,62 +34,11 @@ function AuthedTradePanel(props: {
   market: Market;
   initialSide?: Side;
 }) {
-  const { authenticated, getAccessToken, user } = usePrivy();
-  const { wallets, ready } = useWallets();
-  const { createWallet } = useCreateWallet();
+  const { authenticated, getAccessToken } = usePrivy();
+  const { wallets } = useWallets();
   const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
   const cashWallet = findWallet(wallets, cashAddress);
-  const creatingEmbedded = useRef(false);
-  const pendingEmbedded = useRef<((wallet: ConnectedWallet) => void) | null>(
-    null,
-  );
-
-  useEffect(() => {
-    const found = embeddedWallet(wallets);
-    if (found) pendingEmbedded.current?.(found);
-  }, [wallets]);
-
-  useEffect(() => {
-    if (!authenticated || !ready || creatingEmbedded.current) return;
-    if (embeddedWallet(wallets) || linkedEmbeddedAddress(user)) return;
-    creatingEmbedded.current = true;
-    void createWallet().catch(() => {
-      creatingEmbedded.current = false;
-    });
-  }, [authenticated, ready, wallets, user, createWallet]);
-
-  const ensureTradingWallet = async () => {
-    const existing = embeddedWallet(wallets);
-    if (existing) return existing;
-    const waited = new Promise<ConnectedWallet>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        pendingEmbedded.current = null;
-        reject(new Error("Could not create a trading wallet."));
-      }, 20_000);
-      pendingEmbedded.current = (wallet) => {
-        window.clearTimeout(timer);
-        pendingEmbedded.current = null;
-        resolve(wallet);
-      };
-    });
-    if (!creatingEmbedded.current && !linkedEmbeddedAddress(user)) {
-      creatingEmbedded.current = true;
-      try {
-        await createWallet();
-      } catch {
-        const found = embeddedWallet(wallets);
-        if (found) pendingEmbedded.current?.(found);
-      } finally {
-        creatingEmbedded.current = false;
-      }
-    }
-    const found = embeddedWallet(wallets);
-    if (found) {
-      pendingEmbedded.current?.(found);
-      return found;
-    }
-    return waited;
-  };
+  const { tradingWallet, ensureTradingWallet } = useEnsureTradingWallet();
 
   const closeFlow = useCloseFlow({ provisionWallet: false });
 
@@ -105,7 +50,7 @@ function AuthedTradePanel(props: {
         getAccessToken={getAccessToken}
         cashAddress={cashAddress}
         cashWallet={cashWallet}
-        tradingWallet={embeddedWallet(wallets)}
+        tradingWallet={tradingWallet}
         ensureTradingWallet={ensureTradingWallet}
         ensureCashWallet={ensureCashWallet}
         onClosePosition={closeFlow.confirmClose}
@@ -166,7 +111,7 @@ function TradePanelView({
   const price = side === "yes" ? market.yes.price : market.no.price;
   const shares = price > 0 ? amount / price : 0;
   const tradeable = isLiveMarket(market) && price > 0;
-  const cashMax = Math.max(0, cash);
+  const cashMax = Math.max(0, Math.floor(Math.max(0, cash) * 100) / 100);
   const held = heldPosition(openPositions, event, market, side);
 
   const setSized = (n: number) => {
@@ -200,11 +145,11 @@ function TradePanelView({
           ticket.side === "yes" ? market.yes.tokenId : market.no.tokenId;
         if (!tokenId) throw new Error("This outcome is not tradeable yet.");
         if (!getAccessToken) {
-          throw new Error("Connect the wallet that holds your USDG.");
+          throw new Error("Your wallet isn't ready yet. Try Buy again.");
         }
         const signerCash = (await ensureCashWallet?.()) ?? cashWallet;
         if (!signerCash) {
-          throw new Error("Connect the wallet that holds your USDG.");
+          throw new Error("Your wallet isn't ready yet. Try Buy again.");
         }
         const accessToken = await getAccessToken();
         if (!accessToken) throw new Error("Session expired. Sign in again.");
@@ -259,6 +204,8 @@ function TradePanelView({
         setAmount(0);
         refresh();
       } catch (e) {
+        notifyBalancesChanged();
+        refresh();
         setConvertError(
           e instanceof Error ? e.message : "Conversion failed.",
         );
@@ -271,12 +218,20 @@ function TradePanelView({
   return (
     <>
       <div className="w-full min-w-0 rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-5">
-        <div className="mb-4">
-          <p className="text-[15px] font-semibold leading-snug break-words">
-            {market.question}
-          </p>
-          <span className="mt-1 inline-block text-[13px] text-muted">USDG</span>
-        </div>
+        {held ? (
+          <div className="mb-4">
+            <LivePositionCard position={held} />
+          </div>
+        ) : (
+          <div className="mb-4">
+            <p className="text-[15px] font-semibold leading-snug break-words">
+              {market.question}
+            </p>
+            <span className="mt-1 inline-block text-[13px] text-muted">
+              {event.tags[0]?.label ?? "Prediction"}
+            </span>
+          </div>
+        )}
 
         <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3">
           <button

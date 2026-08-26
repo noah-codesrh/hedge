@@ -38,3 +38,9 @@ export function pnlLabel(pnl: number) {
   if (tone === "down") return "Losing";
   return "Even";
 }
+
+/** Implied payout multiple from a 0–1 share price (10¢ Yes → 10x). */
+export function leverageFromEntry(entryPrice: number) {
+  if (!(entryPrice > 0) || entryPrice > 1) return null;
+  return Math.max(1, Math.round(1 / entryPrice));
+}

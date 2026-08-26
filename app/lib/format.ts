@@ -1,3 +1,8 @@
+export function clobTick(price: number) {
+  if (!Number.isFinite(price)) return 0.01;
+  return Math.min(0.99, Math.max(0.01, Math.round(price * 100) / 100));
+}
+
 export function fiat(n: number) {
   return n.toLocaleString("en-US", {
     style: "currency",
@@ -15,9 +20,9 @@ export function signedFiat(n: number) {
 }
 
 /** Fraction (e.g. 0.125) → +12.5% */
-export function signedPct(frac: number) {
+export function signedPct(frac: number, digits = 1) {
   const p = frac * 100;
-  const abs = `${Math.abs(p).toFixed(1)}%`;
+  const abs = `${Math.abs(p).toFixed(digits)}%`;
   if (p > 0.05) return `+${abs}`;
   if (p < -0.05) return `-${abs}`;
   return abs;
