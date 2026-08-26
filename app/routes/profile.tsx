@@ -33,9 +33,10 @@ import { LivePositionCard } from "../components/PositionPnl";
 import { PolymarketAccounts } from "../components/PolymarketAccounts";
 import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
+import { originFromMatches, siteMeta } from "../lib/seo";
 
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Profile - Hedge" }];
+export function meta({ matches }: Route.MetaArgs) {
+  return siteMeta({ title: "Profile - Hedge", origin: originFromMatches(matches) });
 }
 
 function isEmbeddedWallet(client?: string | null) {

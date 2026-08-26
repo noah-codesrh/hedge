@@ -16,15 +16,10 @@ import {
   categoryLabel,
 } from "../lib/polymarket";
 import type { PolymarketEvent } from "../lib/types";
+import { originFromMatches, siteMeta } from "../lib/seo";
 
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "Hedge" },
-    {
-      name: "description",
-      content: "Trade predictions. Up to 10x leverage",
-    },
-  ];
+export function meta({ matches }: Route.MetaArgs) {
+  return siteMeta({ origin: originFromMatches(matches) });
 }
 
 function isMulti(event: PolymarketEvent) {

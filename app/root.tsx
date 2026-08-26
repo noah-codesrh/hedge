@@ -10,34 +10,24 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
-
-const TITLE = "Hedge";
-const DESCRIPTION = "Trade predictions. Up to 10x leverage";
+import {
+  OG_IMAGE_PATH,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  publicOrigin,
+  siteMeta,
+} from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
 ];
 
 export function loader({ request }: Route.LoaderArgs) {
-  return { origin: new URL(request.url).origin };
+  return { origin: publicOrigin(request) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const origin = loaderData?.origin ?? "";
-  const image = `${origin}/og-preview.jpg`;
-  return [
-    { title: TITLE },
-    { name: "description", content: DESCRIPTION },
-    { property: "og:type", content: "website" },
-    { property: "og:site_name", content: TITLE },
-    { property: "og:title", content: TITLE },
-    { property: "og:description", content: DESCRIPTION },
-    { property: "og:image", content: image },
-    { name: "twitter:card", content: "summary_large_image" },
-    { name: "twitter:title", content: TITLE },
-    { name: "twitter:description", content: DESCRIPTION },
-    { name: "twitter:image", content: image },
-  ];
+  return siteMeta({ origin: loaderData?.origin });
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -46,6 +36,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={SITE_TITLE} />
+        <meta property="og:title" content={SITE_TITLE} />
+        <meta property="og:description" content={SITE_DESCRIPTION} />
+        <meta property="og:image" content={OG_IMAGE_PATH} />
+        <meta property="og:image:width" content="1024" />
+        <meta property="og:image:height" content="537" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={SITE_TITLE} />
+        <meta name="twitter:description" content={SITE_DESCRIPTION} />
+        <meta name="twitter:image" content={OG_IMAGE_PATH} />
         <Meta />
         <Links />
       </head>

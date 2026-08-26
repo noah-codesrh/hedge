@@ -14,10 +14,11 @@ import {
 } from "../lib/polymarket";
 import { formatEnd, pct, usd } from "../lib/format";
 import type { Side } from "../lib/types";
+import { originFromMatches, siteMeta } from "../lib/seo";
 
-export function meta({ loaderData }: Route.MetaArgs) {
+export function meta({ loaderData, matches }: Route.MetaArgs) {
   const title = loaderData?.event?.title ?? "Market";
-  return [{ title: `${title} - Hedge` }];
+  return siteMeta({ title: `${title} - Hedge`, origin: originFromMatches(matches) });
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
