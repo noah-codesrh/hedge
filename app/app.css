@@ -1,15 +1,224 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: Onest;
+  src: url("/assets/Font/Onest/Onest-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Onest", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #141414;
+  --color-card: #252525;
+  --color-card-2: #1c1c1c;
+  --color-line: #333333;
+  --color-gold: #f1d65a;
+  --color-gold-soft: #f7e08a;
+  --color-muted: #8a8a8a;
+  --color-up: #34d399;
+  --color-down: #f26d5b;
 }
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-bg text-white font-sans;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
+@media (hover: none) {
+  .market-card:hover {
+    transform: none;
+    box-shadow: none;
   }
+}
+
+body {
+  overflow-x: clip;
+  max-width: 100vw;
+}
+
+#root,
+body > div {
+  min-width: 0;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes hedge-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes hedge-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes hedge-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: hedge-fade-in 0.2s ease-out both;
+}
+.animate-pop-in {
+  animation: hedge-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-card-in {
+  animation: hedge-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes marquee-up {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+@keyframes marquee-down {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-marquee-up {
+  animation: marquee-up linear infinite;
+}
+.animate-marquee-down {
+  animation: marquee-down linear infinite;
+}
+
+@keyframes honeycomb-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 56px 100px;
+  }
+}
+
+.honeycomb {
+  background-color: #f1d65a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 28 50'%3E%3Cpath fill='none' stroke='%23e0c24a' stroke-width='0.8' d='M14 0v10.5l12 7v14l-12 7-12-7v-14l12-7z'/%3E%3C/svg%3E");
+  animation: honeycomb-drift 22s linear infinite;
+}
+
+.dot-grid {
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.22) 1px,
+    transparent 1.4px
+  );
+  background-size: 8px 8px;
+}
+
+.market-card {
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s ease,
+    ring-color 0.2s ease;
+}
+.market-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes tab-shine {
+  0% {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+  55%,
+  100% {
+    transform: translateX(230%) skewX(-18deg);
+  }
+}
+
+.tab-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.tab-shine::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(241, 214, 90, 0.4) 56%,
+    transparent 68%
+  );
+  animation: tab-shine 2.8s ease-in-out infinite;
+}
+
+@keyframes outright-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+.animate-outright-scroll {
+  animation: outright-scroll linear infinite;
+}
+.animate-outright-scroll:hover {
+  animation-play-state: paused;
+}
+
+@keyframes bar-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.bar-fill {
+  transform-origin: left center;
+  animation: bar-fill 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

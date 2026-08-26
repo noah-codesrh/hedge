@@ -1,0 +1,200 @@
+import { useEffect, useMemo, useState } from "react";
+import { useFetcher } from "react-router";
+import type { User } from "@privy-io/react-auth";
+import type { loader as accountLoader } from "../routes/api.pm.account";
+import type { PolymarketAccountSnapshot } from "../lib/polymarket-account";
+import { POLYGON_EXPLORER } from "../lib/chains";
+import { fiat, shorten } from "../lib/format";
+import { deriveDepositWallet, resolvePolymarketFunder } from "../lib/pm-funder";
+import { loadDepositWallet } from "../lib/pm-wallet";
+import { isEmbeddedWallet, linkedEmbeddedAddress } from "../lib/wallet";
+import { CheckIcon, CopyIcon } from "./icons";
+
+function snapshotFor(
+  accounts: PolymarketAccountSnapshot[] | undefined,
+  address?: string | null,
+) {
+  if (!address || !accounts) return undefined;
+  const key = address.toLowerCase();
+  return accounts.find((row) => row.address.toLowerCase() === key);
+}
+
+export function PolymarketAccounts({
+  user,
+  onCashOut,
+}: {
+  user: User | null;
+  onCashOut?: (pusd: number) => void;
+}) {
+  const wallets = (user?.linkedAccounts ?? []).filter(
+    (account) => account.type === "wallet",
+  ) as { address: string; walletClientType?: string | null }[];
+  const embedded = wallets
+    .filter((w) => isEmbeddedWallet(w.walletClientType))
+    .map((w) => w.address);
+  const linked = linkedEmbeddedAddress(user);
+  const signers = [
+    ...new Set(
+      [...embedded, linked].filter(
+        (a): a is string => Boolean(a && /^0x[a-fA-F0-9]{40}$/.test(a)),
+      ),
+    ),
+  ];
+
+  const [funders, setFunders] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const next: Record<string, string> = {};
+    for (const signer of signers) {
+      next[signer.toLowerCase()] =
+        loadDepositWallet(signer) ?? deriveDepositWallet(signer);
+    }
+    setFunders(next);
+    void Promise.all(
+      signers.map(async (signer) => {
+        try {
+          return [signer.toLowerCase(), await resolvePolymarketFunder(signer)] as const;
+        } catch {
+          return [signer.toLowerCase(), next[signer.toLowerCase()]!] as const;
+        }
+      }),
+    ).then((rows) => {
+      if (!cancelled) setFunders(Object.fromEntries(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signers.join(",")]);
+
+  const rows = useMemo(
+    () =>
+      signers.map((signer) => {
+        const funder =
+          funders[signer.toLowerCase()] ??
+          loadDepositWallet(signer) ??
+          deriveDepositWallet(signer);
+        return { signer, proxy: funder };
+      }),
+    [signers, funders],
+  );
+
+  const addresses = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      for (const value of [row.signer, row.proxy]) {
+        if (!value || !/^0x[a-fA-F0-9]{40}$/.test(value)) continue;
+        const key = value.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(value);
+      }
+    }
+    return out;
+  }, [rows]);
+
+  const fetcher = useFetcher<typeof accountLoader>();
+
+  useEffect(() => {
+    if (addresses.length === 0) return;
+    void fetcher.load(
+      `/api/pm/account?addresses=${encodeURIComponent(addresses.join(","))}`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addresses.join(",")]);
+
+  const accounts = fetcher.data?.accounts ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-[15px] font-semibold">Polymarket</h2>
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const proxySnap = snapshotFor(accounts, row.proxy);
+          const signerSnap = snapshotFor(accounts, row.signer);
+          const proxyPusd = proxySnap?.pusd ?? 0;
+          const signerPusd =
+            row.proxy.toLowerCase() !== row.signer.toLowerCase()
+              ? (signerSnap?.pusd ?? 0)
+              : 0;
+          const pusd = proxyPusd + signerPusd;
+          return (
+            <CompactRow
+              key={row.signer}
+              address={row.proxy}
+              pusd={pusd}
+              loading={fetcher.state !== "idle" && fetcher.data == null}
+              onCashOut={onCashOut && pusd >= 1 ? () => onCashOut(pusd) : undefined}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompactRow({
+  address,
+  pusd,
+  loading,
+  onCashOut,
+}: {
+  address: string;
+  pusd: number;
+  loading: boolean;
+  onCashOut?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard?.writeText(address);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 ring-1 ring-white/5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] text-muted">Address</p>
+        <p className="truncate font-mono text-[14px] font-semibold">
+          {shorten(address)}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-[13px] text-muted">pUSD</p>
+        <p className="text-[15px] font-semibold tabular-nums">
+          {loading ? "…" : fiat(pusd)}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {onCashOut ? (
+          <button
+            type="button"
+            onClick={onCashOut}
+            className="rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
+          >
+            Cash out
+          </button>
+        ) : null}
+        <a
+          href={`${POLYGON_EXPLORER}/address/${address}`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
+        >
+          Explorer
+        </a>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="rounded-full bg-white/5 p-1.5 text-[#cfcfcf] transition hover:text-white"
+          aria-label={copied ? "Copied" : "Copy address"}
+        >
+          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+        </button>
+      </div>
+    </div>
+  );
+}
