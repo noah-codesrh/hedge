@@ -167,7 +167,7 @@ function TradePanelView({
   const shares = price > 0 ? amount / price : 0;
   const tradeable = isLiveMarket(market) && price > 0;
   const cashMax = Math.max(0, cash);
-  const held = heldPosition(openPositions, market, side);
+  const held = heldPosition(openPositions, event, market, side);
 
   const setSized = (n: number) => {
     const next = Math.round(Math.max(0, n) * 100) / 100;
@@ -366,7 +366,7 @@ function TradePanelView({
             type="button"
             onClick={() => onClosePosition(held)}
             disabled={busy}
-            className="mt-2 w-full py-2 text-[13px] font-semibold text-muted transition hover:text-white disabled:opacity-40"
+            className="mt-2 w-full py-2 text-[13px] font-medium text-[#b8b8b8] underline decoration-white/20 underline-offset-4 transition hover:text-white hover:decoration-white/50 disabled:opacity-40"
           >
             Close {held.shares.toFixed(2)} {held.outcome}
           </button>
@@ -415,20 +415,36 @@ function TradePanelView({
   );
 }
 
+function norm(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function heldPosition(
   positions: LivePosition[],
+  event: PolymarketEvent,
   market: Market,
   side: Side,
 ) {
   const yes = market.yes.tokenId?.toLowerCase() ?? "";
   const no = market.no.tokenId?.toLowerCase() ?? "";
   const wanted = (side === "yes" ? yes : no) || null;
+  const eventSlug = event.slug.toLowerCase();
+  const marketSlug = market.slug.toLowerCase();
+  const titles = [norm(event.title), norm(market.question)].filter(Boolean);
+
   const onMarket = positions.filter((position) => {
     if (position.status !== "open" || position.shares <= 0) return false;
     const token = position.tokenId?.toLowerCase() ?? "";
     if (token && (token === yes || token === no)) return true;
-    if (position.marketSlug && position.marketSlug === market.slug) return true;
-    return false;
+    const slugs = [position.marketSlug, position.eventSlug]
+      .filter(Boolean)
+      .map((s) => s!.toLowerCase());
+    if (slugs.includes(marketSlug) || slugs.includes(eventSlug)) return true;
+    const title = norm(position.title);
+    return Boolean(title && titles.some((t) => t === title || t.includes(title) || title.includes(t)));
   });
   if (onMarket.length === 0) return null;
   if (wanted) {

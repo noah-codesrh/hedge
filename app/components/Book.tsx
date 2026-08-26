@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { fiat } from "../lib/format";
 import type { LivePosition } from "../lib/polymarket-portfolio";
 import { RH_EXPLORER } from "../lib/robinhood";
@@ -51,6 +51,7 @@ export function BookProvider({ children }: { children: React.ReactNode }) {
 
 function BookInner({ children }: { children: React.ReactNode }) {
   const { authenticated, user, ready } = usePrivy();
+  const { wallets } = useWallets();
   const address = authenticated ? primaryWalletAddress(user) : null;
   const [cash, setCash] = useState(0);
   const [positionsValue, setPositionsValue] = useState(0);
@@ -66,9 +67,21 @@ function BookInner({ children }: { children: React.ReactNode }) {
       return;
     }
     setLoading(true);
-    const signers = (user?.linkedAccounts ?? [])
+    const linked = (user?.linkedAccounts ?? [])
       .filter((a) => a.type === "wallet" && "address" in a)
       .map((a) => a as { address: string; walletClientType?: string });
+    const connected = wallets.map((w) => ({
+      address: w.address,
+      walletClientType: w.walletClientType,
+    }));
+    const signers = [...linked];
+    for (const w of connected) {
+      if (
+        !signers.some((s) => s.address.toLowerCase() === w.address.toLowerCase())
+      ) {
+        signers.push(w);
+      }
+    }
     const derived = signers
       .filter((w) => isEmbeddedWallet(w.walletClientType))
       .map((w) => deriveDepositWallet(w.address));
@@ -109,7 +122,7 @@ function BookInner({ children }: { children: React.ReactNode }) {
         setOpenPositions([]);
       })
       .finally(() => setLoading(false));
-  }, [address, user]);
+  }, [address, user, wallets]);
 
   useEffect(() => {
     if (!ready) return;

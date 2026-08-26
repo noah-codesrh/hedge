@@ -46,7 +46,7 @@ export function PositionPnl({
       </p>
       {entryPrice != null ? (
         <p className="mt-1 text-[11px] font-medium opacity-80">
-          Now {pct(mark.current)} · entry {pct(entryPrice)}
+          Now {pct(mark.current, 1)} · entry {pct(entryPrice, 1)}
         </p>
       ) : null}
     </div>

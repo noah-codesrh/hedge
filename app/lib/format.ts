@@ -31,8 +31,9 @@ export function usd(n: number, digits = 1) {
 }
 
 /** Probability 0–1 → display percent. Keep tenths when rounding would hide a live price. */
-export function pct(price: number) {
+export function pct(price: number, digits?: number) {
   const p = Math.max(0, price * 100);
+  if (digits != null) return `${p.toFixed(digits)}%`;
   if (p > 0 && p < 1) return `${p.toFixed(1)}%`;
   if (p > 99 && p < 100) return `${p.toFixed(1)}%`;
   return `${Math.round(p)}%`;

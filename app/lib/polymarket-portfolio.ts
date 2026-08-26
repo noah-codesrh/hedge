@@ -36,9 +36,10 @@ function str(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function asPct(value: unknown) {
+function asPrice(value: unknown) {
   const n = num(value);
-  return Math.abs(n) > 2 ? n / 100 : n;
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n > 1 && n <= 100 ? n / 100 : n;
 }
 
 function mapPosition(
@@ -50,6 +51,15 @@ function mapPosition(
   if (shares <= 0 && status === "open") return null;
   const outcome = str(raw.outcome) ?? "Yes";
   const outcomeIndex = num(raw.outcomeIndex);
+  const entryPrice = asPrice(raw.avgPrice);
+  const currentPrice = asPrice(raw.curPrice);
+  const initialValue =
+    num(raw.initialValue) || (shares > 0 && entryPrice > 0 ? shares * entryPrice : 0);
+  const currentValue =
+    num(raw.currentValue) ||
+    (shares > 0 && currentPrice > 0 ? shares * currentPrice : initialValue);
+  const pnl = currentValue - initialValue;
+  const pctChange = initialValue > 0 ? pnl / initialValue : 0;
   return {
     id: `${str(raw.asset) ?? str(raw.tokenId) ?? title}:${status}`,
     wallet: str(raw.proxyWallet) ?? str(raw.wallet) ?? "",
@@ -60,12 +70,12 @@ function mapPosition(
     outcome,
     side: outcomeIndex === 1 || /^no$/i.test(outcome) ? "no" : "yes",
     shares,
-    entryPrice: num(raw.avgPrice),
-    currentPrice: num(raw.curPrice),
-    initialValue: num(raw.initialValue),
-    currentValue: num(raw.currentValue ?? raw.initialValue),
-    pnl: num(raw.cashPnl ?? raw.realizedPnl),
-    pctChange: asPct(raw.percentPnl ?? raw.percentRealizedPnl),
+    entryPrice,
+    currentPrice,
+    initialValue,
+    currentValue,
+    pnl,
+    pctChange,
     status,
   };
 }
