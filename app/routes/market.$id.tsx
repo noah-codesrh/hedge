@@ -17,7 +17,7 @@ import type { Side } from "../lib/types";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const title = loaderData?.event?.title ?? "Market";
-  return [{ title: `${title} — Hedge` }];
+  return [{ title: `${title} - Hedge` }];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {

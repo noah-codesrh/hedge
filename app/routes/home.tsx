@@ -19,11 +19,10 @@ import type { PolymarketEvent } from "../lib/types";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Hedge — Predictions, Reimagined." },
+    { title: "Hedge" },
     {
       name: "description",
-      content:
-        "Trade Polymarket Yes/No markets in USDG on Robinhood.",
+      content: "Trade predictions. Up to 10x leverage",
     },
   ];
 }

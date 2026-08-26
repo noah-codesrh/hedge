@@ -35,7 +35,7 @@ import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Profile — Hedge" }];
+  return [{ title: "Profile - Hedge" }];
 }
 
 function isEmbeddedWallet(client?: string | null) {

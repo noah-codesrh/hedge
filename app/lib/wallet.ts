@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
-  useConnectWallet,
   usePrivy,
   useWallets,
   type ConnectedWallet,
@@ -30,18 +29,16 @@ export function linkedEmbeddedAddress(user: User | null | undefined) {
 }
 
 export function findWallet(
-  wallets: ConnectedWallet[],
+  wallets: ConnectedWallet[] | undefined,
   address: string | null | undefined,
 ) {
-  if (!address) return undefined;
+  if (!address || !wallets) return undefined;
   const target = address.toLowerCase();
   return wallets.find((w) => w.address.toLowerCase() === target);
 }
 
-export function embeddedWallet(wallets: ConnectedWallet[]) {
-  return (
-    wallets.find((w) => isEmbeddedWallet(w.walletClientType)) ?? undefined
-  );
+export function embeddedWallet(wallets: ConnectedWallet[] | undefined) {
+  return wallets?.find((w) => isEmbeddedWallet(w.walletClientType));
 }
 
 export function isOnChain(wallet: ConnectedWallet, chainId: number) {
@@ -58,10 +55,10 @@ export function isOnChain(wallet: ConnectedWallet, chainId: number) {
 
 /** Linked cash address survives refresh; the injected/WC connector often does not. */
 export function useEnsureCashWallet() {
-  const { ready: privyReady, authenticated, user } = usePrivy();
+  const { ready: privyReady, authenticated, user, connectWallet } = usePrivy();
   const { wallets } = useWallets();
-  const walletsRef = useRef(wallets);
-  walletsRef.current = wallets;
+  const walletsRef = useRef<ConnectedWallet[]>(wallets ?? []);
+  walletsRef.current = wallets ?? [];
 
   const waiter = useRef<{
     address: string;
@@ -70,36 +67,24 @@ export function useEnsureCashWallet() {
     timer: number;
   } | null>(null);
 
-  const finish = useCallback((wallet: ConnectedWallet | undefined) => {
-    const pending = waiter.current;
-    if (!pending || !wallet) return false;
-    if (wallet.address.toLowerCase() !== pending.address.toLowerCase()) return false;
-    window.clearTimeout(pending.timer);
-    waiter.current = null;
-    pending.resolve(wallet);
-    return true;
-  }, []);
-
-  const { connectWallet } = useConnectWallet({
-    onSuccess: () => {
-      const pending = waiter.current;
-      if (!pending) return;
-      finish(findWallet(walletsRef.current, pending.address));
-    },
-    onError: () => {
+  useEffect(() => {
+    return () => {
       const pending = waiter.current;
       if (!pending) return;
       window.clearTimeout(pending.timer);
       waiter.current = null;
-      pending.reject(new Error("Connect the wallet that holds your USDG."));
-    },
-  });
+    };
+  }, []);
 
   useEffect(() => {
     const pending = waiter.current;
     if (!pending) return;
-    finish(findWallet(wallets, pending.address));
-  }, [wallets, finish]);
+    const found = findWallet(wallets, pending.address);
+    if (!found) return;
+    window.clearTimeout(pending.timer);
+    waiter.current = null;
+    pending.resolve(found);
+  }, [wallets]);
 
   const cashAddress = authenticated ? primaryWalletAddress(user) : null;
   const cashWallet = findWallet(wallets, cashAddress);

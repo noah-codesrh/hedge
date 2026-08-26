@@ -11,9 +11,34 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
 
+const TITLE = "Hedge";
+const DESCRIPTION = "Trade predictions. Up to 10x leverage";
+
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
 ];
+
+export function loader({ request }: Route.LoaderArgs) {
+  return { origin: new URL(request.url).origin };
+}
+
+export function meta({ loaderData }: Route.MetaArgs) {
+  const origin = loaderData?.origin ?? "";
+  const image = `${origin}/og-preview.jpg`;
+  return [
+    { title: TITLE },
+    { name: "description", content: DESCRIPTION },
+    { property: "og:type", content: "website" },
+    { property: "og:site_name", content: TITLE },
+    { property: "og:title", content: TITLE },
+    { property: "og:description", content: DESCRIPTION },
+    { property: "og:image", content: image },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: TITLE },
+    { name: "twitter:description", content: DESCRIPTION },
+    { name: "twitter:image", content: image },
+  ];
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

@@ -22,10 +22,10 @@ export function Hero({ featured }: { featured: PolymarketEvent[] }) {
             className="mb-2 h-8 w-auto sm:mb-3 sm:h-12 md:h-14"
           />
           <h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-black sm:text-3xl md:text-4xl">
-            Predictions, Reimagined.
+            Trade predictions. Up to 10x leverage
           </h1>
           <p className="mt-1 text-sm font-medium text-black/70 md:text-base">
-            Trade Yes/No markets in USDG.
+            Trade Yes/No markets in USDG on Robinhood.
           </p>
           <button
             onClick={openModal}
