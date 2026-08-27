@@ -6,7 +6,7 @@ import {
   useLoginWithEmail,
   useLoginWithOAuth,
 } from "@privy-io/react-auth";
-import { usePrivyMounted } from "./Providers";
+import { usePrivyStatus } from "./Providers";
 import { HoneycombMarquee } from "./HoneycombMarquee";
 import {
   DiscordIcon,
@@ -22,7 +22,7 @@ export function LoginModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const privyMounted = usePrivyMounted();
+  const privyStatus = usePrivyStatus();
   if (!open) return null;
 
   return (
@@ -71,8 +71,12 @@ export function LoginModal({
               Trade Polymarket with USDG on Robinhood
             </p>
           </div>
-          {privyMounted ? (
+          {privyStatus === "ready" ? (
             <PrivyAuthArea onClose={onClose} />
+          ) : privyStatus === "loading" ? (
+            <p className="rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
+              Loading login…
+            </p>
           ) : (
             <p className="rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
               Set <code className="text-gold">VITE_PRIVY_APP_ID</code> to enable

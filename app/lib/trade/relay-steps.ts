@@ -304,6 +304,20 @@ function enqueueSteps(
   }
 }
 
+/**
+ * Relay has not said yes or no yet — distinct from a refusal.
+ *
+ * Callers that have already parted with funds should treat this as "still
+ * working" and go look at the destination balance instead of failing, because
+ * the conversion usually lands shortly after.
+ */
+export class RelayTimeoutError extends Error {
+  constructor(message = "Timed out waiting for the conversion to finish.") {
+    super(message);
+    this.name = "RelayTimeoutError";
+  }
+}
+
 export async function pollRelayStatus(
   token: string,
   requestId: string,
@@ -333,7 +347,7 @@ export async function pollRelayStatus(
     }
     await sleep(1_000);
   }
-  throw new Error("Timed out waiting for the conversion to finish.");
+  throw new RelayTimeoutError();
 }
 
 export async function executeRelayQuote(
@@ -341,7 +355,17 @@ export async function executeRelayQuote(
   token: string,
   from: string,
   quote: RelayQuote,
-  opts?: { skipChainSwitch?: boolean; signaturesOnly?: boolean },
+  opts?: {
+    skipChainSwitch?: boolean;
+    signaturesOnly?: boolean;
+    /**
+     * Fires immediately before the first broadcast. Callers that retry a
+     * failed quote use this to tell "nothing moved" apart from "funds may
+     * already be in flight" — it deliberately fires before the send rather
+     * than after, so an ambiguous failure counts as money moved.
+     */
+    onBroadcast?: () => void;
+  },
 ) {
   const skipChainSwitch = opts?.skipChainSwitch === true;
   const signaturesOnly = opts?.signaturesOnly === true;
@@ -399,6 +423,7 @@ export async function executeRelayQuote(
           batch.push(next.item);
           i += 1;
         }
+        if (batch.length > 0) opts?.onBroadcast?.();
         await sendCalls(provider, from, batch, skipChainSwitch);
       }
     } catch (err) {
@@ -447,15 +472,29 @@ export function unwrapRelayQuote(raw: unknown): RelayQuote {
   return row;
 }
 
-export function relayDepositAddress(quote: RelayQuote) {
+/**
+ * Where Relay wants the funds for this quote.
+ *
+ * `strict` drops the last resort of reading a step's `to`. That guess is fine
+ * when the caller is going to execute the steps anyway, but a caller that is
+ * about to transfer real tokens straight to the result needs Relay to have
+ * actually named a deposit address — a step `to` could be any contract the
+ * route happens to touch.
+ */
+export function relayDepositAddress(
+  quote: RelayQuote,
+  opts?: { strict?: boolean },
+) {
   const normalized = unwrapRelayQuote(quote);
   const candidates: unknown[] = [
     normalized.depositAddress,
     normalized.details?.depositAddress,
     ...(normalized.steps ?? []).map((step) => step.depositAddress),
-    ...(normalized.steps ?? []).flatMap((step) =>
-      (step.items ?? []).map((item) => item.data?.to),
-    ),
+    ...(opts?.strict
+      ? []
+      : (normalized.steps ?? []).flatMap((step) =>
+          (step.items ?? []).map((item) => item.data?.to),
+        )),
   ];
   for (const value of candidates) {
     const address = asAddress(value);

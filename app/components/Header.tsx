@@ -83,12 +83,13 @@ function HeaderShell({
           >
             Markets
           </Link>
-          <span className="inline-flex cursor-default items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf]">
+          <Link
+            to="/earn"
+            prefetch="intent"
+            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
+          >
             Earn
-            <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-gold">
-              Soon
-            </span>
-          </span>
+          </Link>
           {authenticated && (
             <Link
               to="/profile"
@@ -206,19 +207,14 @@ function MobileTabBar() {
   const { pathname } = useLocation();
   const isMarkets = pathname === "/" || pathname.startsWith("/market");
   const isProfile = pathname.startsWith("/profile");
+  const isEarn = pathname.startsWith("/earn");
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
       <div className="grid grid-cols-3 items-end border-t border-white/10 bg-[#161616]/95 px-2 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-xl">
-        <span className="flex flex-col items-center gap-1 py-1 text-[10px] font-medium text-muted">
+        <MobileTab href="/earn" label="Earn" active={isEarn}>
           <PiggyBankIcon size={22} />
-          <span className="inline-flex items-center gap-1">
-            Earn
-            <span className="rounded bg-gold px-1 py-px text-[7px] font-bold uppercase leading-none text-black">
-              Soon
-            </span>
-          </span>
-        </span>
+        </MobileTab>
 
         <Link
           to="/"

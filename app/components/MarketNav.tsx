@@ -19,7 +19,7 @@ const TABS = [
   { id: "trending", label: "Trending", icon: FlameIcon },
   { id: "rewards", label: "Rewards", icon: DiamondIcon, soon: true },
   { id: "new", label: "New", icon: SparkleIcon },
-  { id: "leverage", label: "Leverage", icon: LayersIcon, soon: true },
+  { id: "leverage", label: "Leverage", icon: LayersIcon },
   { id: "ending", label: "Ending soon", icon: ClockIcon },
 ] as const;
 
@@ -58,14 +58,14 @@ export function MarketNav({
       </Form>
 
       <div className="-mx-3 flex max-w-[calc(100%+1.5rem)] justify-center overflow-x-auto px-3 no-scrollbar sm:mx-0 sm:max-w-full sm:px-0">
-        <nav className="inline-flex max-w-none items-center gap-0.5 rounded-full border border-white/10 bg-gradient-to-b from-white/12 to-white/[0.03] p-1 shadow-[0_8px_40px_rgba(241,214,90,0.16)] sm:gap-1 sm:p-1.5">
+        <nav className="inline-flex max-w-none items-center gap-0.5 rounded-full border border-white/10 bg-[#1e1e1e] p-1 sm:gap-1 sm:p-1.5">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const soon = "soon" in tab && tab.soon;
             const active = !soon && tab.id === sort;
             const className = `inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[12px] font-semibold transition sm:gap-2 sm:px-4 sm:py-2.5 sm:text-[15px] md:px-5 md:py-3 md:text-base ${
               active
-                ? "tab-shine bg-white/12 text-white shadow-[0_0_28px_rgba(241,214,90,0.45)] ring-1 ring-gold/50"
+                ? "bg-white/12 text-white ring-1 ring-gold/50"
                 : "text-[#b8b8b8] hover:bg-white/5 hover:text-white"
             }`;
 
@@ -74,7 +74,7 @@ export function MarketNav({
                 <span key={tab.id} className={`${className} cursor-default`}>
                   <Icon size={14} />
                   {tab.label}
-                  <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-gold shadow-[0_0_12px_rgba(241,214,90,0.35)] sm:px-2 sm:text-[11px]">
+                  <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-gold sm:px-2 sm:text-[11px]">
                     Soon
                   </span>
                 </span>
@@ -102,7 +102,12 @@ export function MarketNav({
         </nav>
       </div>
 
-      <div className="-mx-3 flex justify-center overflow-x-auto border-t border-white/5 px-3 pt-3 no-scrollbar sm:mx-0 sm:px-0">
+      {/* Leverage is a fixed allowlist, so category filters do not apply. */}
+      <div
+        className={`-mx-3 justify-center overflow-x-auto border-t border-white/5 px-3 pt-3 no-scrollbar sm:mx-0 sm:px-0 ${
+          sort === "leverage" ? "hidden" : "flex"
+        }`}
+      >
         {CATEGORIES.map((cat) => {
           const active = tag === cat.id || section === cat.id;
           return (
