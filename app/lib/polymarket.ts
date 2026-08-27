@@ -106,7 +106,6 @@ function mapEvent(raw: Record<string, unknown>): PolymarketEvent | null {
     id,
     slug: String(raw.slug ?? id),
     title: String(raw.title ?? ""),
-    description: str(raw.description),
     image: str(raw.image) ?? str(raw.icon),
     icon: str(raw.icon) ?? str(raw.image),
     volume24hr: num(raw.volume24hr),
@@ -114,6 +113,7 @@ function mapEvent(raw: Record<string, unknown>): PolymarketEvent | null {
     endDate: str(raw.endDate),
     tags,
     markets,
+    marketCount: markets.length,
   };
 }
 
@@ -289,7 +289,14 @@ export function categoryLabel(id: string) {
 
 /** Gamma caps /events at 100 per request. */
 export const EVENT_PAGE_SIZE = 100;
-const INITIAL_PAGES = 3;
+/**
+ * Pages rendered on the server for the first paint. Every event here is
+ * serialised twice into the HTML, once as markup and once as hydration state,
+ * so this is the main lever on document size — link preview crawlers refuse to
+ * fetch a response past a few megabytes. The rest arrives through the scroll
+ * fetcher.
+ */
+const INITIAL_PAGES = 1;
 
 export type EventPage = {
   events: PolymarketEvent[];
@@ -303,6 +310,25 @@ function sortParams(sort: string) {
   return { order: "volume24hr", ascending: "false" };
 }
 
+/**
+ * Markets a list response keeps per event. An outright card renders 12 rows
+ * and every other card uses a single market, but events routinely carry
+ * twenty or more outcomes. Each one is serialised twice into the document, as
+ * markup and again as hydration state, and Twitterbot abandons a response over
+ * 2 MB, so the surplus costs a link preview. The market page loads its event
+ * through getEvent and is unaffected.
+ */
+const LIST_MARKETS_PER_EVENT = 16;
+
+function trimForList(event: PolymarketEvent): PolymarketEvent {
+  if (event.markets.length <= LIST_MARKETS_PER_EVENT) return event;
+  const ranked = [...event.markets]
+    .filter(isLiveMarket)
+    .sort((a, b) => b.yes.price - a.yes.price)
+    .slice(0, LIST_MARKETS_PER_EVENT);
+  return { ...event, markets: ranked };
+}
+
 function mapRows(data: unknown, liveOnly = false) {
   const rows = Array.isArray(data)
     ? data
@@ -310,7 +336,8 @@ function mapRows(data: unknown, liveOnly = false) {
   const events = rows
     .map((row) => mapEvent(row as Record<string, unknown>))
     .filter((e): e is PolymarketEvent => !!e)
-    .filter((e) => !liveOnly || isTradeableEvent(e));
+    .filter((e) => !liveOnly || isTradeableEvent(e))
+    .map(trimForList);
   return { rows: rows.length, events };
 }
 

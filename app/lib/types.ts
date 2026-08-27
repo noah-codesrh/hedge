@@ -34,7 +34,6 @@ export interface PolymarketEvent {
   id: string;
   slug: string;
   title: string;
-  description: string | null;
   image: string | null;
   icon: string | null;
   volume24hr: number;
@@ -42,6 +41,11 @@ export interface PolymarketEvent {
   endDate: string | null;
   tags: EventTag[];
   markets: Market[];
+  /**
+   * Outcomes the event really has. List responses ship only the markets a card
+   * can show, so this stays truthful when `markets` has been shortened.
+   */
+  marketCount: number;
 }
 
 export interface HedgePosition {

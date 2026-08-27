@@ -149,7 +149,7 @@ export function OutrightCard({
       <div className="relative z-[2] mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-3 text-[12px] text-muted sm:text-[13px]">
         <span className="truncate">{usd(event.volume24hr)} Vol.</span>
         <span className="shrink-0 rounded-md bg-white/5 px-2 py-0.5 font-semibold text-white">
-          {event.markets.length} outcomes
+          {event.marketCount} outcomes
         </span>
       </div>
     </article>
