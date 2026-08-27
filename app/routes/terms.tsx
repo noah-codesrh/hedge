@@ -223,6 +223,9 @@ const ACKNOWLEDGEMENT = [
   "I have read and accepted these Terms & Conditions.",
   "I understand that I can lose some or all of the funds I commit.",
   "I understand that Hedge does not guarantee profits or successful predictions.",
+  "I understand that I participate at my own risk.",
+  "I understand that this platform does not provide financial or investment advice.",
+  "I am legally permitted to use the Platform in my jurisdiction.",
 ];
 
 /** Anchor id so a clause can be linked directly, e.g. /terms#governing-law. */
