@@ -14,6 +14,7 @@ import { useAuthModal, usePrivyMounted } from "../components/Providers";
 import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
+  CheckIcon,
   PencilIcon,
   WalletIcon,
 } from "../components/icons";
@@ -115,6 +116,7 @@ function ProfileInner() {
   const [tab, setTab] = useState<"assets" | "positions" | "activity">("assets");
   const [posFilter, setPosFilter] = useState<"open" | "closed">("open");
   const [sendAsset, setSendAsset] = useState<ChainAsset | null>(null);
+  const [sendReceipt, setSendReceipt] = useState<SendReceipt | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [nickOpen, setNickOpen] = useState(false);
   const [nickTick, setNickTick] = useState(0);
@@ -495,10 +497,18 @@ function ProfileInner() {
           ensureCashWallet={ensureCashWallet}
           onChangeAsset={setSendAsset}
           onClose={() => setSendAsset(null)}
-          onSent={() => {
+          onSent={(receipt) => {
             setSendAsset(null);
+            setSendReceipt(receipt);
             void assetsFetcher.load(`/api/assets?address=${wallet}`);
           }}
+        />
+      ) : null}
+
+      {sendReceipt ? (
+        <SendSuccessModal
+          receipt={sendReceipt}
+          onClose={() => setSendReceipt(null)}
         />
       ) : null}
 
@@ -685,6 +695,14 @@ function ReceiveModal({
   );
 }
 
+type SendReceipt = {
+  amount: string;
+  symbol: string;
+  to: string;
+  /** Absent when a wallet confirms the send without returning one. */
+  hash: string | null;
+};
+
 function SendModal({
   asset,
   assets,
@@ -702,7 +720,7 @@ function SendModal({
   ensureCashWallet?: () => Promise<ConnectedWallet>;
   onChangeAsset: (asset: ChainAsset) => void;
   onClose: () => void;
-  onSent: () => void;
+  onSent: (receipt: SendReceipt) => void;
 }) {
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
@@ -741,13 +759,18 @@ function SendModal({
       const data = asset.address
         ? encodeErc20Transfer(to.trim(), qty)
         : null;
+      const receipt = {
+        amount: formatTokenAmount(qty.toString(), asset.decimals),
+        symbol: asset.symbol,
+        to: to.trim(),
+      };
 
       // Token sends from the embedded wallet go through Privy so the app pays
       // gas. Native ETH is the gas, and external wallets pay their own.
       if (data && isEmbeddedWallet(signer.walletClientType)) {
         const accessToken = await getAccessToken();
         if (!accessToken) throw new Error("Session expired. Sign in again.");
-        await sponsoredTokenSend({
+        const hash = await sponsoredTokenSend({
           accessToken,
           from: signer.address,
           token: asset.address!,
@@ -761,7 +784,7 @@ function SendModal({
             return signature;
           },
         });
-        onSent();
+        onSent({ ...receipt, hash });
         return;
       }
 
@@ -769,11 +792,14 @@ function SendModal({
       const tx = data
         ? { from, to: asset.address, data, value: "0x0" }
         : { from, to: to.trim(), value: toHexQuantity(qty) };
-      await provider.request({
+      const hash = await provider.request({
         method: "eth_sendTransaction",
         params: [tx],
       });
-      onSent();
+      onSent({
+        ...receipt,
+        hash: typeof hash === "string" && hash.startsWith("0x") ? hash : null,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Transaction failed.");
     } finally {
@@ -835,6 +861,50 @@ function SendModal({
       >
         {busy ? "Confirm in wallet…" : `Send ${asset.symbol}`}
       </button>
+    </ModalShell>
+  );
+}
+
+function SendSuccessModal({
+  receipt,
+  onClose,
+}: {
+  receipt: SendReceipt;
+  onClose: () => void;
+}) {
+  return (
+    <ModalShell onClose={onClose}>
+      <div className="text-center">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#1f6f43] text-white">
+          <CheckIcon size={28} />
+        </div>
+        <h2 className="mt-4 text-xl font-bold tracking-tight">Sent</h2>
+        <p className="mt-1 text-[15px] tabular-nums text-muted">
+          {receipt.amount} {receipt.symbol}
+        </p>
+        <p className="mt-3 text-[12px] text-muted">
+          To <span className="font-mono">{shorten(receipt.to)}</span>
+        </p>
+      </div>
+      <div className="mt-5 grid gap-2">
+        {receipt.hash ? (
+          <a
+            href={`${RH_EXPLORER}/tx/${receipt.hash}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-white/5 py-3 text-center text-sm font-semibold"
+          >
+            View on explorer
+          </a>
+        ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full bg-gold py-3.5 text-sm font-semibold text-black transition hover:brightness-105"
+        >
+          Done
+        </button>
+      </div>
     </ModalShell>
   );
 }
