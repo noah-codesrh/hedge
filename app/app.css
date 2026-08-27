@@ -165,36 +165,6 @@ body > div {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
-@keyframes tab-shine {
-  0% {
-    transform: translateX(-130%) skewX(-18deg);
-  }
-  55%,
-  100% {
-    transform: translateX(230%) skewX(-18deg);
-  }
-}
-
-.tab-shine {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-.tab-shine::after {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 38%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(241, 214, 90, 0.4) 56%,
-    transparent 68%
-  );
-  animation: tab-shine 2.8s ease-in-out infinite;
-}
-
 @keyframes outright-scroll {
   from {
     transform: translateY(0);

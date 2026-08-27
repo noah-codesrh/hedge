@@ -277,11 +277,12 @@ export async function waitForPusd(
   wallet: string,
   before: number,
   expected: number | null,
+  timeoutMs = 45_000,
 ) {
   const target = Math.max(0.01, (expected ?? 0) * 0.9);
   const started = Date.now();
   let latest = before;
-  while (Date.now() - started < 45_000) {
+  while (Date.now() - started < timeoutMs) {
     latest = await readPusd(token, wallet);
     const gained = latest - before;
     if (gained >= target || (expected == null && gained > 0.005)) {

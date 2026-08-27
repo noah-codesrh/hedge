@@ -1,25 +1,19 @@
 import type { Route } from "./+types/api.rh.sponsor-send";
-import { decodeFunctionData, erc20Abi, getAddress } from "viem";
+import { getAddress } from "viem";
 import { RH_CHAIN_ID } from "../lib/chains";
-import { USDG, WETH } from "../lib/robinhood";
 import {
   embeddedWalletId,
   privyAdmin,
   requirePrivyUser,
 } from "../lib/server/privy-auth";
 import { missingSecrets, serverSecrets } from "../lib/server/secrets";
+import { refuseSponsoredCall } from "../lib/server/sponsor-policy";
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 const DATA = /^0x[a-fA-F0-9]*$/;
 const TX_HASH = /^0x[a-fA-F0-9]{64}$/;
 const PRIVY_API = "https://api.privy.io";
 const SIGN_WINDOW_MS = 3 * 60 * 1000;
-
-/**
- * Tokens Hedge will pay gas for. Native ETH is deliberately absent: it is the
- * gas, so a wallet that can hold it does not need sponsoring.
- */
-const SPONSORED_TOKENS = new Set([USDG.toLowerCase(), WETH.toLowerCase()]);
 
 function rpcBody(token: string, data: `0x${string}`) {
   return {
@@ -94,22 +88,13 @@ export async function action({ request }: Route.ActionArgs) {
       { status: 400 },
     );
   }
-  if (!SPONSORED_TOKENS.has(token.toLowerCase())) {
-    return Response.json({ error: "That token is not sponsored." }, { status: 400 });
-  }
-
-  // Only ever sponsor a plain transfer. Without decoding, this endpoint would
-  // pay gas for arbitrary calldata aimed at the token contract.
-  try {
-    const decoded = decodeFunctionData({
-      abi: erc20Abi,
-      data: data as `0x${string}`,
-    });
-    if (decoded.functionName !== "transfer") {
-      return Response.json({ error: "Invalid sponsored send." }, { status: 400 });
-    }
-  } catch {
-    return Response.json({ error: "Invalid sponsored send." }, { status: 400 });
+  const { hedgeEngineAddress, hedgeVaultAddress } = serverSecrets();
+  const refusal = refuseSponsoredCall(token, data as `0x${string}`, {
+    engine: hedgeEngineAddress,
+    vault: hedgeVaultAddress,
+  });
+  if (refusal) {
+    return Response.json({ error: refusal }, { status: 400 });
   }
 
   // Doubles as the ownership check: a wallet id only comes back for an

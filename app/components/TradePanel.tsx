@@ -1,11 +1,32 @@
 import { useEffect, useState } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  useAuthorizationSignature,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import type { Market, PolymarketEvent, Side } from "../lib/types";
-import { cents, fiat, pct } from "../lib/format";
+import { cents, fiat, pct, signedPct } from "../lib/format";
+import { fillBuy, fillSell, useOrderBooks } from "../lib/orderbook";
 import { addPosition, notifyBalancesChanged } from "../lib/positions";
 import { quoteConversion } from "../lib/convert";
 import { isLiveMarket } from "../lib/polymarket";
+import {
+  isWithinBand,
+  LEVERAGE_STEPS,
+  leverageFor,
+  leverageIsLive,
+  PRICE_BAND,
+  quoteLeverage,
+} from "../lib/leverage";
+import {
+  quoteOpenOnChain,
+  readEngineState,
+  type ChainQuote,
+  type EngineState,
+} from "../lib/leverage-chain";
+import type { TradeStage } from "../lib/leverage-actions";
+import type { SignPrivyAuthorization } from "../lib/sponsored-send";
 import { trackTrade } from "../lib/track";
 import {
   findWallet,
@@ -40,8 +61,15 @@ function AuthedTradePanel(props: {
   const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
   const cashWallet = findWallet(wallets, cashAddress);
   const { tradingWallet, ensureTradingWallet } = useEnsureTradingWallet();
+  const { generateAuthorizationSignature } = useAuthorizationSignature();
 
   const closeFlow = useCloseFlow({ provisionWallet: false });
+
+  const signAuthorization: SignPrivyAuthorization = async (payload) => {
+    const { signature } = await generateAuthorizationSignature(payload);
+    if (!signature) throw new Error("Could not authorize this wallet.");
+    return signature;
+  };
 
   return (
     <>
@@ -49,6 +77,7 @@ function AuthedTradePanel(props: {
         {...props}
         authenticated={authenticated}
         getAccessToken={getAccessToken}
+        signAuthorization={signAuthorization}
         cashAddress={cashAddress}
         cashWallet={cashWallet}
         tradingWallet={tradingWallet}
@@ -72,12 +101,14 @@ function TradePanelView({
   ensureTradingWallet,
   ensureCashWallet,
   onClosePosition,
+  signAuthorization,
 }: {
   event: PolymarketEvent;
   market: Market;
   initialSide?: Side;
   authenticated: boolean;
   getAccessToken?: () => Promise<string | null>;
+  signAuthorization?: SignPrivyAuthorization;
   cashAddress?: string | null;
   cashWallet?: ConnectedWallet;
   tradingWallet?: ConnectedWallet;
@@ -110,24 +141,275 @@ function TradePanelView({
   }, [initialSide]);
 
   const price = side === "yes" ? market.yes.price : market.no.price;
-  const shares = price > 0 ? amount / price : 0;
   const tradeable = isLiveMarket(market) && price > 0;
+
+  // Leverage is offered on a small allowlist. Everywhere else this whole block
+  // is inert and the panel behaves exactly as it always has.
+  const leverageConfig = leverageFor(market);
+  // The engine reads the YES price whichever way the trader is facing, so the
+  // band check has to use YES rather than the selected side's price.
+  const onBand = isWithinBand(market.yes.price);
+
+  // What the pool will back right now. The registry cap is a per-market risk
+  // limit; the engine's tier schedule is a liquidity limit that moves on its
+  // own as LPs deposit. A trader gets whichever is lower.
+  const [engineState, setEngineState] = useState<EngineState | null>(null);
+  useEffect(() => {
+    if (!leverageConfig || !leverageIsLive) return;
+    let alive = true;
+    const load = () => {
+      void readEngineState().then((s) => {
+        if (alive) setEngineState(s);
+      });
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [leverageConfig]);
+
+  const leverageOffered =
+    Boolean(leverageConfig) &&
+    tradeable &&
+    onBand &&
+    !(engineState?.openingPaused ?? false);
+  const maxLeverage = Math.min(
+    leverageConfig?.maxLeverage ?? 1,
+    engineState?.maxLeverage ?? leverageConfig?.maxLeverage ?? 1,
+  );
+  const [leverage, setLeverage] = useState(1);
+  const effectiveLeverage = leverageOffered ? Math.min(leverage, maxLeverage) : 1;
+  const levered = effectiveLeverage > 1;
+
+  const [leverStage, setLeverStage] = useState<TradeStage | null>(null);
+  const [leverDone, setLeverDone] = useState<string | null>(null);
+
+  // Falling out of the band or switching to a plain market must not strand a
+  // leverage setting the trader can no longer act on.
+  useEffect(() => {
+    if (!leverageOffered) setLeverage(1);
+  }, [leverageOffered]);
+
+  // A confirmation from the last trade must not linger over the next one.
+  useEffect(() => {
+    if (amount > 0) setLeverDone(null);
+  }, [amount, side, leverage]);
+
+  const leverageQuote = levered
+    ? quoteLeverage(amount, effectiveLeverage, market.yes.price, side === "yes")
+    : null;
+
+  /**
+   * Vault capital this ticket would reserve, mirroring `_maxPayout`.
+   *
+   * Not the borrowed slice: a binary outcome can run to $1.00, so a long's
+   * worst case for the vault is the shares above the position size and a
+   * short's is the whole size.
+   */
+  const reserveNeeded = leverageQuote
+    ? side === "yes"
+      ? Math.max(0, leverageQuote.shares - leverageQuote.size)
+      : leverageQuote.size
+    : 0;
+
+  /**
+   * Why this levered ticket would be rejected, checked while the trader types.
+   *
+   * These are the same bounds the engine enforces. Catching them here turns a
+   * failed simulation several seconds after tapping the button into a sentence
+   * that appears as the number is entered.
+   */
+  const leverBlock = (() => {
+    if (!levered || !engineState || amount <= 0) return null;
+    if (amount < engineState.minMargin) {
+      return `Leverage needs at least ${fiat(engineState.minMargin)} of margin.`;
+    }
+    if (amount > engineState.maxMargin) {
+      return `${fiat(engineState.maxMargin)} is the most you can put behind one leveraged position.`;
+    }
+    if (reserveNeeded > engineState.capacity.available) {
+      return "The pool is filled up — more liquidity is on the way. Lower the size or the multiple.";
+    }
+    return null;
+  })();
   const cashMax = Math.max(0, Math.floor(Math.max(0, cash) * 100) / 100);
+
+  /**
+   * Most the trader may put behind this ticket.
+   *
+   * A levered position is bounded by the engine's margin cap as well as by
+   * cash, so the input clamps to whichever is lower. Reporting the breach after
+   * the fact is worse than making it unreachable — the slider and the quick-add
+   * buttons should not be able to produce a number the chain will refuse.
+   */
+  const marginCeiling =
+    levered && engineState
+      ? Math.min(cashMax, engineState.maxMargin)
+      : cashMax;
+
+  /**
+   * The engine's own quote, which is the arithmetic the chain will run.
+   *
+   * Worth the round trip rather than trusting the local estimate: that one is
+   * computed off the Polymarket price, while the engine prices off the oracle,
+   * and the keeper only refreshes it every couple of minutes. Between ticks the
+   * two genuinely differ, and the number that matters — the liquidation price —
+   * is the one the trader is about to be held to.
+   */
+  const [chainQuote, setChainQuote] = useState<ChainQuote | null>(null);
+  useEffect(() => {
+    if (!levered || !leverageConfig || amount <= 0 || leverBlock) {
+      setChainQuote(null);
+      return;
+    }
+    let alive = true;
+    // Debounced: the amount changes on every keystroke and every slider pixel.
+    const timer = setTimeout(() => {
+      void quoteOpenOnChain({
+        marketSlug: leverageConfig.marketSlug,
+        isLong: side === "yes",
+        margin: amount,
+        leverage: effectiveLeverage,
+      }).then((q) => {
+        if (alive) setChainQuote(q);
+      });
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [levered, leverageConfig, amount, side, effectiveLeverage, leverBlock]);
+
+  /**
+   * What the ticket summary shows: the chain's numbers once they arrive, the
+   * local estimate until then so the panel never goes blank mid-keystroke.
+   */
+  const shownQuote = (() => {
+    if (!leverageQuote) return null;
+    if (!chainQuote) return leverageQuote;
+    return {
+      ...leverageQuote,
+      size: chainQuote.size,
+      entryPrice: chainQuote.entryPrice,
+      fee: chainQuote.fee,
+      netMargin: chainQuote.netMargin,
+      shares: chainQuote.shares,
+      liquidationPrice: chainQuote.liquidationPrice,
+      liquidationDistance: Math.abs(
+        chainQuote.liquidationPrice - chainQuote.entryPrice,
+      ),
+    };
+  })();
+
+  /** Carry on the borrowed slice for a day, so the holding cost is visible. */
+  const dailyCarry =
+    shownQuote && engineState && effectiveLeverage > 1
+      ? Math.max(0, shownQuote.size - amount) *
+        (engineState.borrowRateBps / 10_000) *
+        24
+      : 0;
+
   const held = heldPosition(openPositions, event, market, side);
+
+  // A market buy lifts the asks, so the quoted market price is not the price
+  // paid. Walk the real book instead of dividing by it.
+  const books = useOrderBooks([market.yes.tokenId, market.no.tokenId]);
+  const tokenId = side === "yes" ? market.yes.tokenId : market.no.tokenId;
+  const book = tokenId ? books[tokenId] : undefined;
+  const fill = book && amount > 0 ? fillBuy(book.asks, amount) : null;
+  const quoted = fill && fill.shares > 0 ? fill : null;
+  const shares = quoted ? quoted.shares : price > 0 ? amount / price : 0;
+  const avgPrice = quoted ? quoted.avgPrice : price;
+  // What closing straight back into the bids would return: the round-trip cost
+  // of the spread, which is there even when the market has not moved.
+  const exit = book && quoted ? fillSell(book.bids, quoted.shares) : null;
+  const roundTrip =
+    exit && quoted && quoted.spent > 0
+      ? (exit.proceeds - quoted.spent) / quoted.spent
+      : null;
 
   const setSized = (n: number) => {
     const next = Math.round(Math.max(0, n) * 100) / 100;
-    setAmount(cashMax > 0 ? Math.min(next, cashMax) : 0);
+    setAmount(marginCeiling > 0 ? Math.min(next, marginCeiling) : 0);
   };
 
+  // Also catches stepping up the multiple with an amount already typed, which
+  // can put a previously fine number above the levered cap.
   useEffect(() => {
-    setAmount((a) => (cashMax > 0 ? Math.min(a, cashMax) : 0));
-  }, [cashMax]);
+    setAmount((a) => (marginCeiling > 0 ? Math.min(a, marginCeiling) : 0));
+  }, [marginCeiling]);
+
+  /**
+   * Opens a leveraged position against the Hedge engine on Robinhood Chain.
+   *
+   * Nothing here touches Polymarket. The trader's USDG stays on this chain as
+   * margin, the vault takes the other side, and the Polymarket price only
+   * arrives through the oracle the keeper feeds. That is why this is a
+   * separate path rather than a flag on the normal buy.
+   */
+  const openLevered = () => {
+    setBusy(true);
+    setConvertError(null);
+    setLeverDone(null);
+    void (async () => {
+      try {
+        if (!getAccessToken || !signAuthorization) {
+          throw new Error("Your wallet isn't ready yet. Try again.");
+        }
+        const signerCash = (await ensureCashWallet?.()) ?? cashWallet;
+        if (!signerCash) {
+          throw new Error("Your wallet isn't ready yet. Try again.");
+        }
+        const accessToken = await getAccessToken();
+        if (!accessToken) throw new Error("Session expired. Sign in again.");
+        if (!leverageConfig) throw new Error("Leverage isn't offered here.");
+
+        const opened = { size: leverageQuote?.size ?? 0, leverage: effectiveLeverage };
+        const { openLeveragePosition } = await import("../lib/leverage-actions");
+        await openLeveragePosition(
+          {
+            accessToken,
+            from: signerCash.address,
+            signAuthorization,
+          },
+          {
+            marketSlug: leverageConfig.marketSlug,
+            isLong: side === "yes",
+            margin: amount,
+            leverage: effectiveLeverage,
+          },
+          setLeverStage,
+        );
+
+        setAmount(0);
+        setLeverage(1);
+        setLeverDone(
+          `Opened ${fiat(opened.size)} at ${opened.leverage}x. It's in your portfolio.`,
+        );
+        notifyBalancesChanged();
+        refresh();
+        void readEngineState().then(setEngineState);
+      } catch (e) {
+        setConvertError(
+          e instanceof Error ? e.message : "Could not open that position.",
+        );
+      } finally {
+        setBusy(false);
+        setLeverStage(null);
+      }
+    })();
+  };
 
   const onTrade = () => {
     if (!authenticated) return openModal();
     if (cashMax <= 0) return openDeposit();
     if (!tradeable || amount <= 0 || busy) return;
+    // Never let a levered ticket fall through to the unlevered Polymarket
+    // path: the trader would be filled at 1x on an order that says otherwise.
+    if (levered && !leverageIsLive) return;
+    if (levered) return openLevered();
     const quote = quoteConversion(amount);
     const ticket = {
       amount,
@@ -170,6 +452,7 @@ function TradePanelView({
             accessToken,
             cashWallet: signerCash,
             tradingWallet: signerWallet,
+            signAuthorization,
           },
           {
             onStep: setConvertStep,
@@ -274,9 +557,24 @@ function TradePanelView({
           </button>
         </div>
 
+        {leverageConfig ? (
+          <LeverageSelector
+            value={effectiveLeverage}
+            max={maxLeverage}
+            onChange={setLeverage}
+            offered={leverageOffered}
+            offBand={!onBand}
+            engine={engineState}
+            reserveNeeded={reserveNeeded}
+            paused={engineState?.openingPaused ?? false}
+          />
+        ) : null}
+
         <div className="rounded-2xl bg-[#252525] p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[15px] text-muted">Amount</span>
+            <span className="text-[15px] text-muted">
+              {levered ? "Margin" : "Amount"}
+            </span>
             <div className="flex min-w-0 items-baseline gap-0.5 text-2xl font-bold sm:text-3xl">
               <span className="text-lg text-muted sm:text-xl">$</span>
               <input
@@ -291,19 +589,28 @@ function TradePanelView({
             </div>
           </div>
           <p className="mt-1 text-right text-[11px] text-muted">
-            {cashMax > 0 ? `${fiat(cashMax)} cash` : "No USDG cash"}
+            {cashMax <= 0
+              ? "No USDG cash"
+              : marginCeiling < cashMax
+                ? `${fiat(marginCeiling)} max margin · ${fiat(cashMax)} cash`
+                : `${fiat(cashMax)} cash`}
           </p>
           <DottedSlider
             value={amount}
-            max={cashMax}
+            max={marginCeiling}
             onChange={setSized}
           />
           <div className="mt-3.5 grid grid-cols-5 gap-1.5 sm:gap-2">
-            {[1, 5, 10, 25, 50].map((q) => (
+            {/* Steps past the ceiling are dead weight on a levered ticket
+                capped at a few dollars, so the row rescales with it. */}
+            {(marginCeiling <= 10
+              ? [0.5, 1, 2, 5, 10]
+              : [1, 5, 10, 25, 50]
+            ).map((q) => (
               <button
                 key={q}
                 onClick={() => setSized(amount + q)}
-                disabled={cashMax <= 0}
+                disabled={marginCeiling <= 0 || amount >= marginCeiling}
                 className="rounded-full bg-[#1b1b1b] py-2 text-[12px] font-semibold transition hover:bg-[#2c2c2c] disabled:opacity-40 sm:text-[13px]"
               >
                 +{q}
@@ -312,11 +619,33 @@ function TradePanelView({
           </div>
         </div>
 
+        {/* The conversion overlay carries errors for the Polymarket path, but
+            a levered open never opens one, so it reports inline. */}
+        {levered && convertError && !convertStep ? (
+          <p className="mt-3 rounded-2xl bg-down/10 px-3 py-2.5 text-[13px] leading-snug text-down">
+            {convertError}
+          </p>
+        ) : null}
+        {leverDone ? (
+          <p className="mt-3 rounded-2xl bg-up/10 px-3 py-2.5 text-[13px] leading-snug text-up">
+            {leverDone}
+          </p>
+        ) : null}
+        {leverBlock && !busy ? (
+          <p className="mt-3 rounded-2xl bg-gold/10 px-3 py-2.5 text-[13px] leading-snug text-gold">
+            {leverBlock}
+          </p>
+        ) : null}
+
         <button
           onClick={onTrade}
           disabled={
             authenticated &&
-            (busy || !tradeable || (cashMax > 0 && amount <= 0))
+            (busy ||
+              !tradeable ||
+              (levered && !leverageIsLive) ||
+              Boolean(leverBlock) ||
+              (cashMax > 0 && amount <= 0))
           }
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-semibold text-black transition hover:bg-white/90 disabled:opacity-50"
         >
@@ -327,11 +656,17 @@ function TradePanelView({
             ? "Connect wallet"
             : !tradeable
               ? "This outcome isn’t tradeable"
+            : levered && !leverageIsLive
+              ? "Leverage isn’t live yet"
             : cashMax <= 0
               ? "Deposit USDG to trade"
               : busy
-                ? "Buying…"
-                : `Buy ${side === "yes" ? market.yes.label : market.no.label}`}
+                ? levered
+                  ? STAGE_LABEL[leverStage ?? "submitting"]
+                  : "Buying…"
+                : levered
+                  ? `${effectiveLeverage}x ${side === "yes" ? market.yes.label : market.no.label}`
+                  : `Buy ${side === "yes" ? market.yes.label : market.no.label}`}
         </button>
 
         {authenticated && held && onClosePosition ? (
@@ -345,11 +680,54 @@ function TradePanelView({
           </button>
         ) : null}
 
-        {amount > 0 && (
+        {amount > 0 && shownQuote ? (
+          <div className="mt-4 space-y-1.5 text-[13px] text-muted">
+            <div className="flex justify-between">
+              <span>Position size</span>
+              <span className="text-white">
+                {fiat(shownQuote.size)}{" "}
+                <span className="opacity-70">({effectiveLeverage}x)</span>
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Entry price</span>
+              <span className="text-white">
+                {pct(shownQuote.entryPrice, 1)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Liquidation</span>
+              <span className="text-down">
+                {pct(shownQuote.liquidationPrice, 1)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Entry fee</span>
+              <span className="text-white">{fiat(shownQuote.fee)}</span>
+            </div>
+            {dailyCarry > 0 ? (
+              <div className="flex justify-between">
+                <span>Carry</span>
+                <span className="text-white">{fiat(dailyCarry)} a day</span>
+              </div>
+            ) : null}
+            <div className="flex justify-between">
+              <span>Shares</span>
+              <span className="text-white">
+                {shownQuote.shares.toFixed(2)}
+              </span>
+            </div>
+            <p className="pt-0.5 text-[12px] leading-snug">
+              A {pct(shownQuote.liquidationDistance, 1)} move against you closes
+              this position and you lose your {fiat(amount)} margin.
+              {chainQuote ? null : " Prices confirm against the chain in a moment."}
+            </p>
+          </div>
+        ) : amount > 0 ? (
           <div className="mt-4 space-y-1.5 text-[13px] text-muted">
             <div className="flex justify-between">
               <span>Avg price</span>
-              <span className="text-white">{pct(price)}</span>
+              <span className="text-white">{pct(avgPrice, 1)}</span>
             </div>
             <div className="flex justify-between">
               <span>Shares</span>
@@ -359,8 +737,26 @@ function TradePanelView({
               <span>To win</span>
               <span className="text-up">${shares.toFixed(2)}</span>
             </div>
+            {exit && roundTrip != null ? (
+              <div className="flex justify-between">
+                <span>Sell back now</span>
+                <span
+                  className={
+                    roundTrip < -0.005 ? "text-down" : "text-white"
+                  }
+                >
+                  {fiat(exit.proceeds)}{" "}
+                  <span className="opacity-80">({signedPct(roundTrip)})</span>
+                </span>
+              </div>
+            ) : null}
+            {quoted && quoted.unfilled > 0.01 ? (
+              <p className="pt-0.5 text-[12px] leading-snug text-down">
+                Only {fiat(quoted.spent)} of this fits the book right now.
+              </p>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
 
       {convertStep && pending ? (
@@ -427,6 +823,101 @@ function heldPosition(
     if (exact) return exact;
   }
   return onMarket.find((position) => position.side === side) ?? onMarket[0];
+}
+
+/**
+ * What the button says mid-flight. "Approving" only shows on a wallet's first
+ * levered trade, which is the one that genuinely takes longer.
+ */
+const STAGE_LABEL: Record<TradeStage, string> = {
+  approving: "Approving USDG…",
+  checking: "Checking the pool…",
+  submitting: "Opening…",
+};
+
+function LeverageSelector({
+  value,
+  max,
+  onChange,
+  offered,
+  offBand,
+  engine,
+  reserveNeeded,
+  paused,
+}: {
+  value: number;
+  max: number;
+  onChange: (n: number) => void;
+  offered: boolean;
+  offBand: boolean;
+  engine: EngineState | null;
+  /** Vault capital this ticket would tie up, so a full pool is caught early. */
+  reserveNeeded: number;
+  paused: boolean;
+}) {
+  const poolFull =
+    engine != null && reserveNeeded > 0 && reserveNeeded > engine.capacity.available;
+  const nextTier =
+    engine?.nextTier && engine.nextTier.leverage > max ? engine.nextTier : null;
+
+  return (
+    <div className="mb-4 rounded-2xl bg-[#252525] p-3 sm:p-4">
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <span className="text-[15px] text-muted">Leverage</span>
+        <span className="text-[17px] font-bold text-gold">
+          {offered ? `${value}x` : "Unavailable"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+        {LEVERAGE_STEPS.map((step) => {
+          // Steps above this market's cap stay visible rather than hidden, so
+          // the ceiling is legible instead of just absent.
+          const allowed = offered && step <= max;
+          const active = offered && step === value;
+          return (
+            <button
+              key={step}
+              type="button"
+              disabled={!allowed}
+              onClick={() => onChange(step)}
+              className={`rounded-full py-2.5 text-[17px] font-bold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                active
+                  ? "bg-gold text-black"
+                  : "bg-[#1b1b1b] text-white hover:bg-[#2c2c2c]"
+              }`}
+            >
+              {step}x
+            </button>
+          );
+        })}
+      </div>
+
+      {poolFull ? (
+        <p className="mt-2.5 rounded-xl bg-gold/10 px-2.5 py-2 text-[11px] leading-snug text-gold">
+          The pool is filled up — more liquidity is on the way. Lower the size
+          or the multiple to open now.
+        </p>
+      ) : null}
+
+      <p className="mt-2.5 text-[11px] leading-snug text-muted">
+        {paused
+          ? "New leveraged positions are paused while the pool is checked over. Open positions are unaffected."
+          : offBand
+            ? `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}. This market has drifted outside that, so it trades unlevered for now.`
+            : value > 1
+              ? "Borrowed from the Hedge vault. Your margin is at risk before the vault's."
+              : "1x is a normal unlevered buy."}
+      </p>
+
+      {nextTier && !paused ? (
+        <p className="mt-1.5 text-[11px] leading-snug text-muted">
+          {nextTier.leverage}x unlocks once the vault reaches{" "}
+          {fiat(nextTier.atTvl)}.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function DottedSlider({

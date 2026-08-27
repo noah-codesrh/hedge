@@ -14,6 +14,14 @@ export function serverSecrets() {
     builderCode: required("POLYMARKET_BUILDER_CODE"),
     relayerApiKeyId: required("RELAYER_API_KEY"),
     relayerApiKeyAddress: required("RELAYER_API_KEY_ADDRESS"),
+    // Hedge contracts on Robinhood Chain. Read from the VITE_ names too so a
+    // single .env drives the browser and the sponsorship allowlist together —
+    // if these ever disagree, sponsored calls would be refused for the exact
+    // contracts the app is pointing at.
+    hedgeEngineAddress:
+      required("HEDGE_ENGINE_ADDRESS") ?? required("VITE_HEDGE_ENGINE_ADDRESS"),
+    hedgeVaultAddress:
+      required("HEDGE_VAULT_ADDRESS") ?? required("VITE_HEDGE_VAULT_ADDRESS"),
     supabaseUrl: required("SUPABASE_URL"),
     // sb_secret_..., or the legacy service_role JWT. Either bypasses row level
     // security, so this must never be sent to the browser.

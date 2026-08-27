@@ -41,6 +41,7 @@ import { pnlLabel, pnlTone } from "../lib/pnl";
 import { knownPortfolioAddresses } from "../lib/pm-wallet";
 import { deriveDepositWallet } from "../lib/pm-funder";
 import { LivePositionCard } from "../components/PositionPnl";
+import { LeveragePositions } from "../components/LeveragePositions";
 import { PolymarketAccounts } from "../components/PolymarketAccounts";
 import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
@@ -364,6 +365,10 @@ function ProfileInner() {
 
         {tab === "positions" && (
           <div className="mt-5">
+            {/* Levered positions live on the engine, not on Polymarket, so
+                they are fetched separately and sit above the spot list. */}
+            {posFilter === "open" ? <LeveragePositions compact /> : null}
+
             <div className="flex items-center gap-2">
               {(["open", "closed"] as const).map((f) => (
                 <button

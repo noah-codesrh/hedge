@@ -1,0 +1,169 @@
+/**
+ * Checks the gas sponsorship allowlist.
+ *
+ * This endpoint pays for other people's transactions, and the existing spot
+ * trading path routes its USDG and pUSD withdrawals through it, so the two
+ * failure modes are opposite and both bad: too loose and anyone can drain the
+ * gas budget with arbitrary calldata, too tight and withdrawals stop working.
+ *
+ *   pnpm check:sponsor
+ *
+ * Bundled with esbuild first because the app imports without file
+ * extensions, which node's resolver will not follow on its own.
+ */
+import { encodeFunctionData, erc20Abi } from "viem";
+import {
+  refuseSponsoredCall,
+  type HedgeContracts,
+} from "../app/lib/server/sponsor-policy";
+import { USDG, WETH } from "../app/lib/robinhood";
+import { engineAbi, vaultAbi } from "../app/lib/leverage-abi";
+
+const ENGINE = "0x1111111111111111111111111111111111111111";
+const VAULT = "0x2222222222222222222222222222222222222222";
+const STRANGER = "0x3333333333333333333333333333333333333333";
+const DEPLOYED: HedgeContracts = { engine: ENGINE, vault: VAULT };
+const UNDEPLOYED: HedgeContracts = { engine: null, vault: null };
+
+let failures = 0;
+
+function allows(
+  label: string,
+  target: string,
+  data: `0x${string}`,
+  contracts: HedgeContracts = DEPLOYED,
+) {
+  const reason = refuseSponsoredCall(target, data, contracts);
+  if (reason === null) console.log(`  ✓ pays for ${label}`);
+  else {
+    failures++;
+    console.log(`  ✗ should pay for ${label} — refused: ${reason}`);
+  }
+}
+
+function refuses(
+  label: string,
+  target: string,
+  data: `0x${string}`,
+  contracts: HedgeContracts = DEPLOYED,
+) {
+  const reason = refuseSponsoredCall(target, data, contracts);
+  if (reason !== null) console.log(`  ✓ refuses ${label}`);
+  else {
+    failures++;
+    console.log(`  ✗ should refuse ${label}, but it was allowed`);
+  }
+}
+
+const transfer = encodeFunctionData({
+  abi: erc20Abi,
+  functionName: "transfer",
+  args: [STRANGER, 1_000_000n],
+});
+
+const approve = (spender: string) =>
+  encodeFunctionData({
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [spender as `0x${string}`, 1_000_000n],
+  });
+
+console.log("\nGas sponsorship policy\n");
+
+// The spot path. These worked before leverage existed and must still work.
+allows("a USDG transfer", USDG, transfer);
+allows("a WETH transfer", WETH, transfer);
+
+// The leverage and Earn paths.
+allows("approving the engine to pull USDG", USDG, approve(ENGINE));
+allows("approving the vault to pull USDG", USDG, approve(VAULT));
+allows(
+  "opening a position",
+  ENGINE,
+  encodeFunctionData({
+    abi: engineAbi,
+    functionName: "openPosition",
+    args: [`0x${"11".repeat(32)}`, true, 2_500_000n, 20_000n],
+  }),
+);
+allows(
+  "reducing a position",
+  ENGINE,
+  encodeFunctionData({
+    abi: engineAbi,
+    functionName: "reducePosition",
+    args: [1n, 5_000n],
+  }),
+);
+allows(
+  "closing a position",
+  ENGINE,
+  encodeFunctionData({ abi: engineAbi, functionName: "closePosition", args: [1n] }),
+);
+allows(
+  "an emergency close",
+  ENGINE,
+  encodeFunctionData({ abi: engineAbi, functionName: "emergencyClose", args: [1n] }),
+);
+allows(
+  "depositing to the vault",
+  VAULT,
+  encodeFunctionData({
+    abi: vaultAbi,
+    functionName: "depositSenior",
+    args: [1_000_000n],
+  }),
+);
+allows(
+  "withdrawing from the vault",
+  VAULT,
+  encodeFunctionData({
+    abi: vaultAbi,
+    functionName: "withdrawSenior",
+    args: [1_000_000n],
+  }),
+);
+
+// The ways this could leak.
+refuses("approving a spender of the caller's choosing", USDG, approve(STRANGER));
+refuses(
+  "a WETH approval, which nothing needs",
+  WETH,
+  approve(ENGINE),
+);
+refuses("a call to an unrelated contract", STRANGER, transfer);
+refuses(
+  "an admin call aimed at the engine",
+  ENGINE,
+  // setRiskParams(uint256,uint256,uint256,uint256). Not in the sponsored ABI
+  // at all, so it cannot be decoded, let alone paid for.
+  `0x9f1b3d4c${"00".repeat(128)}`,
+);
+refuses("undecodable calldata aimed at the engine", ENGINE, "0xdeadbeef");
+refuses("empty calldata aimed at the vault", VAULT, "0x");
+refuses(
+  "a vault method sent to the engine",
+  ENGINE,
+  encodeFunctionData({
+    abi: vaultAbi,
+    functionName: "depositSenior",
+    args: [1_000_000n],
+  }),
+);
+refuses(
+  "an engine method sent to the vault",
+  VAULT,
+  encodeFunctionData({ abi: engineAbi, functionName: "closePosition", args: [1n] }),
+);
+
+// Before deployment the addresses are blank, which must fail closed.
+refuses("engine calls before deployment", ENGINE, transfer, UNDEPLOYED);
+refuses("approving a blank engine address", USDG, approve(ENGINE), UNDEPLOYED);
+allows("plain transfers before deployment", USDG, transfer, UNDEPLOYED);
+
+console.log(
+  failures === 0
+    ? "\n\x1b[1;32m✓ sponsorship policy holds\x1b[0m\n"
+    : `\n\x1b[1;31m✗ ${failures} sponsorship policy failure(s)\x1b[0m\n`,
+);
+process.exit(failures === 0 ? 0 : 1);

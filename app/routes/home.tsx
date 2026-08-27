@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { useFetcher } from "react-router";
+import { Link, useFetcher } from "react-router";
 import type { Route } from "./+types/home";
 import type { loader as eventsLoader } from "./api.events";
 import { FeaturedBanner } from "../components/FeaturedBanner";
 import { Hero } from "../components/Hero";
+import { LeverageCard } from "../components/LeverageCard";
+import { LeverageWipNotice } from "../components/LeverageWipNotice";
 import { MarketCard } from "../components/MarketCard";
 import { CategoryBar, MarketNav } from "../components/MarketNav";
 import { OutrightCard } from "../components/OutrightCard";
 import {
   listEvents,
+  listLeverageMarkets,
   searchEvents,
   isLiveMarket,
   pickLiveMarket,
   resolveBrowse,
   categoryLabel,
+  type LeverageListing,
 } from "../lib/polymarket";
 import type { PolymarketEvent } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
@@ -33,15 +37,27 @@ export async function loader({ request }: Route.LoaderArgs) {
   const q = (url.searchParams.get("q") ?? "").trim();
   const sectionHint = url.searchParams.get("section");
 
+  // Leverage is an allowlist, not a sort. Categories and search do not apply
+  // to it, so it skips the normal listing path entirely.
+  const leverageTab = sort === "leverage" && !q;
+
   try {
-    const [page, browse] = await Promise.all([
-      q ? searchEvents(q) : listEvents({ tag, sort }),
-      q ? Promise.resolve({ section: null, children: [] }) : resolveBrowse(tag, sectionHint),
+    const [page, browse, leverage] = await Promise.all([
+      leverageTab
+        ? Promise.resolve({ events: [] as PolymarketEvent[], nextOffset: 0, hasMore: false })
+        : q
+          ? searchEvents(q)
+          : listEvents({ tag, sort }),
+      q || leverageTab
+        ? Promise.resolve({ section: null, children: [] })
+        : resolveBrowse(tag, sectionHint),
+      leverageTab ? listLeverageMarkets() : Promise.resolve([] as LeverageListing[]),
     ]);
     return {
       events: page.events,
+      leverage,
       nextOffset: page.nextOffset,
-      hasMore: page.hasMore && !q,
+      hasMore: page.hasMore && !q && !leverageTab,
       tag,
       sort,
       q,
@@ -52,6 +68,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   } catch (e) {
     return {
       events: [] as PolymarketEvent[],
+      leverage: [] as LeverageListing[],
       nextOffset: 0,
       hasMore: false,
       tag,
@@ -65,13 +82,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { events: initial, tag, sort, q, error, section, children } = loaderData;
+  const { events: initial, leverage, tag, sort, q, error, section, children } =
+    loaderData;
+  const leverageTab = sort === "leverage" && !q;
   const fetcher = useFetcher<typeof eventsLoader>();
   const [extra, setExtra] = useState<PolymarketEvent[]>([]);
   const [cursor, setCursor] = useState(loaderData.nextOffset);
   const [hasMore, setHasMore] = useState(loaderData.hasMore);
   const seenPage = useRef<string | null>(null);
-  const split = Boolean(section && children.length > 0 && !q);
+  const split = Boolean(section && children.length > 0 && !q && !leverageTab);
 
   useEffect(() => {
     setExtra([]);
@@ -126,6 +145,43 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   const selectedLabel =
     children.find((c) => c.slug === tag)?.label ?? categoryLabel(tag);
+
+  const leverageFeed = (
+    <div className="min-w-0 space-y-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-lg font-bold tracking-tight sm:text-xl">
+          Leverage markets
+        </h2>
+        <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
+          A short, hand-picked list. These are the markets that will carry
+          leverage, backed by the Hedge vault. They trade normally today.
+        </p>
+      </div>
+
+      <LeverageWipNotice />
+
+      {error ? (
+        <p className="rounded-2xl bg-card p-6 text-sm text-down ring-1 ring-white/5">
+          {error}
+        </p>
+      ) : leverage.length === 0 ? (
+        <p className="rounded-2xl bg-card p-6 text-sm text-muted ring-1 ring-white/5">
+          No leverage markets are open right now. They rotate as markets
+          resolve — check back shortly.
+        </p>
+      ) : (
+        <section className="grid min-w-0 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+          {leverage.map((listing, i) => (
+            <LeverageCard
+              key={listing.market.id}
+              listing={listing}
+              delay={i * 40}
+            />
+          ))}
+        </section>
+      )}
+    </div>
+  );
 
   const feed = (
     <>
@@ -222,7 +278,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   return (
     <main className="mx-auto min-w-0 max-w-7xl space-y-4 px-3 pt-3 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:pt-4 lg:pb-8">
-      {!split ? <Hero featured={heroCards} /> : null}
+      {!split && !leverageTab ? <Hero featured={heroCards} /> : null}
       <MarketNav
         tag={tag}
         sort={sort}
@@ -230,7 +286,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         section={section}
       />
 
-      {split && section ? (
+      {leverageTab ? (
+        leverageFeed
+      ) : split && section ? (
         <div className="min-w-0 space-y-4">
           <CategoryBar
             section={section}

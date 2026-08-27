@@ -1,3 +1,4 @@
+import { LEVERAGE_MARKETS, type LeverageMarket } from "./leverage";
 import type { EventTag, Market, Outcome, PolymarketEvent } from "./types";
 
 const GAMMA = "https://gamma-api.polymarket.com";
@@ -428,6 +429,60 @@ export async function getEvent(idOrSlug: string): Promise<PolymarketEvent | null
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Gamma event failed (${res.status})`);
   return mapEvent((await res.json()) as Record<string, unknown>);
+}
+
+/**
+ * A leverage-listed market paired with the event it belongs to.
+ *
+ * Both are needed downstream: the market carries the prices and token ids, the
+ * event carries the artwork, the title and the link target.
+ */
+export type LeverageListing = {
+  event: PolymarketEvent;
+  market: Market;
+  config: LeverageMarket;
+};
+
+/**
+ * Load every leverage-listed market.
+ *
+ * Fetched by event rather than through the normal list endpoint because these
+ * are a fixed allowlist, and several of them are single outcomes buried inside
+ * large multi-outcome events ("What price will Bitcoin hit in August?") that
+ * would never surface as their own card. Events are de-duplicated so a shared
+ * parent is only fetched once.
+ *
+ * A market that has resolved or been pulled from the allowlist simply drops
+ * out; one bad entry must not empty the whole tab.
+ */
+export async function listLeverageMarkets(): Promise<LeverageListing[]> {
+  const slugs = [...new Set(LEVERAGE_MARKETS.map((m) => m.eventSlug))];
+
+  const events = await Promise.all(
+    slugs.map(async (slug) => {
+      try {
+        return await getEvent(slug);
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const bySlug = new Map(
+    events.filter((e): e is PolymarketEvent => e !== null).map((e) => [e.slug, e]),
+  );
+
+  const listings: LeverageListing[] = [];
+  for (const config of LEVERAGE_MARKETS) {
+    const event = bySlug.get(config.eventSlug);
+    if (!event) continue;
+    const market = event.markets.find(
+      (m) => m.id === config.marketId || m.yes.tokenId === config.yesTokenId,
+    );
+    if (!market || !isLiveMarket(market)) continue;
+    listings.push({ event, market, config });
+  }
+  return listings;
 }
 
 export async function getMarketQuotes(ids: string[]) {

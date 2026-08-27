@@ -10,6 +10,7 @@ export default [
   route("api/pm/relayer-key", "routes/api.pm.relayer-key.ts"),
   route("api/pm/config", "routes/api.pm.config.ts"),
   route("api/pm/balance", "routes/api.pm.balance.ts"),
+  route("api/pm/book", "routes/api.pm.book.ts"),
   route("api/pm/portfolio", "routes/api.pm.portfolio.ts"),
   route("api/pm/account", "routes/api.pm.account.ts"),
   route("api/pm/status", "routes/api.pm.status.ts"),
@@ -24,6 +25,7 @@ export default [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),
     route("profile", "routes/profile.tsx"),
+    route("earn", "routes/earn.tsx"),
     route("terms", "routes/terms.tsx"),
   ]),
 ] satisfies RouteConfig;

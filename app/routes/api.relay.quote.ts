@@ -60,7 +60,11 @@ export async function action({ request }: Route.ActionArgs) {
   const amount = typeof body.amount === "string" ? body.amount.trim() : "";
   const outbound = body.direction === "out";
   const mode =
-    body.mode === "deposit" || body.mode === "permit" ? body.mode : outbound ? "auto" : "in";
+    body.mode === "deposit" || body.mode === "permit" || body.mode === "direct"
+      ? body.mode
+      : outbound
+        ? "auto"
+        : "in";
   const refundTo =
     typeof body.refundTo === "string" && ADDR.test(body.refundTo.trim())
       ? body.refundTo.trim()
@@ -151,12 +155,36 @@ export async function action({ request }: Route.ActionArgs) {
     tradeType: "EXACT_INPUT" as const,
   };
 
+  // A permit route can quote cleanly and still have its signature rejected at
+  // execute time, and nothing recovers from that mid-flight — the fallbacks in
+  // `firstQuote` only cover a failed *quote*, so the same broken route comes
+  // back on every retry.
+  //
+  // `mode: "direct"` asks for a deposit-address route instead: Relay hands
+  // back an address and the client just transfers USDG to it. No permit, no
+  // signature to reject, and a bare ERC-20 transfer is something Hedge already
+  // sponsors gas for, so it works on a wallet holding no ETH. This mirrors
+  // what the cash-out path above has always done.
+  const inboundDeposit: QuotePayload = {
+    ...inboundBase,
+    useDepositAddress: true,
+  };
+  const inboundPayloads: QuotePayload[] =
+    mode === "direct"
+      ? [
+          { ...inboundDeposit, refundTo: user, ...sponsored },
+          { ...inboundDeposit, refundTo: user },
+          inboundDeposit,
+        ]
+      : [
+          { ...inboundBase, usePermit: true, ...sponsored },
+          { ...inboundBase, usePermit: true },
+          { ...inboundBase, ...sponsored },
+          inboundBase,
+        ];
+
   try {
-    const quote = await firstQuote([
-      { ...inboundBase, usePermit: true, ...sponsored },
-      { ...inboundBase, usePermit: true },
-      inboundBase,
-    ]);
+    const quote = await firstQuote(inboundPayloads);
     return Response.json(quote);
   } catch (err) {
     if (err instanceof Response) throw err;
