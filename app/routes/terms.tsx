@@ -9,11 +9,19 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 const EFFECTIVE_DATE = "27 August 2026";
+const WEBSITE = "hedgeapp.trade";
+
+/**
+ * Placeholders from the source document. Both still need real values before
+ * these Terms can be relied on.
+ */
+const JURISDICTION = "[Insert Jurisdiction]";
+const CONTACT_EMAIL = "[Insert Email]";
 
 /** A paragraph, or a bullet list when the block is an array. */
 type Block = string | string[];
 
-const SECTIONS: { title: string; body: Block[] }[] = [
+const SECTIONS: { title: string; body: Block[]; contact?: boolean }[] = [
   {
     title: "Acceptance of Terms",
     body: [
@@ -114,10 +122,116 @@ const SECTIONS: { title: string; body: Block[] }[] = [
         "Security incidents.",
         "Third-party services or protocols.",
         "User errors.",
+        "Loss of wallet access, private keys, or credentials.",
+      ],
+      "Nothing in these Terms excludes or limits liability that cannot legally be excluded or limited under applicable law.",
+    ],
+  },
+  {
+    title: "User’s Own Risk",
+    body: [
+      "By using Hedge, you expressly acknowledge that you understand the risks associated with prediction markets and voluntarily assume those risks.",
+      "You participate entirely at your own risk.",
+      "You acknowledge that you could lose some or all of the funds committed to a prediction and that Hedge does not guarantee that you will receive any return.",
+    ],
+  },
+  {
+    title: "Eligibility",
+    body: [
+      "You may only use Hedge if you are legally permitted to do so under the laws applicable to you.",
+      "You are responsible for determining whether your use of Hedge is lawful in your jurisdiction.",
+      "Hedge may restrict, suspend, or terminate access to users or jurisdictions where participation is prohibited or presents regulatory, legal, or operational concerns.",
+    ],
+  },
+  {
+    title: "Prohibited Use",
+    body: [
+      "Users must not use Hedge for unlawful activities, fraud, manipulation, money laundering, sanctions evasion, or any other activity prohibited by applicable law.",
+      "Hedge reserves the right to suspend or terminate accounts or restrict participation where it reasonably believes these Terms or applicable laws have been violated.",
+    ],
+  },
+  {
+    title: "Fees and Transactions",
+    body: [
+      "Users may be required to pay Platform fees, blockchain network fees, transaction fees, or other applicable charges.",
+      "Fees may be non-refundable once a transaction has been initiated or executed.",
+      "Users are responsible for reviewing applicable fees before confirming transactions.",
+    ],
+  },
+  {
+    title: "Platform Availability",
+    body: [
+      "Hedge does not guarantee that the Platform will always be available, uninterrupted, secure, or error-free.",
+      "The Platform may be temporarily unavailable due to maintenance, upgrades, technical problems, blockchain congestion, cybersecurity incidents, or circumstances beyond our reasonable control.",
+    ],
+  },
+  {
+    title: "Changes to Markets",
+    body: [
+      "Hedge may modify, suspend, pause, or terminate markets where reasonably necessary due to technical problems, invalid data, security concerns, unforeseen circumstances, or other legitimate reasons.",
+      "Market-specific rules displayed at the time of participation may contain additional settlement conditions.",
+    ],
+  },
+  {
+    title: "Intellectual Property",
+    body: [
+      "All Platform materials, branding, logos, software, interfaces, and content owned or licensed by Hedge remain the property of Hedge or the applicable rights holder.",
+      "Users may not reproduce, distribute, modify, or commercially exploit such materials without appropriate authorization.",
+    ],
+  },
+  {
+    title: "Indemnification",
+    body: [
+      "To the maximum extent permitted by law, you agree to indemnify and hold harmless Hedge and its founders, operators, employees, affiliates, contributors, and service providers from claims, damages, losses, liabilities, and expenses arising from:",
+      [
+        "Your use of the Platform.",
+        "Your violation of these Terms.",
+        "Your violation of applicable law.",
+        "Your participation in prediction markets.",
+        "Your actions or omissions while using Hedge.",
       ],
     ],
   },
+  {
+    title: "Assumption of Risk",
+    body: [
+      "By clicking “I Agree,” connecting a wallet, depositing funds, or participating in a prediction, you confirm that:",
+      "You understand that prediction markets involve significant financial risk, you may lose all funds committed, and you voluntarily accept those risks.",
+    ],
+  },
+  {
+    title: "Governing Law",
+    body: [
+      `These Terms shall be governed by the laws of ${JURISDICTION}, without regard to its conflict-of-law principles.`,
+      "Any disputes shall be handled in the courts or dispute-resolution forum specified by Hedge, subject to applicable law.",
+    ],
+  },
+  {
+    title: "Severability",
+    body: [
+      "If any provision of these Terms is determined to be invalid or unenforceable, the remaining provisions shall continue in full force and effect to the maximum extent permitted by law.",
+    ],
+  },
+  {
+    title: "Contact",
+    body: ["For questions regarding these Terms, contact:"],
+    contact: true,
+  },
 ];
+
+const ACKNOWLEDGEMENT = [
+  "I have read and accepted these Terms & Conditions.",
+  "I understand that I can lose some or all of the funds I commit.",
+  "I understand that Hedge does not guarantee profits or successful predictions.",
+];
+
+/** Anchor id so a clause can be linked directly, e.g. /terms#governing-law. */
+function slug(title: string) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -127,6 +241,47 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
       </dt>
       <dd className="mt-1 text-sm font-semibold">{children}</dd>
     </div>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-2 pl-1">
+      {items.map((item) => (
+        <li key={item} className="flex gap-3">
+          <span
+            aria-hidden
+            className="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full bg-gold/70"
+          />
+          <span className="text-[15px] leading-relaxed text-[#cfcfcf]">
+            {item}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ContactCard() {
+  return (
+    <dl className="rounded-2xl bg-card-2 px-5 py-4 text-[15px] ring-1 ring-white/5">
+      <dd className="font-semibold">Hedge</dd>
+      <div className="mt-2 flex gap-2">
+        <dt className="text-muted">Email:</dt>
+        <dd>{CONTACT_EMAIL}</dd>
+      </div>
+      <div className="mt-1 flex gap-2">
+        <dt className="text-muted">Website:</dt>
+        <dd>
+          <a
+            href={`https://${WEBSITE}`}
+            className="text-gold hover:underline"
+          >
+            {WEBSITE}
+          </a>
+        </dd>
+      </div>
+    </dl>
   );
 }
 
@@ -155,7 +310,11 @@ export default function Terms() {
 
       <div className="mt-9 space-y-9">
         {SECTIONS.map((section, index) => (
-          <section key={section.title}>
+          <section
+            key={section.title}
+            id={slug(section.title)}
+            className="scroll-mt-20"
+          >
             <h2 className="text-[1.05rem] font-semibold tracking-tight sm:text-lg">
               <span className="mr-2 text-muted tabular-nums">{index + 1}.</span>
               {section.title}
@@ -163,19 +322,7 @@ export default function Terms() {
             <div className="mt-3 space-y-3">
               {section.body.map((block) =>
                 Array.isArray(block) ? (
-                  <ul key={block[0]} className="space-y-2 pl-1">
-                    {block.map((item) => (
-                      <li key={item} className="flex gap-3">
-                        <span
-                          aria-hidden
-                          className="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full bg-gold/70"
-                        />
-                        <span className="text-[15px] leading-relaxed text-[#cfcfcf]">
-                          {item}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <Bullets key={block[0]} items={block} />
                 ) : (
                   <p
                     key={block}
@@ -185,10 +332,23 @@ export default function Terms() {
                   </p>
                 ),
               )}
+              {section.contact ? <ContactCard /> : null}
             </div>
           </section>
         ))}
       </div>
+
+      <section className="mt-10 rounded-2xl bg-card-2 px-5 py-6 ring-1 ring-white/5 sm:px-6">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
+          User acknowledgement
+        </h2>
+        <p className="mt-3 text-[15px] leading-relaxed text-[#cfcfcf]">
+          By using Hedge, I confirm that:
+        </p>
+        <div className="mt-3">
+          <Bullets items={ACKNOWLEDGEMENT} />
+        </div>
+      </section>
     </main>
   );
 }
