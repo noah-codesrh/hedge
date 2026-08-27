@@ -24,5 +24,6 @@ export default [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),
     route("profile", "routes/profile.tsx"),
+    route("terms", "routes/terms.tsx"),
   ]),
 ] satisfies RouteConfig;

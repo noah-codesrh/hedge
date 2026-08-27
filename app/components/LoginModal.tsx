@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import {
   usePrivy,
   useLogin,
@@ -252,7 +253,15 @@ function PrivyAuthArea({ onClose }: { onClose: () => void }) {
       )}
 
       <p className="mt-5 text-center text-[11px] leading-relaxed text-[#5f5f5f]">
-        By continuing you agree to Hedge&apos;s Terms.
+        By continuing you agree to Hedge&apos;s{" "}
+        <Link
+          to="/terms"
+          onClick={onClose}
+          className="text-[#8a8a8a] underline underline-offset-2 transition hover:text-white"
+        >
+          Terms
+        </Link>
+        .
       </p>
     </div>
   );
