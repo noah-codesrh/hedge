@@ -19,8 +19,16 @@ export function DiscordIcon({ size = 22 }: { size?: number }) {
 
 export function XIcon({ size = 19 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="white">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M18.9 2H22l-7.4 8.5L23.3 22h-6.8l-5.3-7-6.1 7H2l7.9-9.1L1.1 2H8l4.8 6.4L18.9 2Zm-2.4 18h1.9L7.6 4H5.6l10.9 16Z" />
+    </svg>
+  );
+}
+
+export function TelegramIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M21.94 4.6 18.63 20.2c-.25 1.1-.9 1.38-1.83.86l-5.05-3.72-2.44 2.35c-.27.27-.5.5-1.02.5l.36-5.14 9.36-8.46c.4-.36-.09-.56-.63-.2L5.81 13.68.83 12.12c-1.08-.34-1.1-1.08.23-1.6l19.5-7.52c.9-.33 1.69.2 1.38 1.6Z" />
     </svg>
   );
 }
