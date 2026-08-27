@@ -11,12 +11,9 @@ export function meta({ matches }: Route.MetaArgs) {
 const EFFECTIVE_DATE = "27 August 2026";
 const WEBSITE = "hedgeapp.trade";
 
-/**
- * Placeholders from the source document. Both still need real values before
- * these Terms can be relied on.
- */
+/** Still a placeholder from the source document; needs a real jurisdiction. */
 const JURISDICTION = "[Insert Jurisdiction]";
-const CONTACT_EMAIL = "[Insert Email]";
+const CONTACT_EMAIL = "admin@hedgeapp.trade";
 
 /** A paragraph, or a bullet list when the block is an array. */
 type Block = string | string[];
@@ -271,7 +268,14 @@ function ContactCard() {
       <dd className="font-semibold">Hedge</dd>
       <div className="mt-2 flex gap-2">
         <dt className="text-muted">Email:</dt>
-        <dd>{CONTACT_EMAIL}</dd>
+        <dd>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="text-gold hover:underline"
+          >
+            {CONTACT_EMAIL}
+          </a>
+        </dd>
       </div>
       <div className="mt-1 flex gap-2">
         <dt className="text-muted">Website:</dt>
