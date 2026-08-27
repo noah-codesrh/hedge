@@ -11,6 +11,7 @@ import { missingSecrets, serverSecrets } from "../lib/server/secrets";
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 const DATA = /^0x[a-fA-F0-9]*$/;
+const TX_HASH = /^0x[a-fA-F0-9]{64}$/;
 const PRIVY_API = "https://api.privy.io";
 const SIGN_WINDOW_MS = 3 * 60 * 1000;
 
@@ -152,10 +153,15 @@ export async function action({ request }: Route.ActionArgs) {
       request_expiry: requestExpiry,
       authorization_context: { signatures: [signature] },
     });
-    const hash = result.method === "eth_sendTransaction" ? result.data.hash : "";
-    return Response.json({
-      hash: typeof hash === "string" && hash.startsWith("0x") ? hash : "0x",
-    });
+    // Privy has signed and broadcast by now, so the send has happened whether
+    // or not a hash comes back with it. Report the hash when there is one and
+    // null otherwise, rather than a placeholder the client has to decode.
+    const { hash } = result.data as { hash?: unknown };
+    if (typeof hash === "string" && TX_HASH.test(hash)) {
+      return Response.json({ hash });
+    }
+    console.warn("[rh-sponsor-send] sent without a hash", result.data);
+    return Response.json({ hash: null });
   } catch (err) {
     return Response.json({ error: sponsorError(err) }, { status: 502 });
   }

@@ -37,6 +37,10 @@ async function post<T>(accessToken: string, body: unknown) {
  * Two round trips because gas sponsorship is server-only in the Privy
  * dashboard: the server prepares the wallet RPC call, the user's client
  * authorizes it, then the server submits it with the app secret.
+ *
+ * Resolves to the transaction hash, or null when the send went through
+ * without one. Only a rejected send throws: treating a missing hash as a
+ * failure would report an error for tokens that have already moved.
  */
 export async function sponsoredTokenSend(input: {
   accessToken: string;
@@ -53,7 +57,7 @@ export async function sponsoredTokenSend(input: {
   };
 
   const prepared = await post<{
-    hash?: string;
+    hash?: string | null;
     requestExpiry?: number;
     payload?: PrivyAuthorizationPayload;
   }>(input.accessToken, tx);
@@ -66,15 +70,13 @@ export async function sponsoredTokenSend(input: {
   }
 
   const signature = await input.signAuthorization(prepared.payload);
-  const submitted = await post<{ hash?: string }>(input.accessToken, {
+  const submitted = await post<{ hash?: string | null }>(input.accessToken, {
     ...tx,
     signature,
     requestExpiry: prepared.requestExpiry,
   });
 
-  const hash = typeof submitted.hash === "string" ? submitted.hash : "";
-  if (hash.length !== 66) {
-    throw new Error("The send did not return a transaction hash.");
-  }
-  return hash;
+  return typeof submitted.hash === "string" && submitted.hash.length === 66
+    ? submitted.hash
+    : null;
 }
