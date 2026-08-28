@@ -158,6 +158,12 @@ function failLeg(leg: string, err: unknown, fallback: string): Error {
   return new Error(`${friendlyError(err, fallback)} (ref: ${leg})`);
 }
 
+/** The CLOB refusing an order for collateral rather than anything else. */
+function isBalanceShortfall(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /allowance|not enough balance|insufficient balance/i.test(message);
+}
+
 /** Relay turning down a permit signature, as opposed to a transport failure. */
 function isSignatureRejection(err: unknown) {
   const message = err instanceof Error ? err.message : String(err ?? "");
@@ -482,6 +488,10 @@ export async function runLiveTrade(
 
   hooks.onStep("fill");
   let depositWallet = funder;
+  // What the proxy actually holds, which the order size drops below once the
+  // CLOB makes us give up a cent. Failure messages quote a balance, so they
+  // have to read this rather than the amount we ended up bidding.
+  let held = pusd;
   try {
     await embeddedPolygonProvider(input.tradingWallet);
     const fillProvider = (await input.tradingWallet.getEthereumProvider()) as Eip1193;
@@ -514,19 +524,26 @@ export async function runLiveTrade(
       saveDepositWallet(trader, depositWallet);
     }
 
-    await client.setupTradingApprovals();
-    try {
-      const { updateBalanceAllowance } = await import("@polymarket/client/actions");
-      // AssetType lives in @polymarket/bindings, which the SDK does not
-      // re-export; the enum member is this exact string.
-      await updateBalanceAllowance(client, {
-        assetType: "COLLATERAL" as never,
-      });
-    } catch (err) {
-      console.warn("[hedge] CLOB allowance cache refresh", err);
-    }
+    const trading = client;
+    await trading.setupTradingApprovals();
+    const refreshClobBalance = async () => {
+      try {
+        const { updateBalanceAllowance } = await import(
+          "@polymarket/client/actions"
+        );
+        // AssetType lives in @polymarket/bindings, which the SDK does not
+        // re-export; the enum member is this exact string.
+        await updateBalanceAllowance(trading, {
+          assetType: "COLLATERAL" as never,
+        });
+      } catch (err) {
+        console.warn("[hedge] CLOB allowance cache refresh", err);
+      }
+    };
+    await refreshClobBalance();
 
     const live = await readPusdBalance(input.accessToken, depositWallet);
+    held = live.pusd;
     pusd = spendableCents(pusd, live.raw);
     if (pusd < 1) {
       throw new LiveTradeError(
@@ -537,7 +554,7 @@ export async function runLiveTrade(
 
     let maxPrice = clobTick(input.marketPrice + 0.05);
     try {
-      const estimate = await client.estimateMarketPrice({
+      const estimate = await trading.estimateMarketPrice({
         tokenId: input.tokenId,
         side: OrderSide.BUY,
         amount: pusd,
@@ -550,20 +567,51 @@ export async function runLiveTrade(
       /* use UI price buffer */
     }
 
-    const response = await client.placeMarketOrder({
-      tokenId: input.tokenId,
-      side: OrderSide.BUY,
-      amount: pusd,
-      maxSpend: pusd,
-      maxPrice,
-      builderCode: builderCode as Hex,
-      orderType: OrderType.FAK,
-    });
+    /**
+     * The CLOB checks the order against its own cached balance, not the chain.
+     * That cache can sit a hair under the real balance while a refresh catches
+     * up, and the maker amount it rebuilds from the price rounds on its own, so
+     * an order the balance genuinely covers still comes back as a shortfall.
+     *
+     * Sizing alone cannot avoid this: a retry re-reads the same chain balance,
+     * computes the same amount and fails the same way, which is why the trader
+     * ends up tapping Buy against a rejection that never clears. Giving up a
+     * cent at a time gets under the CLOB's number within a few attempts and
+     * costs at most $0.03 on a trade already spending the wallet dry.
+     */
+    const sendOrder = async () => {
+      for (let attempt = 0; ; attempt++) {
+        const next = Number((pusd - 0.01).toFixed(2));
+        const canRetry = attempt < 3 && next >= 1;
+        try {
+          const sent = await trading.placeMarketOrder({
+            tokenId: input.tokenId,
+            side: OrderSide.BUY,
+            amount: pusd,
+            maxSpend: pusd,
+            maxPrice,
+            builderCode: builderCode as Hex,
+            orderType: OrderType.FAK,
+          });
+          if (sent.ok || !canRetry || !isBalanceShortfall(sent.message)) {
+            return sent;
+          }
+        } catch (err) {
+          if (!canRetry || !isBalanceShortfall(err)) throw err;
+        }
+        console.warn(
+          `[hedge] CLOB refused ${pusd.toFixed(2)} pUSD on balance, retrying at ${next.toFixed(2)}`,
+        );
+        pusd = next;
+        await refreshClobBalance();
+      }
+    };
+    const response = await sendOrder();
 
     if (!response.ok) {
       throw new LiveTradeError(
-        `Your ${pusd.toFixed(2)} pUSD is in the Polymarket proxy wallet, but the order was rejected: ${friendlyError(response.message, response.message)}`,
-        { depositWallet, pusdReceived: pusd },
+        `Your ${held.toFixed(2)} pUSD is in the Polymarket proxy wallet, but the order was rejected: ${friendlyError(response.message, response.message)}`,
+        { depositWallet, pusdReceived: held },
       );
     }
 
@@ -579,8 +627,8 @@ export async function runLiveTrade(
     const making = Number(response.makingAmount);
     if (!Number.isFinite(taking) || taking <= 0) {
       throw new LiveTradeError(
-        `Your ${pusd.toFixed(2)} pUSD is still in the Polymarket proxy wallet, but this outcome had no fillable liquidity.`,
-        { depositWallet, pusdReceived: pusd },
+        `Your ${held.toFixed(2)} pUSD is still in the Polymarket proxy wallet, but this outcome had no fillable liquidity.`,
+        { depositWallet, pusdReceived: held },
       );
     }
 
@@ -602,8 +650,8 @@ export async function runLiveTrade(
     if (err instanceof LiveTradeError) throw err;
     console.error("[hedge] fill failed", err);
     throw new LiveTradeError(
-      `Your ${pusd.toFixed(2)} pUSD is still in the Polymarket proxy wallet. ${friendlyError(err, "Try Buy again to fill from that balance.")}`,
-      { depositWallet, pusdReceived: pusd },
+      `Your ${held.toFixed(2)} pUSD is still in the Polymarket proxy wallet. ${friendlyError(err, "Try Buy again to fill from that balance.")}`,
+      { depositWallet, pusdReceived: held },
     );
   }
 }
