@@ -43,6 +43,8 @@ import { deriveDepositWallet } from "../lib/pm-funder";
 import { LivePositionCard } from "../components/PositionPnl";
 import { LeveragePositions } from "../components/LeveragePositions";
 import { PolymarketAccounts } from "../components/PolymarketAccounts";
+import { ModalShell } from "../components/ModalShell";
+import { SwapToCash } from "../components/SwapToCash";
 import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
 import { watchBalanceReloads } from "../lib/positions";
@@ -115,6 +117,7 @@ function ProfileInner() {
   const portfolioFetcher = useFetcher<typeof portfolioLoader>();
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState<"assets" | "positions" | "activity">("assets");
+  const [walletPane, setWalletPane] = useState<"polymarket" | "swap">("polymarket");
   const [posFilter, setPosFilter] = useState<"open" | "closed">("open");
   const [sendAsset, setSendAsset] = useState<ChainAsset | null>(null);
   const [sendReceipt, setSendReceipt] = useState<SendReceipt | null>(null);
@@ -122,7 +125,7 @@ function ProfileInner() {
   const [nickOpen, setNickOpen] = useState(false);
   const [nickTick, setNickTick] = useState(0);
   const closeFlow = useCloseFlow();
-  const { ensureCashWallet } = useEnsureCashWallet();
+  const { cashWallet, ensureCashWallet } = useEnsureCashWallet();
   useEnsureTradingWallet();
 
   const wallet = primaryWalletAddress(user, wallets);
@@ -311,7 +314,35 @@ function ProfileInner() {
         </div>
       </section>
 
-      <PolymarketAccounts user={user} onCashOut={closeFlow.confirmCashOut} />
+      <section className="space-y-2.5">
+        <div className="inline-flex items-center gap-1 rounded-full bg-[#141414] p-1 ring-1 ring-white/5">
+          {(["polymarket", "swap"] as const).map((pane) => (
+            <button
+              key={pane}
+              type="button"
+              onClick={() => setWalletPane(pane)}
+              className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                walletPane === pane
+                  ? "bg-white text-black"
+                  : "text-muted hover:text-white"
+              }`}
+            >
+              {pane === "polymarket" ? "Polymarket" : "Swap"}
+            </button>
+          ))}
+        </div>
+
+        {walletPane === "polymarket" ? (
+          <PolymarketAccounts user={user} onCashOut={closeFlow.confirmCashOut} />
+        ) : wallet ? (
+          <SwapToCash
+            address={wallet}
+            wallet={cashWallet ?? undefined}
+            ensureCashWallet={ensureCashWallet}
+            onDone={() => void assetsFetcher.load(`/api/assets?address=${wallet}`)}
+          />
+        ) : null}
+      </section>
 
       <section>
         <div className="no-scrollbar flex items-center gap-6 overflow-x-auto border-b border-white/5">
@@ -591,23 +622,6 @@ function AssetRow({
       >
         Send
       </button>
-    </div>
-  );
-}
-
-function ModalShell({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md rounded-t-[28px] border border-white/10 bg-[#161616] p-5 shadow-2xl animate-pop-in sm:rounded-[28px] sm:p-6">
-        {children}
-      </div>
     </div>
   );
 }

@@ -117,8 +117,9 @@ export function PolymarketAccounts({
   if (rows.length === 0) return null;
 
   return (
-    <section className="space-y-2">
-      <h2 className="text-[15px] font-semibold">Polymarket</h2>
+    <section>
+      {/* The heading lives with the toggle in the parent, which switches this
+          panel with the swap one. */}
       <div className="space-y-2">
         {rows.map((row) => {
           const proxySnap = snapshotFor(accounts, row.proxy);

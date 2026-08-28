@@ -16,12 +16,14 @@ import {
   refuseSponsoredCall,
   type HedgeContracts,
 } from "../app/lib/server/sponsor-policy";
-import { USDG, WETH } from "../app/lib/robinhood";
+import { RELAY_ROUTER, USDG, WETH } from "../app/lib/robinhood";
 import { engineAbi, vaultAbi } from "../app/lib/leverage-abi";
 
 const ENGINE = "0x1111111111111111111111111111111111111111";
 const VAULT = "0x2222222222222222222222222222222222222222";
 const STRANGER = "0x3333333333333333333333333333333333333333";
+/** Some token a trader holds that Hedge has never heard of. */
+const MEMECOIN = "0x8f86a15ec17cb3369d8b3e666dadbc11daa82b79";
 const DEPLOYED: HedgeContracts = { engine: ENGINE, vault: VAULT };
 const UNDEPLOYED: HedgeContracts = { engine: null, vault: null };
 
@@ -122,6 +124,31 @@ allows(
     functionName: "withdrawSenior",
     args: [1_000_000n],
   }),
+);
+
+// Swapping a held token into cash. The token is whatever the trader happens
+// to own, so these are the only rules here not pinned to a known token.
+allows(
+  "approving Relay to pull a token being sold",
+  MEMECOIN,
+  approve(RELAY_ROUTER),
+);
+allows("approving Relay to pull WETH", WETH, approve(RELAY_ROUTER));
+allows(
+  "the swap itself, whose calldata is Relay's",
+  RELAY_ROUTER,
+  // Opaque on purpose: the router is the trust boundary, not the arguments.
+  `0xf9e4bab4${"00".repeat(64)}`,
+);
+refuses(
+  "approving a stranger on a token Hedge does not know",
+  MEMECOIN,
+  approve(STRANGER),
+);
+refuses(
+  "sending a token Hedge does not know, which is not a swap",
+  MEMECOIN,
+  transfer,
 );
 
 // The ways this could leak.

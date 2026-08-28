@@ -91,10 +91,10 @@ export function MobileMenu({
 
   const open = useCallback(() => {
     setMounted(true);
-    // Two frames: the first commits the panel offscreen, the second flips the
-    // class so the browser has a previous value to transition from. One frame
-    // is enough only when the panel is already mounted from a pending exit.
-    requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+    // One frame is enough for the off-screen class to commit. A second rAF
+    // was getting dropped on some Chrome profiles, which left the portal
+    // mounted at opacity-0 — and that invisible layer ate every click after.
+    requestAnimationFrame(() => setShown(true));
   }, []);
 
   useEffect(() => {
@@ -137,12 +137,14 @@ export function MobileMenu({
   const item = (i: number) => `${ROW} ${shown ? "animate-menu-item" : ""}`;
 
   const drawer = (
-    <div className="fixed inset-0 z-[60] lg:hidden">
+    <div
+      className={`fixed inset-0 z-[60] lg:hidden ${shown ? "" : "pointer-events-none"}`}
+    >
       <div
         onClick={close}
         aria-hidden="true"
         className={`hedge-scrim absolute inset-0 bg-black/65 backdrop-blur-[3px] transition-opacity duration-300 ${
-          shown ? "opacity-100" : "opacity-0"
+          shown ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
 
@@ -176,13 +178,25 @@ export function MobileMenu({
         </div>
 
         <nav className="no-scrollbar flex-1 overflow-y-auto px-2 py-2">
+          <Link
+            to="/token"
+            prefetch="intent"
+            onClick={close}
+            style={stagger(0)}
+            className={item(0)}
+          >
+            <span className="font-semibold text-gold">$HEDGE</span>
+            <span className="text-gold/50">
+              <ChevronRight />
+            </span>
+          </Link>
           <a
             href={DOCS_URL}
             target="_blank"
             rel="noreferrer"
             onClick={close}
-            style={stagger(0)}
-            className={item(0)}
+            style={stagger(1)}
+            className={item(1)}
           >
             Docs
             <span className="text-muted">
@@ -192,8 +206,8 @@ export function MobileMenu({
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             onClick={close}
-            style={stagger(1)}
-            className={item(1)}
+            style={stagger(2)}
+            className={item(2)}
           >
             Support
             <span className="text-muted">
@@ -204,8 +218,8 @@ export function MobileMenu({
             to="/terms"
             prefetch="intent"
             onClick={close}
-            style={stagger(2)}
-            className={item(2)}
+            style={stagger(3)}
+            className={item(3)}
           >
             Terms and Conditions
             <span className="text-muted">
@@ -222,7 +236,7 @@ export function MobileMenu({
                 close();
                 onLogout();
               }}
-              style={stagger(3)}
+              style={stagger(4)}
               className={`w-full rounded-full border border-white/15 bg-white/5 px-5 py-4 text-base font-semibold text-[#cfcfcf] transition active:scale-[0.98] hover:bg-white/10 hover:text-white ${
                 shown ? "animate-menu-item" : ""
               }`}
@@ -236,7 +250,7 @@ export function MobileMenu({
                 close();
                 onGetStarted();
               }}
-              style={stagger(3)}
+              style={stagger(4)}
               className={`w-full rounded-full bg-gold px-5 py-4 text-base font-semibold text-black transition active:scale-[0.98] hover:brightness-105 ${
                 shown ? "animate-menu-item" : ""
               }`}
@@ -246,7 +260,7 @@ export function MobileMenu({
           )}
 
           <div
-            style={stagger(4)}
+            style={stagger(5)}
             className={shown ? "animate-menu-item" : undefined}
           >
             <p className="mt-5 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#5f5f5f]">

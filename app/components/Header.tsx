@@ -91,6 +91,13 @@ function HeaderShell({
           >
             Earn
           </Link>
+          <Link
+            to="/token"
+            prefetch="intent"
+            className="rounded-full px-3 py-1.5 text-sm font-semibold text-gold transition hover:bg-gold/10"
+          >
+            $HEDGE
+          </Link>
           {authenticated && (
             <Link
               to="/profile"

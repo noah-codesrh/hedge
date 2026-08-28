@@ -1,5 +1,5 @@
 import { decodeFunctionData, erc20Abi } from "viem";
-import { USDG, WETH } from "../robinhood";
+import { RELAY_ROUTER, USDG, WETH } from "../robinhood";
 
 /**
  * Decides which Robinhood Chain calls Hedge will pay gas for.
@@ -91,6 +91,26 @@ export type HedgeContracts = {
 };
 
 /**
+ * True when this call is an ERC-20 approval naming exactly `spender`.
+ *
+ * Selling a token means approving a contract Hedge has never heard of, so the
+ * token address cannot be the gate the way it is everywhere else here. The
+ * spender is: an allowance granted to Relay's router is only ever spendable by
+ * Relay, whichever token it sits on.
+ */
+function isApproveTo(data: `0x${string}`, spender: string) {
+  try {
+    const decoded = decodeFunctionData({ abi: erc20Abi, data });
+    return (
+      decoded.functionName === "approve" &&
+      String(decoded.args?.[0] ?? "").toLowerCase() === spender
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns null when Hedge will pay for this call, or the reason it will not.
  *
  * Undeployed contracts are passed as null, which refuses everything aimed at
@@ -104,21 +124,35 @@ export function refuseSponsoredCall(
   const to = target.toLowerCase();
   const engine = contracts.engine?.toLowerCase() || null;
   const vault = contracts.vault?.toLowerCase() || null;
+  const router = RELAY_ROUTER.toLowerCase();
 
-  if (SPONSORED_TOKENS.has(to)) {
+  // Selling a token for cash is the one flow where the trader picks the
+  // contract, because the token is whatever they happen to hold. Both halves
+  // stay pinned to Relay's router: the approval may name no other spender, and
+  // the swap may call nowhere else. The calldata itself is Relay's and is not
+  // decoded here — the router is the trust boundary, not the arguments.
+  if (to === router) return null;
+
+  if (SPONSORED_TOKENS.has(to) || isApproveTo(data, router)) {
     let decoded;
     try {
       decoded = decodeFunctionData({ abi: erc20Abi, data });
     } catch {
       return "Invalid sponsored send.";
     }
-    if (decoded.functionName === "transfer") return null;
+    // A transfer is only sponsored for the tokens Hedge itself moves. Letting
+    // it cover any token would turn this into a free send for the whole chain.
+    if (decoded.functionName === "transfer") {
+      return SPONSORED_TOKENS.has(to) ? null : "That token is not sponsored.";
+    }
 
     // Leverage and LP deposits both need the contract to pull USDG, so the
     // approval has to be sponsored too — but only ever to Hedge's own
-    // contracts, never to a spender the caller chose.
-    if (decoded.functionName === "approve" && to === USDG.toLowerCase()) {
+    // contracts or Relay's router, never to a spender the caller invented.
+    if (decoded.functionName === "approve") {
       const spender = String(decoded.args?.[0] ?? "").toLowerCase();
+      if (spender === router) return null;
+      if (to !== USDG.toLowerCase()) return "That approval is not sponsored.";
       if (spender && (spender === engine || spender === vault)) return null;
       return "That approval is not sponsored.";
     }

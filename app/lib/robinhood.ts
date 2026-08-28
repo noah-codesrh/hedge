@@ -6,6 +6,17 @@ export const RH_EXPLORER = "https://robinhoodchain.blockscout.com";
 export const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 export const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
 
+/**
+ * Relay's router on Robinhood Chain, the one contract a swap ever calls.
+ *
+ * Hedge sponsors gas for calls to this address, so it is an allowlist of one
+ * and has to stay pinned rather than read from a quote — trusting the quote
+ * for the target would let anything Relay returned spend the gas budget. Every
+ * swap quote is checked against it, and a mismatch fails the swap loudly
+ * instead of quietly sponsoring an unknown contract.
+ */
+export const RELAY_ROUTER = "0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE";
+
 export type ChainAsset = {
   id: string;
   symbol: string;
@@ -122,6 +133,143 @@ async function ethUsdPrice(): Promise<number | null> {
     }
   }
   return ethPriceCache?.usd ?? null;
+}
+
+/** Everything an address holds, not just the three tokens Hedge names itself. */
+export type OwnedToken = {
+  /** null for native ETH, which has no contract. */
+  address: string | null;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balanceRaw: string;
+  balance: number;
+  priceUsd: number | null;
+  valueUsd: number | null;
+  logoUrl: string | null;
+  /** Blockscout's grading. Anything other than "ok" is worth flagging. */
+  reputation: string | null;
+};
+
+type BlockscoutBalance = {
+  value?: string;
+  token?: {
+    address_hash?: string;
+    decimals?: string;
+    exchange_rate?: string | null;
+    icon_url?: string | null;
+    name?: string;
+    reputation?: string | null;
+    symbol?: string;
+    type?: string;
+  };
+};
+
+function toNumber(value: string | null | undefined) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Every ERC-20 an address holds on Robinhood Chain, richest first.
+ *
+ * `listRobinhoodAssets` only knows USDG, ETH and WETH because those are the
+ * ones Hedge itself moves. Swapping has to work against whatever the trader
+ * actually has — the chain carries memecoins and tokenised equities that no
+ * hardcoded list would ever cover — so this reads the explorer's index
+ * instead. It also carries prices, which spares us a second lookup.
+ *
+ * The explorer is not part of the trading path, so a failure here degrades to
+ * the three known tokens rather than taking the page down with it.
+ */
+export async function listOwnedTokens(owner: string): Promise<OwnedToken[]> {
+  const native = async (): Promise<OwnedToken> => {
+    const [hex, usd] = await Promise.all([
+      rpc<string>("eth_getBalance", [owner, "latest"]),
+      ethUsdPrice(),
+    ]);
+    const raw = BigInt(hex || "0x0").toString();
+    const balance = parseUnits(raw, 18);
+    return {
+      address: null,
+      symbol: "ETH",
+      name: "Ether",
+      decimals: 18,
+      balanceRaw: raw,
+      balance,
+      priceUsd: usd,
+      valueUsd: usd == null ? null : balance * usd,
+      logoUrl: "/tokens/eth.png",
+      reputation: "ok",
+    };
+  };
+
+  const erc20s = async (): Promise<OwnedToken[]> => {
+    const res = await fetch(
+      `${RH_EXPLORER}/api/v2/addresses/${owner}/token-balances`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) throw new Error(`explorer ${res.status}`);
+    const rows = (await res.json()) as BlockscoutBalance[];
+    if (!Array.isArray(rows)) throw new Error("explorer shape");
+    return rows.flatMap((row) => {
+      const token = row.token;
+      // NFTs share this endpoint and cannot be swapped for cash.
+      if (!token || token.type !== "ERC-20") return [];
+      const address = token.address_hash;
+      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return [];
+      const decimals = Number(token.decimals);
+      if (!Number.isFinite(decimals) || decimals < 0 || decimals > 36) return [];
+      let raw: bigint;
+      try {
+        raw = BigInt(row.value ?? "0");
+      } catch {
+        return [];
+      }
+      if (raw <= 0n) return [];
+      const balance = parseUnits(raw.toString(), decimals);
+      const priceUsd = toNumber(token.exchange_rate);
+      return [
+        {
+          address,
+          symbol: token.symbol || "Token",
+          name: token.name || token.symbol || "Token",
+          decimals,
+          balanceRaw: raw.toString(),
+          balance,
+          priceUsd,
+          valueUsd: priceUsd == null ? null : balance * priceUsd,
+          logoUrl: token.icon_url || null,
+          reputation: token.reputation ?? null,
+        },
+      ];
+    });
+  };
+
+  const [nativeRow, tokenRows] = await Promise.all([
+    native().catch(() => null),
+    erc20s().catch(async (err) => {
+      console.warn("[hedge] explorer token list unavailable", err);
+      const known = await listRobinhoodAssets(owner).catch(() => []);
+      return known
+        .filter((a) => a.address && a.balance > 0)
+        .map<OwnedToken>((a) => ({
+          address: a.address,
+          symbol: a.symbol,
+          name: a.name,
+          decimals: a.decimals,
+          balanceRaw: a.balanceRaw,
+          balance: a.balance,
+          priceUsd: a.priceUsd,
+          valueUsd: a.valueUsd,
+          logoUrl: a.logoUrl,
+          reputation: "ok",
+        }));
+    }),
+  ]);
+
+  const all = nativeRow && nativeRow.balance > 0 ? [nativeRow, ...tokenRows] : tokenRows;
+  return all.sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0));
 }
 
 export async function listRobinhoodAssets(owner: string): Promise<ChainAsset[]> {

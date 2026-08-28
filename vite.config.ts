@@ -4,6 +4,11 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter()],
+  optimizeDeps: {
+    // Privy lazy-loads its login screens. If the dep optimizer rebuilds mid-session
+    // those chunk URLs 504 and the wallet overlay mounts with no content.
+    include: ["@privy-io/react-auth"],
+  },
   server: {
     port: 5174,
     // Fail loudly instead of drifting to another port: the port is part of the

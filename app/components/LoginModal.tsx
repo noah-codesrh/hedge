@@ -96,15 +96,21 @@ function PrivyAuthArea({ onClose }: { onClose: () => void }) {
   const { login } = useLogin();
 
   const loginWithWallet = () => {
-    onClose();
-    setTimeout(
-      () =>
-        login({
-          loginMethods: ["wallet"],
-          walletChainType: "ethereum-only",
-        }),
-      0,
-    );
+    // Stay on this modal. Closing first used to hand the page to Privy's
+    // overlay — and when that overlay's chunk 504'd, the trader was left
+    // staring at a dimmed homepage with nothing to dismiss.
+    setError(null);
+    try {
+      const result = login({
+        loginMethods: ["wallet"],
+        walletChainType: "ethereum-only",
+      });
+      void Promise.resolve(result).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Could not open the wallet list. Refresh and try again.");
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open the wallet list. Refresh and try again.");
+    }
   };
 
   const [email, setEmail] = useState("");
