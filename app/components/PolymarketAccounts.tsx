@@ -3,13 +3,11 @@ import { useFetcher } from "react-router";
 import { useWallets, type User } from "@privy-io/react-auth";
 import type { loader as accountLoader } from "../routes/api.pm.account";
 import type { PolymarketAccountSnapshot } from "../lib/polymarket-account";
-import { POLYGON_EXPLORER } from "../lib/chains";
-import { fiat, shorten } from "../lib/format";
+import { fiat } from "../lib/format";
 import { deriveDepositWallet, resolvePolymarketFunder } from "../lib/pm-funder";
 import { loadDepositWallet } from "../lib/pm-wallet";
 import { isEmbeddedWallet, linkedEmbeddedAddress } from "../lib/wallet";
 import { watchBalanceReloads } from "../lib/positions";
-import { CheckIcon, CopyIcon } from "./icons";
 
 function snapshotFor(
   accounts: PolymarketAccountSnapshot[] | undefined,
@@ -133,7 +131,6 @@ export function PolymarketAccounts({
           return (
             <CompactRow
               key={row.signer}
-              address={row.proxy}
               pusd={pusd}
               loading={fetcher.state !== "idle" && fetcher.data == null}
               onCashOut={onCashOut && pusd >= 1 ? () => onCashOut(pusd) : undefined}
@@ -146,29 +143,20 @@ export function PolymarketAccounts({
 }
 
 function CompactRow({
-  address,
   pusd,
   loading,
   onCashOut,
 }: {
-  address: string;
   pusd: number;
   loading: boolean;
   onCashOut?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard?.writeText(address);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
-  };
-
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 ring-1 ring-white/5">
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-muted">Address</p>
-        <p className="truncate font-mono text-[14px] font-semibold">
-          {shorten(address)}
+        <p className="text-[13px] text-muted">On Polymarket</p>
+        <p className="text-[13px] leading-snug text-[#8a8a8a]">
+          Trading balance — deposit USDG from Receive, not here.
         </p>
       </div>
       <div className="text-right">
@@ -177,33 +165,15 @@ function CompactRow({
           {loading ? "…" : fiat(pusd)}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {onCashOut ? (
-          <button
-            type="button"
-            onClick={onCashOut}
-            className="rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
-          >
-            Cash out
-          </button>
-        ) : null}
-        <a
-          href={`${POLYGON_EXPLORER}/address/${address}`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
-        >
-          Explorer
-        </a>
+      {onCashOut ? (
         <button
           type="button"
-          onClick={() => void copy()}
-          className="rounded-full bg-white/5 p-1.5 text-[#cfcfcf] transition hover:text-white"
-          aria-label={copied ? "Copied" : "Copy address"}
+          onClick={onCashOut}
+          className="shrink-0 rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
         >
-          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+          Cash out
         </button>
-      </div>
+      ) : null}
     </div>
   );
 }
