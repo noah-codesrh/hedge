@@ -41,6 +41,16 @@ body {
   max-width: 100vw;
 }
 
+/* The page scrolls without drawing a track. Nested scrollers keep theirs. */
+html,
+body {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
 #root,
 body > div {
   min-width: 0;
@@ -90,6 +100,36 @@ body > div {
 }
 .animate-card-in {
   animation: hedge-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes hedge-menu-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.animate-menu-item {
+  animation: hedge-menu-item-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * The drawer and its scrim animate through transitions rather than keyframes
+ * so the same declaration plays in reverse on close. Honour a reduced-motion
+ * preference by collapsing the duration instead of removing the transition,
+ * which would strand the close handler that waits for it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .hedge-drawer,
+  .hedge-scrim {
+    transition-duration: 1ms !important;
+  }
+  .animate-menu-item {
+    animation: none;
+  }
 }
 
 @keyframes pulse-dot {

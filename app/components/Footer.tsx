@@ -1,18 +1,9 @@
 import { Link } from "react-router";
 import { SITE_DESCRIPTION } from "../lib/seo";
-import { TelegramIcon, XIcon } from "./icons";
+import { DOCS_URL, SOCIALS } from "./site-links";
 
 /** UTC so the server and the browser never disagree across a year boundary. */
 const YEAR = new Date().getUTCFullYear();
-
-const SOCIALS = [
-  { href: "https://x.com/Hedgetradex", label: "Hedge on X", icon: <XIcon size={15} /> },
-  {
-    href: "https://t.me/hedgeapptrade",
-    label: "Hedge on Telegram",
-    icon: <TelegramIcon size={16} />,
-  },
-];
 
 export function Footer() {
   return (
@@ -35,6 +26,14 @@ export function Footer() {
         </div>
 
         <div className="flex items-center gap-4">
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13px] font-medium text-muted transition hover:text-white"
+          >
+            Docs
+          </a>
           <Link
             to="/terms"
             prefetch="intent"

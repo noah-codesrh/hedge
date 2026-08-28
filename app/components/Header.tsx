@@ -4,6 +4,7 @@ import { Form, Link, useLocation, useSearchParams } from "react-router";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DepositButton, useBook } from "./Book";
 import { FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
+import { MobileMenu } from "./MobileMenu";
 import { fiat } from "../lib/format";
 
 function SearchBar() {
@@ -123,6 +124,12 @@ function HeaderShell({
               Get Started
             </button>
           )}
+
+          <MobileMenu
+            authenticated={authenticated}
+            onGetStarted={onGetStarted}
+            onLogout={onLogout}
+          />
         </div>
       </div>
     </header>
