@@ -7,7 +7,8 @@ export const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 export const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
 
 /**
- * Relay's router on Robinhood Chain, the one contract a swap ever calls.
+ * Relay's ERC-20 router on Robinhood Chain. Token swaps call this; native ETH
+ * calls `RELAY_NATIVE` instead.
  *
  * Hedge sponsors gas for calls to this address, so it is an allowlist of one
  * and has to stay pinned rather than read from a quote — trusting the quote
@@ -16,6 +17,28 @@ export const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
  * instead of quietly sponsoring an unknown contract.
  */
 export const RELAY_ROUTER = "0xCcC88a9d1B4ED6b0EABA998850414b24f1c315bE";
+
+/**
+ * Relay's native-ETH executor on Robinhood Chain.
+ *
+ * ERC-20 swaps call `RELAY_ROUTER`. Selling ETH itself does not — Relay sends
+ * the ETH to this contract instead (selector `0xcd6e13f7` in every quote we
+ * have seen). Treating only the ERC-20 router as valid made every ETH→USDG
+ * quote look like an unknown route, which is why embedded wallets sitting on
+ * leftover ETH could not convert it while token swaps from external wallets
+ * went through.
+ */
+export const RELAY_NATIVE = "0xb92fe925DC43a0ECdE6c8b1a2709c170Ec4fFf4f";
+
+const RELAY_SWAP_TARGETS = new Set([
+  RELAY_ROUTER.toLowerCase(),
+  RELAY_NATIVE.toLowerCase(),
+  WETH.toLowerCase(),
+]);
+
+export function isRelaySwapTarget(address: string) {
+  return RELAY_SWAP_TARGETS.has(address.toLowerCase());
+}
 
 export type ChainAsset = {
   id: string;

@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.relay.swap";
 import { RH_CHAIN_ID } from "../lib/chains";
-import { RELAY_ROUTER, USDG } from "../lib/robinhood";
+import { isRelaySwapTarget, USDG } from "../lib/robinhood";
 import { requirePrivyUser, userHasWallet } from "../lib/server/privy-auth";
 import { relayFetch } from "../lib/server/relay";
 import { missingSecrets } from "../lib/server/secrets";
@@ -126,11 +126,13 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  // A swap only ever touches the token being sold and Relay's router. Anything
-  // else means the route changed shape, and sponsoring it blind is exactly the
-  // hole the pinned address exists to close.
-  const allowed = new Set([RELAY_ROUTER.toLowerCase(), token.toLowerCase()]);
-  const unexpected = stepTargets(quote).filter((to) => !allowed.has(to));
+  // A swap may touch the token being sold, Relay's ERC-20 router, Relay's
+  // native-ETH executor, or WETH (a wrap on the way in). Anything else means
+  // the route changed shape, and sponsoring it blind is the hole the pinned
+  // addresses exist to close.
+  const unexpected = stepTargets(quote).filter(
+    (to) => to !== token.toLowerCase() && !isRelaySwapTarget(to),
+  );
   if (unexpected.length > 0) {
     console.error("[hedge] relay swap hit an unexpected target", unexpected);
     return Response.json(

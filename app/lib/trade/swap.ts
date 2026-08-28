@@ -1,5 +1,5 @@
 import type { ConnectedWallet } from "@privy-io/react-auth";
-import { RELAY_ROUTER, USDG } from "../robinhood";
+import { isRelaySwapTarget, RELAY_ROUTER, USDG } from "../robinhood";
 import { ROBINHOOD_ADD_CHAIN } from "../chains";
 import { ensureChain, isUserRejection, sleep, toHexQuantity, waitForReceipt } from "../evm";
 import type { Eip1193 } from "../evm";
@@ -195,7 +195,6 @@ export async function runSwapToCash(
 
   const embedded = isEmbeddedWallet(input.wallet.walletClientType);
   const sellingToken = (input.token.address ?? "").toLowerCase();
-  const router = RELAY_ROUTER.toLowerCase();
 
   const steps = unwrapRelayQuote(input.quote.raw).steps ?? [];
   for (const step of steps) {
@@ -210,7 +209,7 @@ export async function runSwapToCash(
       // point before the trader's wallet signs, and a wrong target is the one
       // mistake that cannot be undone afterwards.
       const target = to.toLowerCase();
-      if (target !== router && target !== sellingToken) {
+      if (target !== sellingToken && !isRelaySwapTarget(target)) {
         throw new SwapError("This swap route is not recognised. Nothing was sent.");
       }
 

@@ -16,7 +16,7 @@ import {
   refuseSponsoredCall,
   type HedgeContracts,
 } from "../app/lib/server/sponsor-policy";
-import { RELAY_ROUTER, USDG, WETH } from "../app/lib/robinhood";
+import { RELAY_NATIVE, RELAY_ROUTER, USDG, WETH } from "../app/lib/robinhood";
 import { engineAbi, vaultAbi } from "../app/lib/leverage-abi";
 
 const ENGINE = "0x1111111111111111111111111111111111111111";
@@ -139,6 +139,11 @@ allows(
   RELAY_ROUTER,
   // Opaque on purpose: the router is the trust boundary, not the arguments.
   `0xf9e4bab4${"00".repeat(64)}`,
+);
+allows(
+  "selling native ETH through Relay's ETH executor",
+  RELAY_NATIVE,
+  `0xcd6e13f7${"00".repeat(64)}`,
 );
 refuses(
   "approving a stranger on a token Hedge does not know",

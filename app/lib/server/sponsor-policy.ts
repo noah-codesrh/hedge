@@ -1,5 +1,5 @@
 import { decodeFunctionData, erc20Abi } from "viem";
-import { RELAY_ROUTER, USDG, WETH } from "../robinhood";
+import { isRelaySwapTarget, RELAY_ROUTER, USDG, WETH } from "../robinhood";
 
 /**
  * Decides which Robinhood Chain calls Hedge will pay gas for.
@@ -128,10 +128,11 @@ export function refuseSponsoredCall(
 
   // Selling a token for cash is the one flow where the trader picks the
   // contract, because the token is whatever they happen to hold. Both halves
-  // stay pinned to Relay's router: the approval may name no other spender, and
-  // the swap may call nowhere else. The calldata itself is Relay's and is not
-  // decoded here — the router is the trust boundary, not the arguments.
-  if (to === router) return null;
+  // stay pinned to Relay: the approval may name no other spender, and the
+  // swap may call only the ERC-20 router or the native-ETH executor. The
+  // calldata itself is Relay's and is not decoded here — those addresses
+  // are the trust boundary, not the arguments.
+  if (isRelaySwapTarget(to) && to !== WETH.toLowerCase()) return null;
 
   if (SPONSORED_TOKENS.has(to) || isApproveTo(data, router)) {
     let decoded;
