@@ -42,30 +42,12 @@ export type LeverageMarket = {
 
 export const LEVERAGE_MARKETS: LeverageMarket[] = [
   {
-    marketId: "3847190",
-    eventSlug: "what-price-will-bitcoin-hit-in-august-2026",
-    marketSlug: "will-bitcoin-dip-to-77pt5k-in-august-2026",
-    yesTokenId:
-      "60432943459727811939876579458127882879093448601070549237658505707253776040466",
-    maxLeverage: 3,
-    title: "Will Bitcoin dip to $77.5k in August 2026?",
-  },
-  {
-    marketId: "3257386",
-    eventSlug: "what-price-will-ethereum-hit-in-august-2026",
-    marketSlug: "will-ethereum-reach-2600-in-august-2026",
-    yesTokenId:
-      "87205176363338814709708203899309446917881667334315183367756187844453520430452",
-    maxLeverage: 3,
-    title: "Will Ethereum reach $2,600 in August 2026?",
-  },
-  {
     marketId: "3491474",
     eventSlug: "iran-oman-hormuz-management-agreement-byptptpt-20260804222725871",
     marketSlug: "iran-oman-hormuz-agreement-by-september-30",
     yesTokenId:
       "68003608521015222679268138757769131071496782683879354114198876947977145147842",
-    maxLeverage: 3,
+    maxLeverage: 2,
     title: "Iran-Oman Hormuz agreement by September 30",
   },
   {
@@ -76,6 +58,53 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
       "30630994248667897740988010928640156931882346081873066002335460180076741328029",
     maxLeverage: 2,
     title: "Will Lula win the 2026 Brazilian presidential election?",
+  },
+  {
+    marketId: "2252244",
+    eventSlug: "fed-decision-in-september-762",
+    marketSlug:
+      "will-there-be-no-change-in-fed-interest-rates-after-the-september-2026-meeting-615",
+    yesTokenId:
+      "5615282760875985231868508008056959876238536896643315063916840237042205273721",
+    maxLeverage: 3,
+    title: "No Fed change after the September 2026 meeting?",
+  },
+  {
+    marketId: "2252245",
+    eventSlug: "fed-decision-in-september-762",
+    marketSlug:
+      "will-the-fed-increase-interest-rates-by-25-bps-after-the-september-2026-meeting-649",
+    yesTokenId:
+      "63842529068710005716169325380315470359047749786610778647370693404952498013178",
+    maxLeverage: 3,
+    title: "Fed hike 25 bps after the September 2026 meeting?",
+  },
+  {
+    marketId: "3953244",
+    eventSlug: "google-maps-renames-lake-ontario-to-lake-america-in-2026",
+    marketSlug: "google-maps-renames-lake-ontario-to-lake-america-by-september-4-2026",
+    yesTokenId:
+      "65716241034061531214551837337767952658252411366677852532758349743800598868311",
+    maxLeverage: 2,
+    title: "Google Maps renames Lake Ontario to Lake America by September 4?",
+  },
+  {
+    marketId: "3775011",
+    eventSlug: "lal-bet-rea-2026-09-04",
+    marketSlug: "lal-bet-rea-2026-09-04-rea",
+    yesTokenId:
+      "1929873130506340278881639029182681657089095196908522493927968027036765817315",
+    maxLeverage: 2,
+    title: "Will Real Madrid win on September 4?",
+  },
+  {
+    marketId: "3399197",
+    eventSlug: "russia-elections-united-russia-wins-every-region",
+    marketSlug: "russia-elections-united-russia-wins-every-region",
+    yesTokenId:
+      "34349914026097401057128861099057880661380967396881948920123251373255308524355",
+    maxLeverage: 2,
+    title: "United Russia wins every region?",
   },
 ];
 
