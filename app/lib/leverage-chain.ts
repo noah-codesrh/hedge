@@ -12,6 +12,7 @@ import {
   LEVERAGE_MARKETS,
   VAULT_ADDRESS,
   earnIsLive,
+  engineIsDeployed,
   leverageIsLive,
 } from "./leverage";
 
@@ -88,7 +89,7 @@ export async function quoteOpenOnChain(input: {
   margin: number;
   leverage: number;
 }): Promise<ChainQuote | null> {
-  if (!leverageIsLive) return null;
+  if (!engineIsDeployed) return null;
 
   try {
     const q = await client.readContract({
@@ -133,7 +134,7 @@ export type EngineState = {
 
 /** Pool-wide numbers the trade panel needs: leverage on offer and headroom. */
 export async function readEngineState(): Promise<EngineState | null> {
-  if (!leverageIsLive) return null;
+  if (!engineIsDeployed) return null;
 
   try {
     const [maxLeverageBps, nextTier, capacity, minMargin, maxMargin, paused, rate] =
@@ -180,7 +181,7 @@ export type LeverageTier = { minTvl: number; leverage: number };
  * time it changed.
  */
 export async function readLeverageTiers(): Promise<LeverageTier[]> {
-  if (!leverageIsLive) return [];
+  if (!engineIsDeployed) return [];
   try {
     const tiers = await client.readContract({
       ...engine,

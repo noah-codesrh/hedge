@@ -1,0 +1,11 @@
+# The keeper's private key must never enter an image layer. docker-compose
+# passes it in at run time via `env_file`, so the container does not need the
+# file — and a key baked into a layer survives in the image history even if a
+# later step deletes it.
+.env
+.env.*
+!.env.example
+
+node_modules
+npm-debug.log*
+.DS_Store

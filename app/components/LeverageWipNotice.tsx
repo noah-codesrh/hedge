@@ -2,11 +2,10 @@ import { Link } from "react-router";
 import { LayersIcon } from "./icons";
 
 /**
- * Tells people leverage is not finished yet and points them at what is.
+ * Tells people leveraged trading is not open yet and points them at Earn.
  *
- * Shown on both the leverage tab and the earn page so the message is the same
- * in both places — someone who reads it on one and then lands on the other
- * should not be told a different story.
+ * Only rendered while `VITE_LEVERAGE_ENABLED` is off. The Earn page has its
+ * own seed notice — this one lives on the leverage tab.
  */
 export function LeverageWipNotice({ className = "" }: { className?: string }) {
   return (
@@ -19,17 +18,17 @@ export function LeverageWipNotice({ className = "" }: { className?: string }) {
         </span>
         <p className="min-w-0 text-[13px] leading-relaxed text-muted">
           <span className="font-semibold text-gold">
-            Leverage is up soon.
+            Leverage trading is up soon.
           </span>{" "}
-          We're fine-tuning the liquidity pool first. Every market on Hedge
-          trades as normal in the meantime.
+          The pool is open. Deposit USDG on Earn — these markets trade as
+          normal in the meantime.
         </p>
       </div>
       <Link
-        to="/"
+        to="/earn"
         className="shrink-0 self-start rounded-full bg-gold px-4 py-2 text-[13px] font-semibold text-black transition hover:bg-gold/90 sm:self-auto"
       >
-        Explore markets
+        Deposit on Earn
       </Link>
     </div>
   );

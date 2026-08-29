@@ -8,9 +8,9 @@ interface ImportMetaEnv {
   readonly VITE_HEDGE_ENGINE_ADDRESS?: string;
   readonly VITE_HEDGE_VAULT_ADDRESS?: string;
   /**
-   * Master switch for leverage and the vault. Anything but "true" hides the
-   * Leverage tab, the Earn page and the leverage selector, leaving spot
-   * Polymarket trading as the only path.
+   * Master switch for leveraged trading. Anything but "true" hides the
+   * leverage selector. Earn is independent: a set vault address is enough
+   * to take senior deposits.
    */
   readonly VITE_LEVERAGE_ENABLED?: string;
 }

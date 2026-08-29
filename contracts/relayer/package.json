@@ -1,0 +1,24 @@
+{
+  "name": "hedge-leverage-relayer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Keeper that relays Polymarket prices onto Robinhood Chain and liquidates underwater leverage positions.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env relayer.ts",
+    "once": "node --env-file-if-exists=.env relayer.ts --once",
+    "ids": "node --env-file-if-exists=.env market-ids.ts",
+    "screen": "node --env-file-if-exists=.env screen-markets.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.55.19"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2"
+  }
+}

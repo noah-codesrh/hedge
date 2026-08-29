@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useAuthorizationSignature, usePrivy } from "@privy-io/react-auth";
 import { fiat, pct } from "../lib/format";
-import { earnIsLive, VAULT_ADDRESS } from "../lib/leverage";
+import { earnIsLive, leverageEnabled, VAULT_ADDRESS } from "../lib/leverage";
 import {
   leverageAtTvl,
   readEngineState,
@@ -26,7 +26,6 @@ import {
 import { notifyBalancesChanged } from "../lib/positions";
 import { RH_EXPLORER } from "../lib/robinhood";
 import { useEnsureCashWallet } from "../lib/wallet";
-import { LeverageWipNotice } from "../components/LeverageWipNotice";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
 import {
   ArrowDownTrayIcon,
@@ -183,7 +182,7 @@ function EarnInner() {
     <>
       <Hero vault={vault} realised={realised} mine={withdrawable} loading={loading} />
 
-      <LeverageWipNotice />
+      <SeedNotice vault={vault} />
 
       <Projector vault={vault} engine={engine} tiers={tiers} />
 
@@ -678,6 +677,41 @@ function Notice({
     <p className={`mt-3 rounded-2xl px-3 py-2.5 text-[12px] leading-snug ${cls}`}>
       {children}
     </p>
+  );
+}
+
+/**
+ * Honest status while leveraged trading is still off.
+ *
+ * The vault can take senior deposits now. Yield does not start until
+ * traders are opening against it, and $1,000 TVL is the first 3x unlock.
+ */
+function SeedNotice({ vault }: { vault: VaultState | null }) {
+  if (leverageEnabled) return null;
+
+  const tvl = vault?.tvl ?? 0;
+  const toTier = Math.max(0, 1_000 - tvl);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl bg-gold/[0.07] px-4 py-3.5 ring-1 ring-gold/15 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="mt-0.5 shrink-0 text-gold">
+          <LayersIcon size={15} />
+        </span>
+        <p className="min-w-0 text-[13px] leading-relaxed text-muted">
+          <span className="font-semibold text-gold">Deposits are live.</span>{" "}
+          Leverage trading is still off, so there are no fees yet.{" "}
+          {toTier > 0 ? (
+            <>
+              {fiat(toTier)} more takes the vault to $1,000 and unlocks 3x
+              when trading opens.
+            </>
+          ) : (
+            <>The vault is past $1,000. 3x is ready when trading opens.</>
+          )}
+        </p>
+      </div>
+    </div>
   );
 }
 

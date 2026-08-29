@@ -98,22 +98,28 @@ export const VAULT_ADDRESS = (
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
+/** Contract is addressed. Used for read-only chain calls, not for user trading. */
+export const engineIsDeployed = ADDRESS.test(ENGINE_ADDRESS);
+export const vaultIsDeployed = ADDRESS.test(VAULT_ADDRESS);
+
 /**
- * Master switch for the whole leverage and vault feature.
+ * Master switch for leveraged trading.
  *
  * Opt-in rather than opt-out: the contracts can be deployed, funded and
- * addressed in `.env` long before the feature is meant to be visible, and
- * "someone set an address" is not the same decision as "this is open to
- * users". Off by default means a deploy cannot expose it by accident.
+ * addressed in `.env` long before traders should see a 2x/3x selector, and
+ * "someone set an address" is not the same decision as "this is open".
  *
- * Set `VITE_LEVERAGE_ENABLED=true` to turn it back on. Read at build time by
+ * Earn is independent. The vault can take senior deposits while this is off,
+ * so the pool can be seeded before the first levered ticket is offered.
+ *
+ * Set `VITE_LEVERAGE_ENABLED=true` to turn trading on. Read at build time by
  * Vite, so flipping it needs a rebuild.
  */
 export const leverageEnabled =
   (import.meta.env.VITE_LEVERAGE_ENABLED ?? "").trim() === "true";
 
-export const leverageIsLive = leverageEnabled && ADDRESS.test(ENGINE_ADDRESS);
-export const earnIsLive = leverageEnabled && ADDRESS.test(VAULT_ADDRESS);
+export const leverageIsLive = leverageEnabled && engineIsDeployed;
+export const earnIsLive = vaultIsDeployed;
 
 /** The engine's tradeable band. Outside it, opening reverts on-chain. */
 export const PRICE_BAND = { min: 0.35, max: 0.65 } as const;

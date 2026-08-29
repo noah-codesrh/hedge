@@ -6,6 +6,7 @@ import { FeaturedBanner } from "../components/FeaturedBanner";
 import { Hero } from "../components/Hero";
 import { LeverageCard } from "../components/LeverageCard";
 import { LeverageWipNotice } from "../components/LeverageWipNotice";
+import { leverageEnabled } from "../lib/leverage";
 import { MarketCard } from "../components/MarketCard";
 import { CategoryBar, MarketNav } from "../components/MarketNav";
 import { OutrightCard } from "../components/OutrightCard";
@@ -154,11 +155,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </h2>
         <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
           A short, hand-picked list. These are the markets that will carry
-          leverage, backed by the Hedge vault. They trade normally today.
+          leverage, backed by the Hedge vault. They trade as 1x today.
         </p>
       </div>
 
-      <LeverageWipNotice />
+      {leverageEnabled ? null : <LeverageWipNotice />}
 
       {error ? (
         <p className="rounded-2xl bg-card p-6 text-sm text-down ring-1 ring-white/5">

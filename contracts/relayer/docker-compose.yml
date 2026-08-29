@@ -1,0 +1,22 @@
+# Smallest deployment that survives a crash, a stall and a reboot.
+#
+#   docker compose up -d --build
+#   docker compose logs -f keeper
+#
+# `restart: unless-stopped` handles crashes and host reboots. The healthcheck in
+# the Dockerfile handles the nastier case where the process is alive but has
+# stopped ticking.
+services:
+  keeper:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      # Bound to localhost. Put a reverse proxy in front before exposing this;
+      # the status payload tells an attacker exactly when you are blind.
+      - "127.0.0.1:8080:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
