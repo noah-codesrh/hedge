@@ -451,12 +451,15 @@ export function quotedPusd(quote: RelayQuote) {
 export const quotedUsdg = quotedPusd;
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
+const SOLANA = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-function asAddress(value: unknown): string | null {
-  if (typeof value === "string" && ADDR.test(value)) return value;
+function asDepositDest(value: unknown): string | null {
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (ADDR.test(v) || SOLANA.test(v)) return v;
+  }
   if (value && typeof value === "object" && "address" in value) {
-    const inner = (value as { address?: unknown }).address;
-    if (typeof inner === "string" && ADDR.test(inner)) return inner;
+    return asDepositDest((value as { address?: unknown }).address);
   }
   return null;
 }
@@ -497,7 +500,7 @@ export function relayDepositAddress(
         )),
   ];
   for (const value of candidates) {
-    const address = asAddress(value);
+    const address = asDepositDest(value);
     if (address) return address;
   }
   return null;

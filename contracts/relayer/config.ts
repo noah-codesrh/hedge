@@ -3,7 +3,31 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const RH_CHAIN_ID = 4663;
-export const RH_RPC = process.env.RH_RPC ?? "https://rpc.mainnet.chain.robinhood.com";
+
+/**
+ * Official public RPC, plus a second endpoint that is not behind Cloudflare's
+ * browser challenge. Railway (and most datacenter IPs) get a 403 HTML page
+ * from rpc.mainnet.chain.robinhood.com; the process then exits on boot.
+ *
+ * `RH_RPC` may be a single URL or a comma-separated list. First entry that
+ * answers is used; viem's fallback transport tries the rest on failure.
+ */
+const DEFAULT_RPCS = [
+  "https://rpc.mainnet.chain.robinhood.com",
+  "https://rpc-robinhood.blockmachine.io",
+] as const;
+
+const fromEnv = (process.env.RH_RPC ?? "")
+  .split(",")
+  .map((url) => url.trim())
+  .filter(Boolean);
+
+export const RH_RPCS: string[] = [...fromEnv];
+for (const url of DEFAULT_RPCS) {
+  if (!RH_RPCS.includes(url)) RH_RPCS.push(url);
+}
+
+export const RH_RPC = RH_RPCS[0] ?? DEFAULT_RPCS[0];
 export const RH_EXPLORER = "https://robinhoodchain.blockscout.com";
 
 /** Polymarket's CLOB, read-only endpoints. No key needed for prices. */

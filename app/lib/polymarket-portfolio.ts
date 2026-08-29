@@ -2,6 +2,7 @@ export type LivePosition = {
   id: string;
   wallet: string;
   tokenId: string | null;
+  conditionId: string | null;
   eventSlug: string | null;
   marketSlug: string | null;
   title: string;
@@ -17,6 +18,8 @@ export type LivePosition = {
   pnl: number;
   pctChange: number;
   status: "open" | "closed";
+  redeemable: boolean;
+  endDate: string | null;
 };
 
 /**
@@ -50,8 +53,31 @@ function num(value: unknown) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Present numeric field, including 0. `||` would treat a resolved loser as missing. */
+function money(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function str(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * A resolved Polymarket market: either the API says it can be redeemed, or
+ * the event is over and the mark has gone to 0 or 1. Live longshots can sit
+ * near 0.01 before expiry, so price alone is not enough.
+ */
+export function isSettledPosition(position: LivePosition) {
+  if (position.status !== "open") return false;
+  if (position.redeemable) return true;
+  if (position.currentPrice === 0 || position.currentPrice === 1) return true;
+  const ended =
+    Boolean(position.endDate) &&
+    new Date(position.endDate!).getTime() < Date.now();
+  if (!ended) return false;
+  return position.currentPrice <= 0.01 || position.currentPrice >= 0.99;
 }
 
 function asPrice(value: unknown) {
@@ -89,13 +115,18 @@ function mapPosition(
 
   const initialValue = settled
     ? cost
-    : num(raw.initialValue) ||
-      (shares > 0 && entryPrice > 0 ? shares * entryPrice : 0);
+    : (money(raw.initialValue) ??
+      (shares > 0 && entryPrice > 0 ? shares * entryPrice : 0));
+  const marked =
+    shares > 0 && Number.isFinite(currentPrice)
+      ? shares * currentPrice
+      : null;
   const currentValue = settled
     ? cost + realized
-    : num(raw.currentValue) ||
-      (shares > 0 && currentPrice > 0 ? shares * currentPrice : initialValue);
-  const pnl = settled ? realized : currentValue - initialValue;
+    : (money(raw.currentValue) ?? marked ?? initialValue);
+  const pnl = settled
+    ? realized
+    : (money(raw.cashPnl) ?? currentValue - initialValue);
   const pctChange = initialValue > 0 ? pnl / initialValue : 0;
 
   // What the round trip returned per share. curPrice is the market's price
@@ -108,6 +139,7 @@ function mapPosition(
     id: `${str(raw.asset) ?? str(raw.tokenId) ?? title}:${status}`,
     wallet: str(raw.proxyWallet) ?? str(raw.wallet) ?? "",
     tokenId: str(raw.asset) ?? str(raw.tokenId),
+    conditionId: str(raw.conditionId),
     eventSlug: str(raw.eventSlug),
     marketSlug: str(raw.slug),
     title,
@@ -122,6 +154,8 @@ function mapPosition(
     pnl,
     pctChange,
     status,
+    redeemable: raw.redeemable === true,
+    endDate: str(raw.endDate),
   };
 }
 

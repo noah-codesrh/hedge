@@ -24,6 +24,7 @@ export default [
   route("api/track/trade", "routes/api.track.trade.ts"),
   route("api/track/nickname", "routes/api.track.nickname.ts"),
   route("api/token", "routes/api.token.ts"),
+  route("api/vault", "routes/api.vault.ts"),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),

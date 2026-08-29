@@ -2,7 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { fiat, signedFiat, signedPct } from "../lib/format";
 import { leverageFromEntry, pnlTone, type PositionMark } from "../lib/pnl";
-import { outcomeLabel, type LivePosition } from "../lib/polymarket-portfolio";
+import {
+  isSettledPosition,
+  outcomeLabel,
+  type LivePosition,
+} from "../lib/polymarket-portfolio";
 import type { HedgePosition } from "../lib/types";
 import { liveHref, PnlShareCard } from "./PnlShareCard";
 import { PnlShareModal } from "./PnlShareModal";
@@ -110,7 +114,11 @@ export function LivePositionCard({
             onClick={onClose}
             className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
           >
-            Close
+            {position.redeemable
+              ? "Redeem"
+              : isSettledPosition(position) && position.currentPrice <= 0.01
+                ? "Clear"
+                : "Close"}
           </button>
         ) : null}
       </div>

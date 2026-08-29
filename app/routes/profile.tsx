@@ -135,14 +135,19 @@ function ProfileInner() {
   useEffect(() => {
     if (!wallet) return;
     const load = () => {
-      void assetsFetcher.load(`/api/assets?address=${wallet}`);
       const linked = walletAccounts(user);
       const signers = [
+        wallet,
         ...linked
           .filter((w) => "address" in w)
           .map((w) => String((w as { address: string }).address)),
         ...wallets.map((w) => w.address),
       ];
+      void assetsFetcher.load(
+        `/api/assets?addresses=${encodeURIComponent(
+          knownPortfolioAddresses(signers).join(","),
+        )}`,
+      );
       const derived = [
         ...linked
           .filter(

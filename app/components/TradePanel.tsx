@@ -372,6 +372,7 @@ function TradePanelView({
           {
             accessToken,
             from: signerCash.address,
+            wallet: signerCash,
             signAuthorization,
           },
           {

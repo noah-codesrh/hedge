@@ -67,9 +67,6 @@ export function LoginModal({
             <h2 className="text-lg font-semibold text-white">
               Log in or sign up
             </h2>
-            <p className="mt-0.5 text-sm text-muted">
-              Trade Polymarket with USDG on Robinhood
-            </p>
           </div>
           {privyStatus === "ready" ? (
             <PrivyAuthArea onClose={onClose} />

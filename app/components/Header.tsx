@@ -125,6 +125,7 @@ function HeaderShell({
             </>
           ) : (
             <button
+              type="button"
               onClick={onGetStarted}
               className="rounded-full bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-105 sm:px-5 sm:py-2 sm:text-sm"
             >

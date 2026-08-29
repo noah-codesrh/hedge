@@ -154,8 +154,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           Leverage markets
         </h2>
         <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
-          A short, hand-picked list. These are the markets that will carry
-          leverage, backed by the Hedge vault. They trade as 1x today.
+          2x–3x against the vault. 1x is still ordinary Polymarket.
         </p>
       </div>
 

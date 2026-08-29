@@ -23,7 +23,7 @@ import { LayersIcon } from "./icons";
  */
 export function LeveragePositions({ compact = false }: { compact?: boolean }) {
   const { authenticated, getAccessToken } = usePrivy();
-  const { cashAddress } = useEnsureCashWallet();
+  const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
   const { generateAuthorizationSignature } = useAuthorizationSignature();
 
   const [positions, setPositions] = useState<LeveragePosition[]>([]);
@@ -62,13 +62,15 @@ export function LeveragePositions({ compact = false }: { compact?: boolean }) {
     try {
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Session expired. Sign in again.");
-      if (!cashAddress) throw new Error("Your wallet isn't ready yet.");
+      const cashWallet = await ensureCashWallet();
+      if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
 
       const { closeLeveragePosition } = await import("../lib/leverage-actions");
       await closeLeveragePosition(
         {
           accessToken,
-          from: cashAddress,
+          from: cashWallet.address,
+          wallet: cashWallet,
           signAuthorization: async (payload) => {
             const { signature } = await generateAuthorizationSignature(payload);
             if (!signature) throw new Error("Could not authorize this wallet.");

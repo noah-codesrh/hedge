@@ -16,19 +16,17 @@ export function LeverageWipNotice({ className = "" }: { className?: string }) {
         <span className="mt-0.5 shrink-0 text-gold">
           <LayersIcon size={15} />
         </span>
-        <p className="min-w-0 text-[13px] leading-relaxed text-muted">
-          <span className="font-semibold text-gold">
-            Leverage trading is up soon.
-          </span>{" "}
-          The pool is open. Deposit USDG on Earn — these markets trade as
-          normal in the meantime.
+        <p className="min-w-0 text-[13px] text-muted">
+          <span className="font-semibold text-gold">Pool is seeded.</span>{" "}
+          The vault can back 3x. Levered tickets are still off — use 1x spot
+          until we turn them on.
         </p>
       </div>
       <Link
         to="/earn"
         className="shrink-0 self-start rounded-full bg-gold px-4 py-2 text-[13px] font-semibold text-black transition hover:bg-gold/90 sm:self-auto"
       >
-        Deposit on Earn
+        View pool
       </Link>
     </div>
   );

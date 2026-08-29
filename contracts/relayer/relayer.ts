@@ -22,6 +22,7 @@ import {
   createPublicClient,
   createWalletClient,
   defineChain,
+  fallback,
   formatEther,
   http,
   parseEther,
@@ -36,7 +37,7 @@ import {
   CLOB_BASE,
   GAMMA_BASE,
   RH_CHAIN_ID,
-  RH_RPC,
+  RH_RPCS,
   loadMarkets,
   requireEnv,
   type ResolvedMarket,
@@ -63,18 +64,27 @@ const robinhoodChain = defineChain({
   id: RH_CHAIN_ID,
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [RH_RPC] } },
+  rpcUrls: { default: { http: RH_RPCS } },
 });
 
 const account = privateKeyToAccount(requireEnv("RELAYER_PRIVATE_KEY") as Hex);
 const oracleAddress = requireEnv("ORACLE_ADDRESS") as Hex;
 const engineAddress = requireEnv("ENGINE_ADDRESS") as Hex;
 
-const publicClient = createPublicClient({ chain: robinhoodChain, transport: http(RH_RPC) });
+const rpcTransport = fallback(
+  RH_RPCS.map((url) =>
+    http(url, {
+      retryCount: 2,
+      timeout: 12_000,
+    }),
+  ),
+);
+
+const publicClient = createPublicClient({ chain: robinhoodChain, transport: rpcTransport });
 const walletClient = createWalletClient({
   account,
   chain: robinhoodChain,
-  transport: http(RH_RPC),
+  transport: rpcTransport,
 });
 
 const markets = loadMarkets();
@@ -555,20 +565,42 @@ async function tick() {
   }
 }
 
+async function readStartup(): Promise<{
+  isReporter: boolean;
+  guardianAddress: Hex;
+}> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const [isReporter, guardianAddress] = await Promise.all([
+        publicClient.readContract({
+          address: oracleAddress,
+          abi: oracleAbi,
+          functionName: "isReporter",
+          args: [account.address],
+        }),
+        publicClient.readContract({
+          address: engineAddress,
+          abi: engineAbi,
+          functionName: "guardian",
+        }),
+      ]);
+      return { isReporter, guardianAddress };
+    } catch (err) {
+      const wait = Math.min(30_000, 3_000 * attempt);
+      console.error(
+        `[keeper] RPC unreachable (attempt ${attempt}) via ${RH_RPCS.join(", ")}. ` +
+          `Datacenter IPs often get Cloudflare 403 on the official RPC — set RH_RPC to a fallback. ` +
+          `Retrying in ${wait}ms.`,
+      );
+      console.error(describe(err));
+      await new Promise((done) => setTimeout(done, wait));
+    }
+  }
+}
+
 async function main() {
-  const [isReporter, guardianAddress] = await Promise.all([
-    publicClient.readContract({
-      address: oracleAddress,
-      abi: oracleAbi,
-      functionName: "isReporter",
-      args: [account.address],
-    }),
-    publicClient.readContract({
-      address: engineAddress,
-      abi: engineAbi,
-      functionName: "guardian",
-    }),
-  ]);
+  console.log(`[keeper] RPC ${RH_RPCS.join(" → ")}`);
+  const { isReporter, guardianAddress } = await readStartup();
 
   if (!isReporter) {
     throw new Error(

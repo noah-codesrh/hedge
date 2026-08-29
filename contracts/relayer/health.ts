@@ -130,7 +130,21 @@ function prometheus(): string {
   ].join("\n");
 }
 
-export function startHealthServer(port = Number(process.env.HEALTH_PORT ?? 8080)): Server {
+/**
+ * Railway sets PORT and the public domain is pinned to a port in Networking.
+ * HEALTH_PORT=${{PORT}} is often stored as that literal string, so Number()
+ * becomes NaN and nothing listens on 8080 — the proxy then 502s /health
+ * while the keeper is still ticking.
+ */
+export function listenPort(): number {
+  for (const raw of [process.env.HEALTH_PORT, process.env.PORT, "8080"]) {
+    const n = Number(raw);
+    if (Number.isInteger(n) && n > 0 && n < 65536) return n;
+  }
+  return 8080;
+}
+
+export function startHealthServer(port = listenPort()): Server {
   const server = createServer((req, res) => {
     const path = (req.url ?? "/").split("?")[0];
 

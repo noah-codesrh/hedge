@@ -91,11 +91,14 @@ export function MobileMenu({
 
   const open = useCallback(() => {
     setMounted(true);
-    // One frame is enough for the off-screen class to commit. A second rAF
-    // was getting dropped on some Chrome profiles, which left the portal
-    // mounted at opacity-0 — and that invisible layer ate every click after.
-    requestAnimationFrame(() => setShown(true));
   }, []);
+
+  // Paint the closed (off-screen) frame first, then slide in. After paint,
+  // not rAF: a rAF was getting dropped on some Chrome profiles, which left
+  // the portal mounted at opacity-0 and ate every click after.
+  useEffect(() => {
+    if (mounted) setShown(true);
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -138,7 +141,9 @@ export function MobileMenu({
 
   const drawer = (
     <div
-      className={`fixed inset-0 z-[60] lg:hidden ${shown ? "" : "pointer-events-none"}`}
+      className={`fixed inset-0 z-[60] lg:hidden ${
+        shown ? "" : "pointer-events-none invisible"
+      }`}
     >
       <div
         onClick={close}
@@ -156,7 +161,7 @@ export function MobileMenu({
         aria-label="Menu"
         tabIndex={-1}
         className={`hedge-drawer absolute inset-y-0 right-0 flex w-[min(20rem,86vw)] flex-col border-l border-white/10 bg-[#171717] shadow-[0_0_60px_rgba(0,0,0,0.6)] outline-none transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          shown ? "translate-x-0" : "translate-x-full"
+          shown ? "translate-x-0" : "pointer-events-none translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between px-4 pb-3 pt-[calc(0.875rem+env(safe-area-inset-top))]">

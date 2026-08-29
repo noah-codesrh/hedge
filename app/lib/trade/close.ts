@@ -50,6 +50,9 @@ export type CloseInput = {
   accessToken: string;
   tradingWallet: ConnectedWallet;
   signAuthorization: SignPrivyAuthorization;
+  conditionId?: string | null;
+  redeemable?: boolean;
+  settled?: boolean;
 };
 
 export type CashOutInput = {
@@ -90,6 +93,9 @@ function friendlyCloseError(err: unknown, fallback: string) {
   }
   if (/trading is disabled|clob.*maintenance/i.test(message)) {
     return "Polymarket trading is down for maintenance. Try Close again in a few minutes.";
+  }
+  if (/invalid token id|not.*orderable|orderbook.*not.*(exist|found)|market.*(closed|resolved|not found)/i.test(message)) {
+    return "This market has resolved and can no longer be sold. If you won, tap Close again to redeem. If you lost, the outcome is worth $0.";
   }
   if (
     /insufficient funds/i.test(message) &&
@@ -198,6 +204,17 @@ async function sellPosition(
     pusd,
     orderId: String(response.orderId ?? "") || null,
   };
+}
+
+async function redeemResolved(
+  client: TradingClient,
+  conditionId: string,
+) {
+  const handle = await client.redeemPositions({
+    conditionId,
+    metadata: "Hedge redeem resolved position",
+  });
+  await handle.wait();
 }
 
 async function finishConversion(
@@ -477,7 +494,8 @@ export async function runClosePosition(
   }
 
   hooks.onStep("sell");
-  await requireClob(input.accessToken);
+  const settled = input.settled === true || input.redeemable === true;
+  if (!settled) await requireClob(input.accessToken);
 
   let session;
   try {
@@ -489,13 +507,11 @@ export async function runClosePosition(
     throw new Error(friendlyCloseError(err, "Could not open the Polymarket proxy wallet."));
   }
 
-  const { builderCode } = await authedJson<{ builderCode: string }>(
-    input.accessToken,
-    "/api/pm/config",
-  );
   const beforeProxy = await readPusd(input.accessToken, session.funder);
+  const lost = settled && input.marketPrice <= 0.01;
+  const conditionId = input.conditionId?.trim() || null;
 
-  let sold;
+  let sold: { sharesSold: number; pusd: number; orderId: string | null };
   let client: TradingClient;
   try {
     client = await ensureSecureClient(session);
@@ -505,9 +521,45 @@ export async function runClosePosition(
       /* gasless sell still runs if the signer can sign */
     }
     await client.setupTradingApprovals();
-    sold = await sellPosition(client, input, builderCode);
+
+    if (settled && conditionId) {
+      try {
+        await redeemResolved(client, conditionId);
+      } catch (err) {
+        throw new Error(
+          friendlyCloseError(err, "Could not redeem this resolved position."),
+        );
+      }
+      const after = await readPusd(input.accessToken, session.funder);
+      sold = {
+        sharesSold: input.shares,
+        pusd: Math.max(0, after - beforeProxy),
+        orderId: null,
+      };
+    } else if (lost) {
+      throw new Error(
+        "This market has resolved. The outcome you held is worth $0, so it cannot be sold.",
+      );
+    } else {
+      const { builderCode } = await authedJson<{ builderCode: string }>(
+        input.accessToken,
+        "/api/pm/config",
+      );
+      sold = await sellPosition(client, input, builderCode);
+    }
   } catch (err) {
     throw new Error(friendlyCloseError(err, "Could not sell this position."));
+  }
+
+  if (sold.pusd < MIN_CONVERT && lost) {
+    return {
+      sharesSold: sold.sharesSold,
+      pusd: 0,
+      usdg: 0,
+      conversionId: null,
+      depositWallet: session.funder,
+      orderId: null,
+    };
   }
 
   hooks.onStep("move");

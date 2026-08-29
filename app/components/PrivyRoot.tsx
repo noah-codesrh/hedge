@@ -13,7 +13,9 @@ export default function PrivyRoot({ children }: { children: React.ReactNode }) {
           theme: "dark",
           accentColor: "#F1D65A",
           logo: "/logo-mark.svg",
-          walletChainType: "ethereum-only",
+          // Solana deposits need a Solana refund wallet. Login still only
+          // creates the Ethereum cash wallet (see embeddedWallets below).
+          walletChainType: "ethereum-and-solana",
           showWalletLoginFirst: false,
           walletList: [
             "detected_ethereum_wallets",
@@ -30,6 +32,7 @@ export default function PrivyRoot({ children }: { children: React.ReactNode }) {
         loginMethods: ["email", "google", "twitter", "discord", "wallet"],
         embeddedWallets: {
           ethereum: { createOnLogin: "all-users" },
+          solana: { createOnLogin: "off" },
           showWalletUIs: false,
         },
       }}

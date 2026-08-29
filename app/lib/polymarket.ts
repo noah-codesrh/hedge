@@ -60,8 +60,13 @@ function rankMarkets(markets: Market[]) {
   });
 }
 
-function mapMarket(raw: Record<string, unknown>, eventId: string): Market | null {
-  if (raw.closed === true || raw.enableOrderBook === false) return null;
+function mapMarket(
+  raw: Record<string, unknown>,
+  eventId: string,
+  opts?: { includeClosed?: boolean },
+): Market | null {
+  const closed = raw.closed === true || raw.enableOrderBook === false;
+  if (closed && !opts?.includeClosed) return null;
   const labels = parseJson<string[]>(raw.outcomes, ["Yes", "No"]);
   const prices = parseJson<string[]>(raw.outcomePrices, ["0.5", "0.5"]);
   const tokens = parseJson<string[]>(raw.clobTokenIds, []);
@@ -78,18 +83,21 @@ function mapMarket(raw: Record<string, unknown>, eventId: string): Market | null
     liquidity: num(raw.liquidityNum ?? raw.liquidity),
     spread: raw.spread == null ? null : num(raw.spread),
     endDate: str(raw.endDateIso) ?? str(raw.endDate),
-    enableOrderBook: raw.enableOrderBook !== false,
-    acceptingOrders: raw.acceptingOrders !== false,
+    enableOrderBook: !closed && raw.enableOrderBook !== false,
+    acceptingOrders: !closed && raw.acceptingOrders !== false,
     groupItemTitle: str(raw.groupItemTitle),
   };
 }
 
-function mapEvent(raw: Record<string, unknown>): PolymarketEvent | null {
-  if (raw.closed === true) return null;
+function mapEvent(
+  raw: Record<string, unknown>,
+  opts?: { includeClosed?: boolean },
+): PolymarketEvent | null {
+  if (raw.closed === true && !opts?.includeClosed) return null;
   const id = String(raw.id);
   const markets = rankMarkets(
     (Array.isArray(raw.markets) ? raw.markets : [])
-      .map((m) => mapMarket(m as Record<string, unknown>, id))
+      .map((m) => mapMarket(m as Record<string, unknown>, id, opts))
       .filter((m): m is Market => !!m && m.question.length > 0),
   );
   if (markets.length === 0) return null;
@@ -428,7 +436,10 @@ export async function getEvent(idOrSlug: string): Promise<PolymarketEvent | null
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Gamma event failed (${res.status})`);
-  return mapEvent((await res.json()) as Record<string, unknown>);
+  // Detail pages must keep resolved events. Listings still drop them in mapRows.
+  return mapEvent((await res.json()) as Record<string, unknown>, {
+    includeClosed: true,
+  });
 }
 
 /**

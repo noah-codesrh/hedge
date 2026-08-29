@@ -1,11 +1,13 @@
 import {
   createPublicClient,
+  fallback,
   http,
   keccak256,
   stringToBytes,
   type Hex,
 } from "viem";
 import { robinhoodChain } from "./chains";
+import { RH_RPC, RH_RPC_FALLBACK } from "./robinhood";
 import { engineAbi, vaultAbi } from "./leverage-abi";
 import {
   ENGINE_ADDRESS,
@@ -31,7 +33,10 @@ import {
  */
 const client = createPublicClient({
   chain: robinhoodChain,
-  transport: http(),
+  transport: fallback([
+    http(RH_RPC_FALLBACK, { timeout: 6_000 }),
+    http(RH_RPC, { timeout: 6_000 }),
+  ]),
 });
 
 export const USDG_DECIMALS = 6;
@@ -351,19 +356,38 @@ export type VaultState = {
   seniorRoom: number | null;
 };
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("rpc timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export async function readVaultState(): Promise<VaultState | null> {
   if (!earnIsLive) return null;
 
   try {
-    const [tvl, senior, junior, locked, free, paused, cap] = await Promise.all([
-      client.readContract({ ...vault, functionName: "totalAssets" }),
-      client.readContract({ ...vault, functionName: "seniorAssets" }),
-      client.readContract({ ...vault, functionName: "juniorAssets" }),
-      client.readContract({ ...vault, functionName: "lockedAssets" }),
-      client.readContract({ ...vault, functionName: "freeAssets" }),
-      client.readContract({ ...vault, functionName: "depositsPaused" }),
-      client.readContract({ ...vault, functionName: "seniorCap" }),
-    ]);
+    const [tvl, senior, junior, locked, free, paused, cap] = await withTimeout(
+      Promise.all([
+        client.readContract({ ...vault, functionName: "totalAssets" }),
+        client.readContract({ ...vault, functionName: "seniorAssets" }),
+        client.readContract({ ...vault, functionName: "juniorAssets" }),
+        client.readContract({ ...vault, functionName: "lockedAssets" }),
+        client.readContract({ ...vault, functionName: "freeAssets" }),
+        client.readContract({ ...vault, functionName: "depositsPaused" }),
+        client.readContract({ ...vault, functionName: "seniorCap" }),
+      ]),
+      10_000,
+    );
 
     const total = toUsd(tvl);
     const uncapped = cap > 2n ** 200n;

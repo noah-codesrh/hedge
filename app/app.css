@@ -29,6 +29,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Privy's dialog shell is z-index 999999. A 504'd login chunk leaves it
+ * mounted with no content, which swallows Get Started / Connect.
+ */
+#privy-modal-content:empty {
+  pointer-events: none;
+}
+
 @media (hover: none) {
   .market-card:hover {
     transform: none;
@@ -93,13 +101,13 @@ body > div {
   }
 }
 .animate-fade-in {
-  animation: hedge-fade-in 0.2s ease-out both;
+  animation: hedge-fade-in 0.2s ease-out;
 }
 .animate-pop-in {
-  animation: hedge-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: hedge-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .animate-card-in {
-  animation: hedge-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: hedge-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes hedge-menu-item-in {
@@ -127,7 +135,10 @@ body > div {
   .hedge-scrim {
     transition-duration: 1ms !important;
   }
-  .animate-menu-item {
+  .animate-menu-item,
+  .animate-fade-in,
+  .animate-pop-in,
+  .animate-card-in {
     animation: none;
   }
 }

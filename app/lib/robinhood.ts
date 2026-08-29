@@ -1,6 +1,8 @@
 export const RH_CHAIN_ID = 4663;
 export const RH_CHAIN_HEX = "0x1237";
 export const RH_RPC = "https://rpc.mainnet.chain.robinhood.com";
+/** Official RPC Cloudflare-challenges some IPs; reads fall through here. */
+export const RH_RPC_FALLBACK = "https://rpc-robinhood.blockmachine.io";
 export const RH_EXPLORER = "https://robinhoodchain.blockscout.com";
 
 export const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
@@ -100,16 +102,31 @@ export function toHexQuantity(n: bigint) {
   return `0x${n.toString(16)}` as `0x${string}`;
 }
 
+const RH_RPCS = [RH_RPC_FALLBACK, RH_RPC];
+
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(RH_RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const data: unknown = await res.json();
-  const err = (data as { error?: { message?: string } }).error;
-  if (err) throw new Error(err.message ?? "RPC failed");
-  return (data as { result: T }).result;
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
+  let last: Error | null = null;
+  for (const url of RH_RPCS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      const text = await res.text();
+      if (text.trimStart().startsWith("<")) {
+        throw new Error("rpc returned html");
+      }
+      const data: unknown = JSON.parse(text);
+      const err = (data as { error?: { message?: string } }).error;
+      if (err) throw new Error(err.message ?? "RPC failed");
+      return (data as { result: T }).result;
+    } catch (e) {
+      last = e instanceof Error ? e : new Error("RPC failed");
+    }
+  }
+  throw last ?? new Error("RPC failed");
 }
 
 function encodeBalanceOf(owner: string) {

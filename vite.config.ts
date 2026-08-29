@@ -7,7 +7,7 @@ export default defineConfig({
   optimizeDeps: {
     // Privy lazy-loads its login screens. If the dep optimizer rebuilds mid-session
     // those chunk URLs 504 and the wallet overlay mounts with no content.
-    include: ["@privy-io/react-auth"],
+    include: ["@privy-io/react-auth", "@privy-io/react-auth/hooks"],
   },
   server: {
     port: 5174,

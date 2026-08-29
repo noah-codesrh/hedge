@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useAuthorizationSignature, usePrivy } from "@privy-io/react-auth";
-import { fiat, pct } from "../lib/format";
-import { earnIsLive, leverageEnabled, VAULT_ADDRESS } from "../lib/leverage";
+import type { Route } from "./+types/earn";
+import { fiat, pct, shorten } from "../lib/format";
+import { earnIsLive, leverageIsLive, VAULT_ADDRESS } from "../lib/leverage";
 import {
   leverageAtTvl,
-  readEngineState,
   readLeverageTiers,
   readLpPosition,
   readSeniorApr,
   readUsdgBalance,
   readVaultState,
-  type EngineState,
   type LeverageTier,
   type LpPosition,
   type VaultState,
@@ -20,67 +19,218 @@ import {
   ACTIVITY_LEVELS,
   MAX_POOL_EXPOSURE,
   projectSeniorYield,
-  ROUND_TRIP_FEE,
-  SENIOR_FEE_SHARE,
 } from "../lib/leverage-yield";
 import { notifyBalancesChanged } from "../lib/positions";
 import { RH_EXPLORER } from "../lib/robinhood";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
-import {
-  ArrowDownTrayIcon,
-  ArrowUpTrayIcon,
-  LayersIcon,
-  SparkleIcon,
-  VaultIcon,
-} from "../components/icons";
+import { CheckIcon, CopyIcon, VaultIcon } from "../components/icons";
+
+/** Typical ticket the yield model is sized against ($3 margin at 2x). */
+const TYPICAL_SIZE = 6;
+/** First-LP reference so the page can show a rate before senior is seeded. */
+const REFERENCE_SENIOR = 1_000;
+
+type EarnRate = {
+  apr: number;
+  kind: "live" | "est";
+};
+
+function formatApr(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n >= 1000) return "999+%";
+  return `${n >= 10 ? n.toFixed(0) : n.toFixed(1)}%`;
+}
+
+function estimateApr(
+  vault: VaultState | null,
+  extraSenior: number,
+  tiers: LeverageTier[],
+): number | null {
+  const junior = vault?.junior ?? 0;
+  const senior = Math.max(0, (vault?.senior ?? 0) + extraSenior);
+  const base = senior > 0 ? senior : REFERENCE_SENIOR;
+  const lev =
+    tiers.length > 0 ? leverageAtTvl(tiers, base + junior) : 2;
+
+  const run = (id: "steady" | "quiet") => {
+    const level = ACTIVITY_LEVELS.find((l) => l.id === id)!;
+    return projectSeniorYield({
+      senior: base,
+      junior,
+      tradesPerDay: level.tradesPerDay,
+      avgPositionSize: TYPICAL_SIZE,
+      avgHoldHours: level.avgHoldHours,
+      borrowRateBps: 1,
+      avgLeverage: Math.max(2, lev),
+    });
+  };
+
+  // Quiet while leverage trading is off — a busy-book rate would be a
+  // promise the pool cannot keep yet. Steady once the book is live.
+  const headline = run(leverageIsLive ? "steady" : "quiet");
+  const pick = headline.implausible ? run("quiet") : headline;
+  return Number.isFinite(pick.apr) && pick.apr > 0 ? pick.apr : null;
+}
+
+async function fetchVaultSnapshot(): Promise<{
+  vault: VaultState | null;
+  tiers: LeverageTier[];
+}> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const res = await fetch("/api/vault", { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`vault ${res.status}`);
+    const data: unknown = await res.json();
+    const row = data as { vault?: VaultState | null; tiers?: LeverageTier[] };
+    return {
+      vault: row.vault ?? null,
+      tiers: Array.isArray(row.tiers) ? row.tiers : [],
+    };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function resolveRate(
+  vault: VaultState | null,
+  extraSenior: number,
+  tiers: LeverageTier[],
+  realised: Awaited<ReturnType<typeof readSeniorApr>> | null,
+): EarnRate | null {
+  if (realised && Number.isFinite(realised.apr) && realised.apr > 0) {
+    return { apr: realised.apr, kind: "live" };
+  }
+  const apr = estimateApr(vault, extraSenior, tiers);
+  return apr != null ? { apr, kind: "est" } : null;
+}
 
 export function meta() {
   return [
     { title: "Earn · Hedge" },
     {
       name: "description",
-      content:
-        "Provide USDG liquidity to the Hedge vault and earn a share of trading fees.",
+      content: "Deposit USDG into the Hedge vault.",
     },
   ];
 }
 
-export default function Earn() {
-  const mounted = usePrivyMounted();
+export async function loader() {
+  if (!earnIsLive) return { vault: null, tiers: [] as LeverageTier[] };
+  const [vault, tiers] = await Promise.all([
+    readVaultState(),
+    readLeverageTiers(),
+  ]);
+  return { vault, tiers };
+}
+
+export default function Earn({ loaderData }: Route.ComponentProps) {
   return (
-    <main className="mx-auto min-w-0 max-w-3xl space-y-4 px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:px-4 sm:pt-8 lg:pb-10">
-      {mounted ? <EarnInner /> : <Skeleton />}
+    <main className="mx-auto min-w-0 max-w-5xl px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-10 lg:pb-10">
+      {earnIsLive ? <EarnLive initial={loaderData} /> : <NotLive />}
     </main>
   );
 }
 
-function Skeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="h-44 animate-pulse rounded-3xl bg-card ring-1 ring-white/5" />
-      <div className="h-52 animate-pulse rounded-3xl bg-card ring-1 ring-white/5" />
-      <div className="h-64 animate-pulse rounded-3xl bg-card ring-1 ring-white/5" />
-    </div>
-  );
-}
-
-function EarnInner() {
-  const { authenticated, getAccessToken } = usePrivy();
-  const { openModal } = useAuthModal();
-  const { cashAddress } = useEnsureCashWallet();
-  const { generateAuthorizationSignature } = useAuthorizationSignature();
-
-  const [vault, setVault] = useState<VaultState | null>(null);
-  const [engine, setEngine] = useState<EngineState | null>(null);
-  const [tiers, setTiers] = useState<LeverageTier[]>([]);
-  const [mine, setMine] = useState<LpPosition | null>(null);
-  const [balance, setBalance] = useState(0);
+function EarnLive({
+  initial,
+}: {
+  initial: { vault: VaultState | null; tiers: LeverageTier[] };
+}) {
+  const privyReady = usePrivyMounted();
+  const [vault, setVault] = useState<VaultState | null>(initial.vault);
+  const [tiers, setTiers] = useState<LeverageTier[]>(initial.tiers);
   const [realised, setRealised] = useState<Awaited<
     ReturnType<typeof readSeniorApr>
   > | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initial.vault);
 
+  const loadVault = useCallback(async () => {
+    try {
+      const snap = await fetchVaultSnapshot();
+      if (snap.vault) setVault(snap.vault);
+      if (snap.tiers.length) setTiers(snap.tiers);
+    } catch {
+      // Browser RPC hangs on some Chrome profiles. The route loader already
+      // tried the server path — do not block the card on a second hang.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setVault((prev) => initial.vault ?? prev);
+    if (initial.tiers.length) setTiers(initial.tiers);
+    if (initial.vault) setLoading(false);
+  }, [initial.vault, initial.tiers]);
+
+  useEffect(() => {
+    void loadVault();
+    const timer = setInterval(() => void loadVault(), 20_000);
+    return () => clearInterval(timer);
+  }, [loadVault]);
+
+  useEffect(() => {
+    void readSeniorApr().then(setRealised);
+  }, []);
+
+  if (privyReady) {
+    return (
+      <EarnInner
+        vault={vault}
+        tiers={tiers}
+        realised={realised}
+        loading={loading}
+        reloadVault={loadVault}
+      />
+    );
+  }
+
+  const rate = resolveRate(vault, 0, tiers, realised);
+
+  return (
+    <EarnSplit>
+      <Hero vault={vault} rate={rate} mine={null} loading={loading} />
+      <Panel
+        vault={vault}
+        tiers={tiers}
+        rate={rate}
+        authenticated={false}
+        balance={0}
+        withdrawable={0}
+        onConnect
+      />
+    </EarnSplit>
+  );
+}
+
+function EarnSplit({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 md:items-stretch">{children}</div>
+  );
+}
+
+function EarnInner({
+  vault,
+  tiers,
+  realised,
+  loading,
+  reloadVault,
+}: {
+  vault: VaultState | null;
+  tiers: LeverageTier[];
+  realised: Awaited<ReturnType<typeof readSeniorApr>> | null;
+  loading: boolean;
+  reloadVault: () => Promise<void>;
+}) {
+  const { authenticated, getAccessToken } = usePrivy();
+  const { openModal } = useAuthModal();
+  const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
+  const { generateAuthorizationSignature } = useAuthorizationSignature();
+
+  const [mine, setMine] = useState<LpPosition | null>(null);
+  const [balance, setBalance] = useState(0);
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -88,38 +238,20 @@ function EarnInner() {
   const [done, setDone] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [v, e, m, b] = await Promise.all([
-      readVaultState(),
-      readEngineState(),
+    const [m, b] = await Promise.all([
       cashAddress ? readLpPosition(cashAddress) : Promise.resolve(null),
       cashAddress ? readUsdgBalance(cashAddress) : Promise.resolve(0),
     ]);
-    setVault(v);
-    setEngine(e);
     setMine(m);
     setBalance(b);
-    setLoading(false);
-  }, [cashAddress]);
+    await reloadVault();
+  }, [cashAddress, reloadVault]);
 
   useEffect(() => {
-    if (!earnIsLive) {
-      setLoading(false);
-      return;
-    }
     void load();
     const timer = setInterval(() => void load(), 20_000);
     return () => clearInterval(timer);
   }, [load]);
-
-  // Split from the rest: these walk event logs and read a static schedule, so
-  // neither should hold up the numbers people came to see.
-  useEffect(() => {
-    if (!earnIsLive) return;
-    void readSeniorApr().then(setRealised);
-    void readLeverageTiers().then(setTiers);
-  }, []);
-
-  if (!earnIsLive) return <NotLive />;
 
   const value = Number(amount);
   const withdrawable = mine?.assets ?? 0;
@@ -136,11 +268,13 @@ function EarnInner() {
     try {
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Session expired. Sign in again.");
-      if (!cashAddress) throw new Error("Your wallet isn't ready yet.");
+      const cashWallet = await ensureCashWallet();
+      if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
 
       const ctx = {
         accessToken,
-        from: cashAddress,
+        from: cashWallet.address,
+        wallet: cashWallet,
         signAuthorization: async (
           payload: Parameters<typeof generateAuthorizationSignature>[0],
         ) => {
@@ -155,9 +289,6 @@ function EarnInner() {
         await actions.depositToVault(ctx, value);
         setDone(`Deposited ${fiat(value)}.`);
       } else {
-        // Withdrawals are denominated in shares on-chain. Converting from the
-        // asset amount here would round against the LP and strand dust, so a
-        // full exit passes the exact share balance instead.
         const shares =
           mine && value >= withdrawable - 1e-9
             ? mine.shares
@@ -178,446 +309,388 @@ function EarnInner() {
     }
   };
 
+  const extra =
+    mode === "deposit" && Number.isFinite(value) && value > 0 ? value : 0;
+  const rate = useMemo(
+    () => resolveRate(vault, extra, tiers, realised),
+    [vault, extra, tiers, realised],
+  );
+
   return (
-    <>
-      <Hero vault={vault} realised={realised} mine={withdrawable} loading={loading} />
+    <EarnSplit>
+      <Hero
+        vault={vault}
+        rate={rate}
+        mine={withdrawable}
+        loading={loading}
+      />
+      <Panel
+        vault={vault}
+        tiers={tiers}
+        rate={rate}
+        authenticated={authenticated}
+        balance={balance}
+        withdrawable={withdrawable}
+        mode={mode}
+        amount={amount}
+        busy={busy}
+        error={error}
+        done={done}
+        valid={valid}
+        onMode={(m) => {
+          setMode(m);
+          setAmount("");
+          setError(null);
+          setDone(null);
+        }}
+        onAmount={setAmount}
+        onSubmit={() => void submit()}
+        onConnect={false}
+      />
+    </EarnSplit>
+  );
+}
 
-      <SeedNotice vault={vault} />
+function Hero({
+  vault,
+  rate,
+  mine,
+  loading,
+}: {
+  vault: VaultState | null;
+  rate: EarnRate | null;
+  mine: number | null;
+  loading: boolean;
+}) {
+  const tvl = vault?.tvl ?? 0;
+  const senior = vault?.senior ?? 0;
+  const junior = vault?.junior ?? 0;
+  const lev =
+    tvl >= 20_000 ? "5x" : tvl >= 5_000 ? "4x" : tvl >= 1_000 ? "3x" : "2x";
+  const apr = rate ? formatApr(rate.apr) : null;
 
-      <Projector vault={vault} engine={engine} tiers={tiers} />
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.75rem] bg-card ring-1 ring-white/5">
+      <div className="px-5 pt-6 pb-5 sm:px-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gold/15 text-gold">
+              <VaultIcon size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-muted">
+                Total in pool
+              </p>
+              <p className="mt-0.5 text-[12px] text-[#6b6b6b]">
+                USDG · Robinhood Chain
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 text-right">
+            {apr ? (
+              <>
+                <p className="text-[15px] font-semibold tabular-nums text-gold">
+                  {apr} APR
+                </p>
+                <p className="mt-0.5 text-[11px] text-[#6b6b6b]">
+                  {rate?.kind === "live"
+                    ? "Paid to senior"
+                    : "Est. senior yield"}
+                  <span className="text-[#4a4a4a]"> · {lev}</span>
+                </p>
+              </>
+            ) : (
+              <p className="text-[13px] font-medium text-muted">{lev}</p>
+            )}
+          </div>
+        </div>
 
-      <section className="rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-6">
-        <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-full bg-[#1b1b1b] p-1">
-          {(
-            [
-              ["deposit", "Deposit", <ArrowDownTrayIcon key="d" size={15} />],
-              ["withdraw", "Withdraw", <ArrowUpTrayIcon key="w" size={15} />],
-            ] as const
-          ).map(([m, label, icon]) => (
+        {vault == null && loading ? (
+          <span
+            className="mt-5 block h-11 w-44 animate-pulse rounded-xl bg-white/10 sm:h-14 sm:w-56"
+            aria-label="Loading pool total"
+          />
+        ) : (
+          <p className="mt-5 text-[2.35rem] font-bold leading-none tracking-tight tabular-nums sm:text-5xl">
+            {fiat(tvl)}
+          </p>
+        )}
+
+        <PoolBar senior={senior} junior={junior} loading={vault == null && loading} />
+      </div>
+
+      <div className="mt-auto grid grid-cols-3 divide-x divide-white/5 border-t border-white/5">
+        <Stat label="You" value={mine == null ? "—" : fiat(mine)} />
+        <Stat
+          label="Junior"
+          value={vault == null && loading ? "—" : fiat(junior)}
+        />
+        <Stat
+          label="In use"
+          value={vault == null && loading ? "—" : pct(vault?.utilisation ?? 0)}
+        />
+      </div>
+
+      <ExplorerRow />
+    </section>
+  );
+}
+
+function PoolBar({
+  senior,
+  junior,
+  loading,
+}: {
+  senior: number;
+  junior: number;
+  loading: boolean;
+}) {
+  const total = senior + junior;
+  const seniorPct = total > 0 ? (senior / total) * 100 : 0;
+  const juniorPct = total > 0 ? (junior / total) * 100 : 0;
+
+  return (
+    <div className="mt-5">
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+        {!loading && total > 0 ? (
+          <div className="flex h-full">
+            <div className="bg-gold" style={{ width: `${seniorPct}%` }} />
+            <div className="bg-white/20" style={{ width: `${juniorPct}%` }} />
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+        <span>
+          Senior{" "}
+          <span className="tabular-nums text-[#cfcfcf]">
+            {loading ? "—" : fiat(senior)}
+          </span>
+        </span>
+        <span>
+          Junior{" "}
+          <span className="tabular-nums text-[#cfcfcf]">
+            {loading ? "—" : fiat(junior)}
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ExplorerRow() {
+  const [copied, setCopied] = useState(false);
+  if (!VAULT_ADDRESS) return null;
+
+  const href = `${RH_EXPLORER}/address/${VAULT_ADDRESS}`;
+  const copy = async () => {
+    await navigator.clipboard?.writeText(VAULT_ADDRESS);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="flex items-center gap-3 border-t border-white/5 px-5 py-3.5 sm:px-6">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] uppercase tracking-wide text-muted">
+          Vault contract
+        </p>
+        <p className="mt-0.5 truncate font-mono text-[13px] font-semibold">
+          {shorten(VAULT_ADDRESS)}
+        </p>
+      </div>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-full bg-white/5 px-3 py-1.5 text-[12px] font-semibold text-[#cfcfcf] transition hover:bg-white/10 hover:text-white"
+      >
+        Explorer
+      </a>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="rounded-full bg-white/5 p-1.5 text-[#cfcfcf] transition hover:bg-white/10 hover:text-white"
+        aria-label={copied ? "Copied" : "Copy vault address"}
+      >
+        {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+      </button>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 px-4 py-3.5">
+      <p className="text-[11px] text-muted">{label}</p>
+      <p className="mt-0.5 truncate text-[15px] font-semibold tabular-nums">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function Panel({
+  vault,
+  tiers,
+  rate,
+  authenticated,
+  balance,
+  withdrawable,
+  mode = "deposit",
+  amount = "",
+  busy = false,
+  error = null,
+  done = null,
+  valid = false,
+  onMode,
+  onAmount,
+  onSubmit,
+  onConnect,
+}: {
+  vault: VaultState | null;
+  tiers: LeverageTier[];
+  rate: EarnRate | null;
+  authenticated: boolean;
+  balance: number;
+  withdrawable: number;
+  mode?: "deposit" | "withdraw";
+  amount?: string;
+  busy?: boolean;
+  error?: string | null;
+  done?: string | null;
+  valid?: boolean;
+  onMode?: (m: "deposit" | "withdraw") => void;
+  onAmount?: (v: string) => void;
+  onSubmit?: () => void;
+  onConnect: boolean;
+}) {
+  const { openModal } = useAuthModal();
+  const value = Number(amount);
+  const max = mode === "deposit" ? balance : withdrawable;
+  const apr = rate ? formatApr(rate.apr) : null;
+
+  return (
+    <section className="flex h-full min-h-0 flex-col rounded-[1.75rem] bg-card p-4 ring-1 ring-white/5 sm:p-5">
+      {onConnect ? (
+        <div className="mb-3 px-1">
+          <p className="text-[13px] text-muted">
+            Deposit USDG to the senior side of the pool.
+          </p>
+          {apr ? (
+            <p className="mt-1 text-[13px] font-semibold text-gold">
+              Earn {apr} APR
+              {rate?.kind === "est" ? (
+                <span className="font-medium text-[#6b6b6b]"> est.</span>
+              ) : null}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-full bg-[#1b1b1b] p-1">
+          {(["deposit", "withdraw"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => {
-                setMode(m);
-                setAmount("");
-                setError(null);
-                setDone(null);
-              }}
-              className={`flex items-center justify-center gap-1.5 rounded-full py-2.5 text-[14px] font-bold transition ${
+              type="button"
+              onClick={() => onMode?.(m)}
+              className={`rounded-full py-2 text-[13px] font-semibold capitalize transition ${
                 mode === m
                   ? "bg-white text-black"
                   : "text-[#cfcfcf] hover:text-white"
               }`}
             >
-              {icon}
-              {label}
+              {m}
             </button>
           ))}
         </div>
+      )}
 
-        <div className="rounded-2xl bg-[#252525] p-3 sm:p-4">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[15px] text-muted">Amount</span>
-            <div className="flex min-w-0 items-baseline gap-0.5 text-2xl font-bold sm:text-3xl">
-              <span className="text-lg text-muted sm:text-xl">$</span>
-              <input
-                type="number"
-                min={0}
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                className="w-28 bg-transparent text-right outline-none placeholder-white sm:w-32"
-              />
-            </div>
+      <div className="rounded-2xl bg-[#1f1f1f] px-4 py-5">
+        <div className="flex items-end justify-between gap-3">
+          <div className="mb-1.5">
+            <p className="text-[13px] text-muted">
+              {mode === "withdraw" ? "Withdraw" : "Deposit"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-[#6b6b6b]">USDG</p>
           </div>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
-            <span>
+          <div className="flex min-w-0 items-baseline gap-0.5">
+            <span className="text-2xl font-semibold text-muted">$</span>
+            <input
+              type="number"
+              min={0}
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => onAmount?.(e.target.value)}
+              placeholder="0"
+              className="w-36 bg-transparent text-right text-[2.5rem] font-bold leading-none tracking-tight outline-none placeholder-white/25 sm:w-44"
+            />
+          </div>
+        </div>
+        {onConnect ? null : (
+          <div className="mt-3 flex items-center justify-between text-[12px] text-muted">
+            <span className="tabular-nums">
               {mode === "deposit"
-                ? `${fiat(balance)} USDG available`
-                : `${fiat(withdrawable)} withdrawable`}
+                ? `${fiat(balance)} available`
+                : `${fiat(withdrawable)} free`}
             </span>
             <button
               type="button"
-              onClick={() => setAmount(String(Math.floor(max * 100) / 100))}
-              className="font-semibold text-gold transition hover:text-gold/80"
+              onClick={() =>
+                onAmount?.(String(Math.floor(max * 100) / 100))
+              }
+              className="font-semibold text-gold hover:text-gold/80"
             >
               Max
             </button>
           </div>
+        )}
+      </div>
 
-          {max > 0 ? (
-            <div className="mt-3 grid grid-cols-4 gap-1.5">
-              {[0.25, 0.5, 0.75, 1].map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() =>
-                    setAmount(String(Math.floor(max * f * 100) / 100))
-                  }
-                  className="rounded-full bg-[#1b1b1b] py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#2c2c2c]"
-                >
-                  {f === 1 ? "Max" : `${f * 100}%`}
-                </button>
-              ))}
-            </div>
+      {mode === "deposit" && value > 0 && vault ? (
+        <Preview amount={value} vault={vault} tiers={tiers} />
+      ) : null}
+
+      {mode === "withdraw" && vault && withdrawable > vault.free ? (
+        <p className="mt-3 text-[12px] text-gold">{fiat(vault.free)} free</p>
+      ) : null}
+      {vault?.depositsPaused && mode === "deposit" ? (
+        <p className="mt-3 text-[12px] text-gold">Deposits paused</p>
+      ) : null}
+      {error ? <p className="mt-3 text-[12px] text-down">{error}</p> : null}
+      {done ? <p className="mt-3 text-[12px] text-up">{done}</p> : null}
+
+      {!onConnect && apr && mode === "deposit" ? (
+        <p className="mt-3 px-1 text-[13px] font-semibold text-gold">
+          Earn {apr} APR
+          {rate?.kind === "est" ? (
+            <span className="font-medium text-[#6b6b6b]"> est.</span>
           ) : null}
-        </div>
-
-        {mode === "deposit" && value > 0 && vault ? (
-          <DepositPreview amount={value} vault={vault} tiers={tiers} />
-        ) : null}
-
-        {mode === "withdraw" && vault && withdrawable > vault.free ? (
-          <Notice tone="gold">
-            {fiat(vault.free)} is free right now. The rest frees up as open
-            trades close.
-          </Notice>
-        ) : null}
-
-        {vault?.depositsPaused && mode === "deposit" ? (
-          <Notice tone="gold">
-            Deposits are paused right now. Withdrawals are unaffected.
-          </Notice>
-        ) : null}
-
-        {error ? <Notice tone="down">{error}</Notice> : null}
-        {done ? <Notice tone="up">{done}</Notice> : null}
-
-        <button
-          onClick={() => void submit()}
-          disabled={authenticated && (busy || !valid)}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-semibold text-black transition hover:bg-white/90 disabled:opacity-50"
-        >
-          {busy && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
-          )}
-          {!authenticated
-            ? "Connect wallet"
-            : busy
-              ? mode === "deposit"
-                ? "Depositing…"
-                : "Withdrawing…"
-              : mode === "deposit"
-                ? "Deposit USDG"
-                : "Withdraw USDG"}
-        </button>
-      </section>
-
-      <HowItWorks vault={vault} />
-      <RiskNote />
-    </>
-  );
-}
-
-/**
- * Headline block.
- *
- * Leads with realised APR when there is enough history to compute one, and
- * falls back to the vault's size otherwise. Deliberately does not lead with the
- * projection: an estimate rendered at hero size reads as a promise.
- */
-function Hero({
-  vault,
-  realised,
-  mine,
-  loading,
-}: {
-  vault: VaultState | null;
-  realised: Awaited<ReturnType<typeof readSeniorApr>> | null;
-  mine: number;
-  loading: boolean;
-}) {
-  return (
-    <section className="overflow-hidden rounded-3xl bg-card ring-1 ring-white/5">
-      <div className="relative border-b border-white/5 bg-gradient-to-br from-gold/[0.12] via-transparent to-transparent p-5 sm:p-6">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-gold">
-          <VaultIcon size={16} />
-          Hedge vault
-        </div>
-        <h1 className="mt-2.5 text-[26px] font-bold leading-tight tracking-tight sm:text-3xl">
-          Back the other side of every leveraged trade
-        </h1>
-        <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-muted sm:text-[15px]">
-          Deposit USDG. You keep {Math.round(SENIOR_FEE_SHARE * 100)}% of the
-          fees traders pay.
         </p>
-      </div>
-
-      <div className="grid grid-cols-2 divide-x divide-white/5 border-b border-white/5 sm:grid-cols-4">
-        <HeroStat
-          label="Vault size"
-          value={loading ? "—" : fiat(vault?.tvl ?? 0)}
-        />
-        <HeroStat
-          label="Realised APR"
-          value={realised ? `${realised.apr.toFixed(1)}%` : "—"}
-          hint={
-            realised
-              ? `over ${realised.windowDays.toFixed(0)}d`
-              : "no history yet"
-          }
-        />
-        <HeroStat
-          label="In use"
-          value={loading ? "—" : pct(vault?.utilisation ?? 0)}
-          hint="backing trades"
-        />
-        <HeroStat label="Your deposit" value={loading ? "—" : fiat(mine)} />
-      </div>
-
-      {vault ? (
-        <div className="p-5 sm:p-6">
-          <div className="flex items-center justify-between text-[12px] text-muted">
-            <span>
-              Senior{" "}
-              <span className="font-semibold text-white">
-                {fiat(vault.senior)}
-              </span>{" "}
-              · Junior{" "}
-              <span className="font-semibold text-white">
-                {fiat(vault.junior)}
-              </span>
-            </span>
-            <span className="tabular-nums">{fiat(vault.free)} free</span>
-          </div>
-          <div className="mt-2 flex h-2 gap-0.5 overflow-hidden rounded-full bg-white/5">
-            <div
-              className="h-full bg-gold transition-all"
-              style={{ width: `${Math.min(100, vault.utilisation * 100)}%` }}
-            />
-          </div>
-        </div>
       ) : null}
+
+      <button
+        type="button"
+        onClick={onConnect ? openModal : onSubmit}
+        disabled={!onConnect && authenticated && (busy || !valid)}
+        className="mt-auto flex w-full items-center justify-center gap-2 rounded-full bg-gold py-3.5 text-[15px] font-semibold text-black transition hover:bg-gold/90 disabled:opacity-40 lg:mt-6"
+      >
+        {busy ? (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/25 border-t-black" />
+        ) : null}
+        {onConnect || !authenticated
+          ? "Connect"
+          : busy
+            ? mode === "deposit"
+              ? "Depositing…"
+              : "Withdrawing…"
+            : mode === "deposit"
+              ? "Deposit"
+              : "Withdraw"}
+      </button>
     </section>
   );
 }
 
-function HeroStat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="min-w-0 px-4 py-3.5 sm:px-5">
-      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums sm:text-xl">{value}</p>
-      {hint ? (
-        <p className="mt-0.5 truncate text-[11px] text-muted">{hint}</p>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * What the vault could pay once leverage markets are busy.
- *
- * Framed as a model rather than a rate, with its inputs on screen and
- * adjustable, because the honest answer today is that the vault has no trading
- * history to extrapolate from. Showing a single confident number here would be
- * the most misleading thing on the page.
- */
-function Projector({
-  vault,
-  engine,
-  tiers,
-}: {
-  vault: VaultState | null;
-  engine: EngineState | null;
-  tiers: LeverageTier[];
-}) {
-  const [levelId, setLevelId] = useState(ACTIVITY_LEVELS[1]!.id);
-  const [target, setTarget] = useState<number | null>(null);
-
-  const level =
-    ACTIVITY_LEVELS.find((l) => l.id === levelId) ?? ACTIVITY_LEVELS[1]!;
-
-  const junior = vault?.junior ?? 0;
-  const liveSenior = vault?.senior ?? 0;
-
-  // Scenario sizes worth showing: where the vault is now, and the TVL each
-  // tier steps up at, so the slider lands on thresholds that mean something.
-  const steps = useMemo(() => {
-    const fromTiers = tiers.map((t) => t.minTvl).filter((t) => t > 0);
-    const base = fromTiers.length > 0 ? fromTiers : [1_000, 5_000, 20_000];
-    const all = [Math.max(250, Math.round(liveSenior + junior)), ...base, 50_000];
-    return [...new Set(all)].sort((a, b) => a - b);
-  }, [tiers, liveSenior, junior]);
-
-  const tvl = target ?? steps[Math.min(1, steps.length - 1)]!;
-  const senior = Math.max(0, tvl - junior);
-  const avgLeverage =
-    tiers.length > 0 ? leverageAtTvl(tiers, tvl) : (engine?.maxLeverage ?? 2);
-
-  // A typical ticket, not a maximum one: most traders do not post the cap.
-  const maxMargin = engine?.maxMargin ?? 5;
-  const avgPositionSize = maxMargin * 0.6 * avgLeverage;
-
-  const projection = projectSeniorYield({
-    senior,
-    junior,
-    tradesPerDay: level.tradesPerDay,
-    avgPositionSize,
-    avgHoldHours: level.avgHoldHours,
-    borrowRateBps: engine?.borrowRateBps ?? 1,
-    avgLeverage,
-  });
-
-  return (
-    <section className="rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-6">
-      <div className="flex items-center gap-2">
-        <SparkleIcon size={15} />
-        <h2 className="text-[15px] font-semibold">What this could pay</h2>
-      </div>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-        No trading history yet. This is arithmetic on the assumptions below, not
-        a forecast.
-      </p>
-
-      <div className="mt-4 rounded-2xl bg-gradient-to-br from-gold/[0.14] to-transparent p-4 ring-1 ring-gold/15 sm:p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[12px] text-muted">Projected senior APR</p>
-            <p className="mt-0.5 text-4xl font-bold tabular-nums text-gold sm:text-5xl">
-              {rate(projection.apr)}
-            </p>
-          </div>
-          <div className="text-right text-[12px] text-muted">
-            <p>{rate(projection.apy)} APY reinvested</p>
-            <p className="mt-0.5">
-              ~{fiat(projection.dailyToSenior)} a day to LPs
-            </p>
-          </div>
-        </div>
-
-        {projection.implausible ? (
-          <p className="mt-3 rounded-xl bg-black/25 px-3 py-2 text-[12px] leading-snug text-gold">
-            A ceiling, not a rate — it assumes{" "}
-            {projection.turnover.toFixed(1)}x the vault turns over every day for
-            a year.
-          </p>
-        ) : null}
-
-        {projection.capacityBound ? (
-          <p className="mt-3 rounded-xl bg-black/25 px-3 py-2 text-[12px] leading-snug text-gold">
-            The pool fills first. Only {fiat(projection.dailyVolume)} of the{" "}
-            {fiat(projection.requestedVolume)} a day could be backed.
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-5">
-        <p className="text-[12px] font-semibold text-muted">How busy</p>
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
-          {ACTIVITY_LEVELS.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => setLevelId(l.id)}
-              className={`rounded-full py-2.5 text-[13px] font-bold transition ${
-                l.id === levelId
-                  ? "bg-white text-black"
-                  : "bg-[#1b1b1b] text-white hover:bg-[#2c2c2c]"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted">{level.detail}</p>
-      </div>
-
-      <div className="mt-4">
-        <p className="text-[12px] font-semibold text-muted">
-          If the vault reaches
-        </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {steps.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setTarget(s)}
-              className={`rounded-full px-3.5 py-2 text-[13px] font-bold tabular-nums transition ${
-                s === tvl
-                  ? "bg-gold text-black"
-                  : "bg-[#1b1b1b] text-white hover:bg-[#2c2c2c]"
-              }`}
-            >
-              {s >= 1000 ? `$${Math.round(s / 1000)}k` : fiat(s)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/5 pt-4 text-[12px] sm:grid-cols-4">
-        <Assumption
-          label="Leverage on offer"
-          value={`${avgLeverage % 1 === 0 ? avgLeverage : avgLeverage.toFixed(1)}x`}
-          hint="from the tier schedule"
-        />
-        <Assumption
-          label="Typical ticket"
-          value={fiat(avgPositionSize)}
-          hint={`held ${level.avgHoldHours}h`}
-        />
-        <Assumption
-          label="Volume backed"
-          value={`${fiat(projection.dailyVolume)}/day`}
-          hint={`${level.tradesPerDay} trades`}
-        />
-        <Assumption
-          label="Fee to LPs"
-          value={`${(ROUND_TRIP_FEE * SENIOR_FEE_SHARE * 100).toFixed(2)}%`}
-          hint="of every round trip"
-        />
-      </dl>
-
-      <p className="mt-3 text-[11px] leading-relaxed text-muted">
-        Fee income only, assuming traders break even overall. Their P&amp;L moves
-        this either way.
-      </p>
-    </section>
-  );
-}
-
-/**
- * Renders a rate at a legible width.
- *
- * Four-figure percentages are already at the edge of meaning something, so
- * anything past that is capped rather than printed in full — the difference
- * between 2,000% and 40,000% is not information an LP can act on, and a wall
- * of digits reads as a bug.
- */
-function rate(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "—";
-  if (value >= 5_000) return ">5,000%";
-  if (value >= 100) return `${Math.round(value).toLocaleString()}%`;
-  return `${value.toFixed(1)}%`;
-}
-
-function Assumption({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="truncate text-muted">{label}</dt>
-      <dd className="mt-0.5 font-bold tabular-nums">{value}</dd>
-      <dd className="truncate text-[11px] text-muted">{hint}</dd>
-    </div>
-  );
-}
-
-/** What a specific deposit does to the pool, shown before it is made. */
-function DepositPreview({
+function Preview({
   amount,
   vault,
   tiers,
@@ -630,209 +703,36 @@ function DepositPreview({
   const now = tiers.length > 0 ? leverageAtTvl(tiers, vault.tvl) : null;
   const next = tiers.length > 0 ? leverageAtTvl(tiers, after) : null;
   const unlocks = now != null && next != null && next > now;
-  const share = after > 0 ? amount / after : 0;
 
   return (
-    <div className="mt-3 space-y-1.5 rounded-2xl bg-[#1b1b1b] px-3.5 py-3 text-[12px]">
-      <Row label="Your share of the vault" value={pct(share)} />
-      <Row
-        label="Capacity this adds"
-        value={`+${fiat(amount * MAX_POOL_EXPOSURE)}`}
-      />
-      {unlocks ? (
-        <p className="flex items-start gap-1.5 pt-1 text-[12px] leading-snug text-gold">
-          <LayersIcon size={13} />
-          <span>
-            This deposit takes the vault past {fiat(after)} and unlocks {next}x
-            leverage for every trader.
-          </span>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="text-muted">{label}</span>
-      <span className="font-semibold tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function Notice({
-  tone,
-  children,
-}: {
-  tone: "gold" | "up" | "down";
-  children: React.ReactNode;
-}) {
-  const cls = {
-    gold: "bg-gold/10 text-gold",
-    up: "bg-up/10 text-up",
-    down: "bg-down/10 text-down",
-  }[tone];
-  return (
-    <p className={`mt-3 rounded-2xl px-3 py-2.5 text-[12px] leading-snug ${cls}`}>
-      {children}
-    </p>
-  );
-}
-
-/**
- * Honest status while leveraged trading is still off.
- *
- * The vault can take senior deposits now. Yield does not start until
- * traders are opening against it, and $1,000 TVL is the first 3x unlock.
- */
-function SeedNotice({ vault }: { vault: VaultState | null }) {
-  if (leverageEnabled) return null;
-
-  const tvl = vault?.tvl ?? 0;
-  const toTier = Math.max(0, 1_000 - tvl);
-
-  return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-gold/[0.07] px-4 py-3.5 ring-1 ring-gold/15 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="mt-0.5 shrink-0 text-gold">
-          <LayersIcon size={15} />
+    <div className="mt-3 flex items-center justify-between gap-3 px-1 text-[12px] text-muted">
+      <span>
+        Share{" "}
+        <span className="font-semibold text-white">
+          {pct(after > 0 ? amount / after : 0)}
         </span>
-        <p className="min-w-0 text-[13px] leading-relaxed text-muted">
-          <span className="font-semibold text-gold">Deposits are live.</span>{" "}
-          Leverage trading is still off, so there are no fees yet.{" "}
-          {toTier > 0 ? (
-            <>
-              {fiat(toTier)} more takes the vault to $1,000 and unlocks 3x
-              when trading opens.
-            </>
-          ) : (
-            <>The vault is past $1,000. 3x is ready when trading opens.</>
-          )}
-        </p>
-      </div>
+      </span>
+      <span>
+        +{fiat(amount * MAX_POOL_EXPOSURE)} cap
+        {unlocks ? (
+          <span className="ml-2 font-semibold text-gold">{next}x</span>
+        ) : null}
+      </span>
     </div>
-  );
-}
-
-function HowItWorks({ vault }: { vault: VaultState | null }) {
-  return (
-    <section className="rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-6">
-      <h2 className="text-[15px] font-semibold">Where the yield comes from</h2>
-      <ul className="mt-3 space-y-3 text-[13px] leading-relaxed text-muted">
-        <li className="flex gap-3">
-          <Bullet>1</Bullet>
-          <span>
-            <span className="font-semibold text-white">
-              {(ROUND_TRIP_FEE * 100).toFixed(0)}% round-trip fee.
-            </span>{" "}
-            On position size, not margin. {Math.round(SENIOR_FEE_SHARE * 100)}%
-            comes to senior LPs the moment a trade opens.
-          </span>
-        </li>
-        <li className="flex gap-3">
-          <Bullet>2</Bullet>
-          <span>
-            <span className="font-semibold text-white">Spread.</span> Entry is
-            priced 1% against the trader.
-          </span>
-        </li>
-        <li className="flex gap-3">
-          <Bullet>3</Bullet>
-          <span>
-            <span className="font-semibold text-white">Liquidations.</span> At
-            90% margin loss the position closes and the rest stays in the pool.
-          </span>
-        </li>
-        <li className="flex gap-3">
-          <Bullet>4</Bullet>
-          <span>
-            <span className="font-semibold text-white">Carry.</span> The
-            borrowed slice is charged by the hour while the trade is open.
-          </span>
-        </li>
-      </ul>
-
-      {vault ? (
-        <p className="mt-4 rounded-2xl bg-[#1b1b1b] px-3.5 py-3 text-[12px] leading-relaxed text-muted">
-          Only {Math.round(MAX_POOL_EXPOSURE * 100)}% of the vault is exposed at
-          once — {fiat(vault.tvl * MAX_POOL_EXPOSURE)} of {fiat(vault.tvl)}. The
-          rest stays free for withdrawals.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function Bullet({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold/15 text-[11px] font-bold text-gold">
-      {children}
-    </span>
   );
 }
 
 function NotLive() {
   return (
-    <section className="rounded-3xl bg-card p-8 text-center ring-1 ring-white/5">
-      <VaultIcon size={28} />
-      <p className="mt-3 text-[15px] font-semibold">Earn is up soon</p>
-      <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-muted">
-        We’re fine-tuning the liquidity pool. Once it’s ready this is where
-        you’ll deposit USDG and earn a share of every trading fee. Markets trade
-        as normal in the meantime.
-      </p>
+    <section className="rounded-[1.75rem] bg-card px-6 py-14 text-center ring-1 ring-white/5">
+      <VaultIcon size={22} />
+      <p className="mt-3 text-[15px] font-semibold">Soon</p>
       <Link
         to="/"
         className="mt-5 inline-flex rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black"
       >
-        Explore markets
+        Markets
       </Link>
-    </section>
-  );
-}
-
-function RiskNote() {
-  return (
-    <section className="rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-6">
-      <h2 className="text-[15px] font-semibold">What you’re taking on</h2>
-      <ul className="mt-3 space-y-2.5 text-[13px] leading-relaxed text-muted">
-        <li>
-          <span className="font-semibold text-white">
-            The vault is the counterparty.
-          </span>{" "}
-          Winning traders are paid out of the pool. A run of them is a real loss
-          to LPs.
-        </li>
-        <li>
-          <span className="font-semibold text-white">
-            Junior takes the first loss.
-          </span>{" "}
-          Hedge’s own money is spent before yours, but it is finite.
-        </li>
-        <li>
-          <span className="font-semibold text-white">
-            Withdrawals need free liquidity.
-          </span>{" "}
-          Capital backing an open trade can’t leave until that trade closes.
-        </li>
-        <li>
-          <span className="font-semibold text-white">
-            Prices come from an oracle.
-          </span>{" "}
-          If the keeper stalls, liquidations are late and the vault wears it.
-        </li>
-      </ul>
-      {VAULT_ADDRESS ? (
-        <a
-          href={`${RH_EXPLORER}/address/${VAULT_ADDRESS}`}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-flex text-[13px] font-semibold text-gold transition hover:text-gold/80"
-        >
-          View the vault contract
-        </a>
-      ) : null}
     </section>
   );
 }

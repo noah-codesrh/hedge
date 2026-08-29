@@ -19,6 +19,8 @@ import {
 } from "../lib/wallet";
 import { watchBalanceReloads } from "../lib/positions";
 import { ArrowDownTrayIcon, CheckIcon, CopyIcon, WalletIcon } from "./icons";
+import { TransferCryptoModal, ChainIcons } from "./ChainDeposit";
+import { DEPOSIT_CHAINS, type DepositChain } from "../lib/deposit-chains";
 
 type BookValue = {
   address: string | null;
@@ -96,12 +98,33 @@ function BookInner({ children }: { children: React.ReactNode }) {
       ...signers.map((w) => w.address),
       ...derived,
     ]);
+    const assetOwners = knownPortfolioAddresses([
+      address,
+      ...signers.map((w) => w.address),
+    ]);
     void Promise.all([
-      fetch(`/api/assets?address=${address}`).then((r) => r.json()),
+      fetch(
+        `/api/assets?addresses=${encodeURIComponent(assetOwners.join(","))}`,
+      ).then(async (r) => {
+        const text = await r.text();
+        if (text.trimStart().startsWith("<")) {
+          throw new Error("assets html");
+        }
+        return JSON.parse(text) as { assets?: { symbol: string; balance: number }[] };
+      }),
       owners.length
         ? fetch(
             `/api/pm/portfolio?addresses=${encodeURIComponent(owners.join(","))}`,
-          ).then((r) => r.json())
+          ).then(async (r) => {
+            const text = await r.text();
+            if (text.trimStart().startsWith("<")) {
+              return { positionsValue: 0 };
+            }
+            return JSON.parse(text) as {
+              positionsValue?: number;
+              open?: LivePosition[];
+            };
+          })
         : Promise.resolve({ positionsValue: 0 }),
     ])
       .then(
@@ -173,8 +196,10 @@ function DepositModal({
   cash: number;
   onClose: () => void;
 }) {
+  const { refresh } = useBook();
   const [tab, setTab] = useState<"crypto" | "cash">("crypto");
   const [copied, setCopied] = useState(false);
+  const [transfer, setTransfer] = useState<DepositChain | null>(null);
 
   const copy = async () => {
     if (!address) return;
@@ -183,10 +208,16 @@ function DepositModal({
     window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const openTransfer = (next?: DepositChain) => {
+    if (!address) return;
+    setTransfer(next ?? DEPOSIT_CHAINS[0]!);
+  };
+
   return (
+    <>
     <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-t-[28px] border border-white/10 bg-[#161616] shadow-2xl animate-pop-in sm:rounded-[28px]">
+      <div className="relative z-10 w-full max-w-md overflow-visible rounded-t-[28px] border border-white/10 bg-[#161616] shadow-2xl animate-pop-in sm:rounded-[28px]">
         <div className="px-5 pb-6 pt-5 sm:px-6">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -205,33 +236,79 @@ function DepositModal({
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-1 rounded-2xl bg-[#222] p-1">
             <button
               type="button"
-              onClick={() => setTab("crypto")}
-              className={`rounded-2xl py-3 text-sm font-semibold transition ${
+              onClick={() => {
+                setTab("crypto");
+                setTransfer(null);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition ${
                 tab === "crypto"
-                  ? "bg-white text-black"
-                  : "bg-white/5 text-[#cfcfcf]"
+                  ? "bg-white text-black shadow"
+                  : "text-[#9a9a9a]"
               }`}
             >
-              Use crypto
+              <span
+                className={`grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold ${
+                  tab === "crypto" ? "bg-black text-white" : "bg-[#3a3a3a] text-white"
+                }`}
+              >
+                ₿
+              </span>
+              Use Crypto
             </button>
             <button
               type="button"
-              onClick={() => setTab("cash")}
-              className={`rounded-2xl py-3 text-sm font-semibold transition ${
+              onClick={() => {
+                setTab("cash");
+                setTransfer(null);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition ${
                 tab === "cash"
-                  ? "bg-white text-black"
-                  : "bg-white/5 text-[#cfcfcf]"
+                  ? "bg-white text-black shadow"
+                  : "text-[#9a9a9a]"
               }`}
             >
-              Use cash
+              <span
+                className={`grid h-6 w-6 place-items-center rounded-full text-[13px] font-bold ${
+                  tab === "cash" ? "bg-black text-white" : "bg-[#3a3a3a] text-white"
+                }`}
+              >
+                $
+              </span>
+              Use Cash
             </button>
           </div>
 
           {tab === "crypto" ? (
-            <div className="mt-4 space-y-2">
+            <div className="relative mt-4 space-y-2">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => openTransfer()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openTransfer();
+                  }
+                }}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-[#1b1b1b] px-4 py-4 text-left ring-1 ring-white/5 transition hover:ring-white/15"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/5 text-white">
+                  <QrMark />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">Transfer Crypto</p>
+                  <p className="text-[12px] text-muted">
+                    {address
+                      ? "No limit · Instant"
+                      : "Connect a wallet to deposit"}
+                  </p>
+                </div>
+                <ChainIcons onPick={openTransfer} disabled={!address} />
+              </div>
+
               <div className="rounded-2xl bg-[#1b1b1b] p-4 ring-1 ring-white/5">
                 <div className="flex items-center gap-3">
                   <img
@@ -294,8 +371,8 @@ function DepositModal({
             <div className="mt-4 rounded-2xl bg-[#1b1b1b] px-4 py-8 text-center ring-1 ring-white/5">
               <p className="font-semibold">Card and bank deposits</p>
               <p className="mt-1 text-sm text-muted">
-                Fiat on-ramp into USDG is coming soon. For now, transfer USDG on
-                Robinhood Chain.
+                Fiat on-ramp into USDG is coming soon. For now, transfer crypto
+                from another chain or send USDG on Robinhood Chain.
               </p>
               <span className="mt-3 inline-block rounded-full bg-gold/20 px-2.5 py-1 text-[11px] font-semibold text-gold">
                 Soon
@@ -305,6 +382,29 @@ function DepositModal({
         </div>
       </div>
     </div>
+    {transfer && address ? (
+      <TransferCryptoModal
+        key={transfer.id}
+        address={address}
+        cash={cash}
+        initialChain={transfer}
+        onBack={() => setTransfer(null)}
+        onClose={onClose}
+        onArrived={refresh}
+      />
+    ) : null}
+    </>
+  );
+}
+
+function QrMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM20 14v7M14 20h3" />
+    </svg>
   );
 }
 

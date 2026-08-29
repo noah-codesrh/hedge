@@ -6,7 +6,11 @@ import {
   useWallets,
 } from "@privy-io/react-auth";
 import { fiat } from "../lib/format";
-import { outcomeLabel, type LivePosition } from "../lib/polymarket-portfolio";
+import {
+  isSettledPosition,
+  outcomeLabel,
+  type LivePosition,
+} from "../lib/polymarket-portfolio";
 import type { CashOutStep, CloseStep } from "../lib/trade/close";
 import {
   isEmbeddedWallet,
@@ -120,6 +124,9 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
             accessToken,
             tradingWallet,
             signAuthorization,
+            conditionId: next.position.conditionId,
+            redeemable: next.position.redeemable,
+            settled: isSettledPosition(next.position),
           },
           {
             onStep,
@@ -190,13 +197,21 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
     <>
       {confirm ? (
         <ConfirmSheet
-          title={confirm.kind === "close" ? "Close position?" : "Cash out?"}
+          title={
+            confirm.kind === "close"
+              ? closeTitle(confirm.position)
+              : "Cash out?"
+          }
           body={
             confirm.kind === "close"
-              ? fiat(Math.max(0, confirm.position.currentValue))
+              ? closeBody(confirm.position)
               : fiat(confirm.pusd)
           }
-          confirmLabel={confirm.kind === "close" ? "Close" : "Cash out"}
+          confirmLabel={
+            confirm.kind === "close"
+              ? closeLabel(confirm.position)
+              : "Cash out"
+          }
           onCancel={() => setConfirm(null)}
           onConfirm={() => void run(confirm)}
         />
@@ -218,7 +233,13 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
       ) : null}
       {done ? (
         <FlowSuccess
-          title={done.kind === "close" ? "Closed" : "Cashed out"}
+          title={
+            done.kind === "close"
+              ? done.usdg > 0.004
+                ? "Closed"
+                : "Resolved"
+              : "Cashed out"
+          }
           amount={fiat(done.usdg)}
           onClose={() => setDone(null)}
         />
@@ -232,6 +253,27 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
     confirmCashOut: (pusd: number) => setConfirm({ kind: "cashout", pusd }),
     overlays,
   };
+}
+
+function closeTitle(position: LivePosition) {
+  if (position.redeemable) return "Redeem winnings?";
+  if (isSettledPosition(position) && position.currentPrice <= 0.01) {
+    return "Market resolved";
+  }
+  return "Close position?";
+}
+
+function closeBody(position: LivePosition) {
+  if (isSettledPosition(position) && position.currentPrice <= 0.01) {
+    return "This outcome paid $0.";
+  }
+  return fiat(Math.max(0, position.currentValue));
+}
+
+function closeLabel(position: LivePosition) {
+  if (position.redeemable) return "Redeem";
+  if (isSettledPosition(position) && position.currentPrice <= 0.01) return "Clear";
+  return "Close";
 }
 
 function ConfirmSheet({
