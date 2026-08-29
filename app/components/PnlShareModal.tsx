@@ -4,6 +4,35 @@ import { signedPct } from "../lib/format";
 import { outcomeLabel, type LivePosition } from "../lib/polymarket-portfolio";
 import { liveHref, PnlShareCard } from "./PnlShareCard";
 
+export type PnlShareData = {
+  title: string;
+  href: string;
+  outcome: string;
+  entryPrice: number;
+  markPrice: number | null;
+  pnl: number | null;
+  pctChange: number | null;
+  status: "open" | "closed";
+  /** Borrowed multiple. Spot tickets leave this off. */
+  leverage?: number | null;
+};
+
+export function shareFromLive(position: LivePosition): PnlShareData {
+  return {
+    title: position.title,
+    href: liveHref(position),
+    outcome: outcomeLabel(position),
+    entryPrice: position.entryPrice,
+    markPrice:
+      (position.status === "closed"
+        ? position.exitPrice
+        : position.currentPrice) || null,
+    pnl: position.pnl,
+    pctChange: position.pctChange,
+    status: position.status,
+  };
+}
+
 const FILE_NAME = "hedge-pnl.png";
 
 /**
@@ -56,10 +85,10 @@ function isAbort(err: unknown) {
 type Action = "copy" | "download" | "post";
 
 export function PnlShareModal({
-  position,
+  share,
   onClose,
 }: {
-  position: LivePosition;
+  share: PnlShareData;
   onClose: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -140,8 +169,8 @@ export function PnlShareModal({
 
   const post = () =>
     run("post", async (blob) => {
-      const text = `${signedPct(position.pctChange, 2)} on ${position.title}`;
-      const url = `${window.location.origin}${liveHref(position)}`;
+      const text = `${signedPct(share.pctChange ?? 0, 2)} on ${share.title}`;
+      const url = `${window.location.origin}${share.href}`;
       const file = new File([blob], FILE_NAME, { type: "image/png" });
 
       // Mobile share sheets accept the image itself; the X web intent cannot,
@@ -169,18 +198,15 @@ export function PnlShareModal({
 
   const card = (
     <PnlShareCard
-      title={position.title}
-      href={liveHref(position)}
-      outcome={outcomeLabel(position)}
-      entryPrice={position.entryPrice}
-      markPrice={
-        (position.status === "closed"
-          ? position.exitPrice
-          : position.currentPrice) || null
-      }
-      pnl={position.pnl}
-      pctChange={position.pctChange}
-      status={position.status}
+      title={share.title}
+      href={share.href}
+      outcome={share.outcome}
+      entryPrice={share.entryPrice}
+      markPrice={share.markPrice}
+      pnl={share.pnl}
+      pctChange={share.pctChange}
+      status={share.status}
+      leverage={share.leverage}
       asLink={false}
       rounded={false}
     />
@@ -217,7 +243,7 @@ export function PnlShareModal({
           {png ? (
             <img
               src={png.url}
-              alt={`${position.title} — ${signedPct(position.pctChange, 2)}`}
+              alt={`${share.title} — ${signedPct(share.pctChange ?? 0, 2)}`}
               className="h-full w-full"
             />
           ) : (

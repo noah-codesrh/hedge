@@ -36,6 +36,8 @@ export type LeverageMarket = {
    * markets get less even when the vault could support more.
    */
   maxLeverage: number;
+  /** Short question for position cards when the live event isn't in hand. */
+  title: string;
 };
 
 export const LEVERAGE_MARKETS: LeverageMarket[] = [
@@ -46,6 +48,7 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
     yesTokenId:
       "60432943459727811939876579458127882879093448601070549237658505707253776040466",
     maxLeverage: 3,
+    title: "Will Bitcoin dip to $77.5k in August 2026?",
   },
   {
     marketId: "3257386",
@@ -54,6 +57,7 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
     yesTokenId:
       "87205176363338814709708203899309446917881667334315183367756187844453520430452",
     maxLeverage: 3,
+    title: "Will Ethereum reach $2,600 in August 2026?",
   },
   {
     marketId: "3491474",
@@ -62,6 +66,7 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
     yesTokenId:
       "68003608521015222679268138757769131071496782683879354114198876947977145147842",
     maxLeverage: 3,
+    title: "Iran-Oman Hormuz agreement by September 30",
   },
   {
     marketId: "601819",
@@ -70,6 +75,7 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
     yesTokenId:
       "30630994248667897740988010928640156931882346081873066002335460180076741328029",
     maxLeverage: 2,
+    title: "Will Lula win the 2026 Brazilian presidential election?",
   },
 ];
 

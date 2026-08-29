@@ -35,10 +35,15 @@ import {
   useEnsureTradingWallet,
 } from "../lib/wallet";
 import type { LivePosition } from "../lib/polymarket-portfolio";
+import type { LeveragePosition } from "../lib/leverage-chain";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { useBook } from "./Book";
 import { useCloseFlow } from "./CloseFlow";
 import { ConversionFlow, FlowSuccess, type ConvertStep } from "./ConversionFlow";
+import {
+  LeveragePositionCard,
+  useLeveragePositions,
+} from "./LeveragePositions";
 import { LivePositionCard } from "./PositionPnl";
 
 export function TradePanel(props: {
@@ -64,6 +69,7 @@ function AuthedTradePanel(props: {
   const { generateAuthorizationSignature } = useAuthorizationSignature();
 
   const closeFlow = useCloseFlow({ provisionWallet: false });
+  const levered = useLeveragePositions();
 
   const signAuthorization: SignPrivyAuthorization = async (payload) => {
     const { signature } = await generateAuthorizationSignature(payload);
@@ -84,6 +90,12 @@ function AuthedTradePanel(props: {
         ensureTradingWallet={ensureTradingWallet}
         ensureCashWallet={ensureCashWallet}
         onClosePosition={closeFlow.confirmClose}
+        leveredPositions={levered.positions}
+        onCloseLeverage={(position, fractionBps) =>
+          void levered.close(position, fractionBps)
+        }
+        leverBusyId={levered.busyId}
+        leverCloseStage={levered.stage}
       />
       {closeFlow.overlays}
     </>
@@ -102,6 +114,10 @@ function TradePanelView({
   ensureCashWallet,
   onClosePosition,
   signAuthorization,
+  leveredPositions = [],
+  onCloseLeverage,
+  leverBusyId = null,
+  leverCloseStage = null,
 }: {
   event: PolymarketEvent;
   market: Market;
@@ -115,6 +131,10 @@ function TradePanelView({
   ensureTradingWallet?: () => Promise<ConnectedWallet>;
   ensureCashWallet?: () => Promise<ConnectedWallet>;
   onClosePosition?: (position: LivePosition) => void;
+  leveredPositions?: LeveragePosition[];
+  onCloseLeverage?: (position: LeveragePosition, fractionBps: number) => void;
+  leverBusyId?: string | null;
+  leverCloseStage?: TradeStage | null;
 }) {
   const { openModal } = useAuthModal();
   const { cash, openDeposit, refresh, openPositions } = useBook();
@@ -130,6 +150,8 @@ function TradePanelView({
     side: Side;
   } | null>(null);
   const [done, setDone] = useState<{
+    title?: string;
+    amountLabel?: string;
     shares: number;
     amount: number;
     pusd: number;
@@ -184,18 +206,12 @@ function TradePanelView({
   const levered = effectiveLeverage > 1;
 
   const [leverStage, setLeverStage] = useState<TradeStage | null>(null);
-  const [leverDone, setLeverDone] = useState<string | null>(null);
 
   // Falling out of the band or switching to a plain market must not strand a
   // leverage setting the trader can no longer act on.
   useEffect(() => {
     if (!leverageOffered) setLeverage(1);
   }, [leverageOffered]);
-
-  // A confirmation from the last trade must not linger over the next one.
-  useEffect(() => {
-    if (amount > 0) setLeverDone(null);
-  }, [amount, side, leverage]);
 
   const leverageQuote = levered
     ? quoteLeverage(amount, effectiveLeverage, market.yes.price, side === "yes")
@@ -312,6 +328,7 @@ function TradePanelView({
       : 0;
 
   const held = heldPosition(openPositions, event, market, side);
+  const heldLever = heldLeverage(leveredPositions, market, side);
 
   // A market buy lifts the asks, so the quoted market price is not the price
   // paid. Walk the real book instead of dividing by it.
@@ -352,7 +369,6 @@ function TradePanelView({
   const openLevered = () => {
     setBusy(true);
     setConvertError(null);
-    setLeverDone(null);
     void (async () => {
       try {
         if (!getAccessToken || !signAuthorization) {
@@ -386,9 +402,14 @@ function TradePanelView({
 
         setAmount(0);
         setLeverage(1);
-        setLeverDone(
-          `Opened ${fiat(opened.size)} at ${opened.leverage}x. It's in your portfolio.`,
-        );
+        setDone({
+          title: "Position opened",
+          amountLabel: `${fiat(opened.size)} at ${opened.leverage}x`,
+          shares: leverageQuote?.shares ?? 0,
+          amount: opened.size,
+          pusd: 0,
+          side,
+        });
         notifyBalancesChanged();
         refresh();
         void readEngineState().then(setEngineState);
@@ -520,7 +541,17 @@ function TradePanelView({
   return (
     <>
       <div className="w-full min-w-0 rounded-3xl bg-card p-4 ring-1 ring-white/5 sm:p-5">
-        {held ? (
+        {heldLever ? (
+          <div className="mb-4">
+            <LeveragePositionCard
+              position={heldLever}
+              title={event.title || market.question}
+              busy={leverBusyId === `${heldLever.id}`}
+              stage={leverBusyId === `${heldLever.id}` ? leverCloseStage : null}
+              onClose={(fractionBps) => onCloseLeverage?.(heldLever, fractionBps)}
+            />
+          </div>
+        ) : held ? (
           <div className="mb-4">
             <LivePositionCard position={held} />
           </div>
@@ -625,11 +656,6 @@ function TradePanelView({
         {levered && convertError && !convertStep ? (
           <p className="mt-3 rounded-2xl bg-down/10 px-3 py-2.5 text-[13px] leading-snug text-down">
             {convertError}
-          </p>
-        ) : null}
-        {leverDone ? (
-          <p className="mt-3 rounded-2xl bg-up/10 px-3 py-2.5 text-[13px] leading-snug text-up">
-            {leverDone}
           </p>
         ) : null}
         {leverBlock && !busy ? (
@@ -776,8 +802,8 @@ function TradePanelView({
 
       {done ? (
         <FlowSuccess
-          title="Order placed"
-          amount={fiat(done.amount)}
+          title={done.title ?? "Order placed"}
+          amount={done.amountLabel ?? fiat(done.amount)}
           onClose={() => setDone(null)}
         />
       ) : null}
@@ -790,6 +816,27 @@ function norm(value: string | null | undefined) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function heldLeverage(
+  positions: LeveragePosition[],
+  market: Market,
+  side: Side,
+) {
+  const wantLong = side === "yes";
+  const listed = leverageFor(market)?.marketSlug.toLowerCase();
+  const slug = market.slug.toLowerCase();
+  return (
+    positions.find((position) => {
+      if (position.isLong !== wantLong) return false;
+      const key = position.marketSlug.toLowerCase();
+      if (listed && key === listed) return true;
+      if (position.gammaMarketId && position.gammaMarketId === market.id) {
+        return true;
+      }
+      return key === slug;
+    }) ?? null
+  );
 }
 
 function heldPosition(

@@ -159,8 +159,13 @@ export function TransferCryptoModal({
   onClose: () => void;
   onArrived: () => void;
 }) {
-  const { getConfig, generateDepositAddress, waitForDeposit, waitForCompletion } =
-    useDepositAddress();
+  const deposit = useDepositAddress();
+  const depositRef = useRef(deposit);
+  depositRef.current = deposit;
+  const onArrivedRef = useRef(onArrived);
+  onArrivedRef.current = onArrived;
+  const recipient = useRef(address);
+  const quotes = useRef(new Map<string, Quote>());
   const [chain, setChain] = useState<DepositChain>(
     initialChain ?? DEPOSIT_CHAINS[0]!,
   );
@@ -183,6 +188,16 @@ export function TransferCryptoModal({
   }, []);
 
   useEffect(() => {
+    const cached = quotes.current.get(chain.id);
+    if (cached) {
+      setQuote(cached);
+      setBusy(false);
+      setError(null);
+      setStatus("wait");
+      setDelivered(null);
+      return;
+    }
+
     let cancelled = false;
     setBusy(true);
     setError(null);
@@ -190,41 +205,50 @@ export function TransferCryptoModal({
     setStatus("wait");
     setDelivered(null);
 
+    const { getConfig, generateDepositAddress } = depositRef.current;
+    const source = chain;
+    const dest = recipient.current;
+
     const run = async () => {
       try {
         const config = await getConfig();
         if (cancelled) return;
-        if (!config.chains[chain.caip2]) {
+        if (!config.chains[source.caip2]) {
           throw new Error(
-            `Deposits from ${chain.name} are not enabled yet.`,
+            `Deposits from ${source.name} are not enabled yet.`,
           );
         }
         const sourceCurrency =
-          tokenOnChain(config, chain.token.symbol, chain.caip2) ??
-          chain.token.address;
+          tokenOnChain(config, source.token.symbol, source.caip2) ??
+          source.token.address;
         const destinationCurrency =
           tokenOnChain(config, "USDG", DEPOSIT_DEST_CHAIN) ?? DEPOSIT_DEST_TOKEN;
         const next = await generateDepositAddress({
-          sourceChain: chain.caip2,
+          sourceChain: source.caip2,
           sourceCurrency,
           destinationChain: DEPOSIT_DEST_CHAIN,
           destinationCurrency,
-          destinationAddress: address,
+          destinationAddress: dest,
         });
         if (cancelled) return;
         if (!next.deposit_address) {
           throw new Error("Privy did not return a deposit address.");
         }
         const rate = Number(next.indicative_rate);
-        setQuote({
+        const row: Quote = {
           depositAddress: next.deposit_address,
           id: next.id,
           createdAt: next.created_at,
           minutes: Math.max(1, Math.round(next.time_estimate_seconds / 60)),
           rate: Number.isFinite(rate) && rate > 0 ? rate : null,
-        });
+        };
+        quotes.current.set(source.id, row);
+        setQuote(row);
       } catch (e) {
-        if (!cancelled) setError(privyMessage(e));
+        if (!cancelled) {
+          setQuote(null);
+          setError(privyMessage(e));
+        }
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -233,13 +257,15 @@ export function TransferCryptoModal({
     return () => {
       cancelled = true;
     };
-  }, [address, chain, getConfig, generateDepositAddress]);
+  }, [chain.id, chain.caip2, chain.name, chain.token.address, chain.token.symbol]);
 
   useEffect(() => {
     if (!quote || status === "done") return;
     const ac = new AbortController();
     let alive = true;
     let landed = false;
+    let baseline: number | null = null;
+    const dest = recipient.current;
 
     const markArrived = (amountOut?: number | null) => {
       if (!alive || landed) return;
@@ -249,11 +275,12 @@ export function TransferCryptoModal({
       }
       setStatus("done");
       notifyBalancesChanged();
-      onArrived();
+      onArrivedRef.current();
     };
 
     const watchPrivy = async () => {
       try {
+        const { waitForDeposit, waitForCompletion } = depositRef.current;
         const detected = await waitForDeposit({
           depositAddressId: quote.id,
           quoteCreatedAt: quote.createdAt,
@@ -276,7 +303,10 @@ export function TransferCryptoModal({
         });
         if (!alive || final.status !== "success") return;
         if (final.order.status === "completed") {
-          markArrived(Number(final.order.destination_amount));
+          const out = Number(final.order.destination_amount);
+          if (baseline != null && Number.isFinite(out) && out > 0.4) {
+            markArrived(out);
+          }
           return;
         }
         if (final.order.status === "refunded") {
@@ -292,13 +322,18 @@ export function TransferCryptoModal({
     const watchBalance = async () => {
       try {
         const res = await fetch(
-          `/api/assets?address=${encodeURIComponent(address)}`,
+          `/api/assets?address=${encodeURIComponent(dest)}`,
         );
         const data = (await res.json()) as {
           assets?: { symbol?: string; balance?: number }[];
         };
         const next = data.assets?.find((a) => a.symbol === "USDG")?.balance ?? 0;
-        if (alive && next > cash + 0.4) markArrived(next - cash);
+        if (!alive) return;
+        if (baseline == null) {
+          baseline = next;
+          return;
+        }
+        if (next > baseline + 0.4) markArrived(next - baseline);
       } catch {
         /* ignore */
       }
@@ -312,15 +347,7 @@ export function TransferCryptoModal({
       ac.abort();
       window.clearInterval(id);
     };
-  }, [
-    quote,
-    status,
-    address,
-    cash,
-    waitForDeposit,
-    waitForCompletion,
-    onArrived,
-  ]);
+  }, [quote, status]);
 
   const copy = async () => {
     if (!quote) return;

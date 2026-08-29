@@ -13,6 +13,10 @@ export function isEmbeddedWallet(client?: string | null) {
   return client === "privy" || client === "privy-v2";
 }
 
+export function isEvmAddress(address: string) {
+  return /^0x[a-fA-F0-9]{40}$/.test(address);
+}
+
 function linkedWallets(user: User | null | undefined) {
   return (user?.linkedAccounts ?? []).filter(
     (account) => account.type === "wallet",
@@ -46,10 +50,12 @@ export function primaryWalletAddress(
 }
 
 export function linkedEmbeddedAddress(user: User | null | undefined) {
-  const embedded = linkedWallets(user).find((w) =>
-    isEmbeddedWallet(w.walletClientType),
+  const embedded = linkedWallets(user).filter(
+    (w) => isEmbeddedWallet(w.walletClientType) && "address" in w,
   );
-  return embedded && "address" in embedded ? String(embedded.address) : null;
+  const evm = embedded.find((w) => isEvmAddress(String(w.address)));
+  const pick = evm ?? embedded[0];
+  return pick && "address" in pick ? String(pick.address) : null;
 }
 
 export function findWallet(
@@ -62,7 +68,10 @@ export function findWallet(
 }
 
 export function embeddedWallet(wallets: ConnectedWallet[] | undefined) {
-  return wallets?.find((w) => isEmbeddedWallet(w.walletClientType));
+  const embedded = wallets?.filter((w) => isEmbeddedWallet(w.walletClientType));
+  return (
+    embedded?.find((w) => isEvmAddress(w.address)) ?? embedded?.[0]
+  );
 }
 
 async function providerChainId(provider: Eip1193) {

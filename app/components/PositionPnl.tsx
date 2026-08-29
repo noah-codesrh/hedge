@@ -9,7 +9,7 @@ import {
 } from "../lib/polymarket-portfolio";
 import type { HedgePosition } from "../lib/types";
 import { liveHref, PnlShareCard } from "./PnlShareCard";
-import { PnlShareModal } from "./PnlShareModal";
+import { PnlShareModal, shareFromLive } from "./PnlShareModal";
 
 export function PositionPnl({
   mark,
@@ -125,7 +125,7 @@ export function LivePositionCard({
 
       {shareOpen ? (
         <PnlShareModal
-          position={position}
+          share={shareFromLive(position)}
           onClose={() => setShareOpen(false)}
         />
       ) : null}

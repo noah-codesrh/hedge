@@ -316,7 +316,7 @@ export async function readPositionsFor(
         id,
         marketId,
         marketSlug: known?.marketSlug ?? marketId,
-        label: known?.marketSlug ?? null,
+        label: known?.title ?? known?.marketSlug ?? null,
         eventSlug: known?.eventSlug ?? null,
         gammaMarketId: known?.marketId ?? null,
         isLong: p[2],

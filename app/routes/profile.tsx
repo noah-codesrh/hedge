@@ -41,7 +41,10 @@ import { pnlLabel, pnlTone } from "../lib/pnl";
 import { knownPortfolioAddresses } from "../lib/pm-wallet";
 import { deriveDepositWallet } from "../lib/pm-funder";
 import { LivePositionCard } from "../components/PositionPnl";
-import { LeveragePositions } from "../components/LeveragePositions";
+import {
+  LeveragePositions,
+  useLeveragePositions,
+} from "../components/LeveragePositions";
 import { PolymarketAccounts } from "../components/PolymarketAccounts";
 import { ModalShell } from "../components/ModalShell";
 import { SwapToCash } from "../components/SwapToCash";
@@ -127,6 +130,7 @@ function ProfileInner() {
   const closeFlow = useCloseFlow();
   const { cashWallet, ensureCashWallet } = useEnsureCashWallet();
   useEnsureTradingWallet();
+  const { positions: leveredPositions } = useLeveragePositions();
 
   const wallet = primaryWalletAddress(user, wallets);
   const userId = user?.id ?? wallet ?? "anon";
@@ -424,17 +428,7 @@ function ProfileInner() {
               <p className="mt-4 rounded-2xl bg-card px-4 py-12 text-center text-sm text-muted ring-1 ring-white/5">
                 Loading live positions…
               </p>
-            ) : shownPositions.length === 0 ? (
-              <div className="mt-4 rounded-2xl bg-card px-4 py-12 text-center ring-1 ring-white/5">
-                <p className="text-[15px] text-muted">No positions found.</p>
-                <Link
-                  to="/"
-                  className="mt-4 inline-flex rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black"
-                >
-                  Browse markets
-                </Link>
-              </div>
-            ) : (
+            ) : shownPositions.length > 0 ? (
               <ul className="mt-4 grid gap-3 sm:grid-cols-2">
                 {shownPositions.map((p) => (
                   <li key={p.id} className="min-w-0">
@@ -449,7 +443,17 @@ function ProfileInner() {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : posFilter !== "open" || leveredPositions.length === 0 ? (
+              <div className="mt-4 rounded-2xl bg-card px-4 py-12 text-center ring-1 ring-white/5">
+                <p className="text-[15px] text-muted">No positions found.</p>
+                <Link
+                  to="/"
+                  className="mt-4 inline-flex rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black"
+                >
+                  Browse markets
+                </Link>
+              </div>
+            ) : null}
           </div>
         )}
 

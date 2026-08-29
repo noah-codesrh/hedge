@@ -34,6 +34,7 @@ export function PnlShareCard({
   loading = false,
   asLink = true,
   rounded = true,
+  leverage: leverageOverride,
 }: {
   title: string;
   href: string;
@@ -48,6 +49,11 @@ export function PnlShareCard({
   asLink?: boolean;
   /** Off for the downloaded image, which should be a full-bleed square. */
   rounded?: boolean;
+  /**
+   * Borrowed multiple (2x / 3x). When omitted, the badge uses the implied
+   * payout from the entry price, which is what a spot ticket is.
+   */
+  leverage?: number | null;
 }) {
   const tone = pnl == null ? "flat" : pnlTone(pnl);
   const pctColor =
@@ -62,7 +68,12 @@ export function PnlShareCard({
       : tone === "down"
         ? "bg-[#482a2a] text-down"
         : "bg-white/10 text-white";
-  const leverage = leverageFromEntry(entryPrice);
+  const leverage =
+    leverageOverride != null && leverageOverride > 1
+      ? leverageOverride % 1 === 0
+        ? leverageOverride
+        : Math.round(leverageOverride * 10) / 10
+      : leverageFromEntry(entryPrice);
   const pctText =
     loading && pctChange == null
       ? "…"

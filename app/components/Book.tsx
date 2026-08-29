@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
@@ -14,6 +15,7 @@ import { knownPortfolioAddresses } from "../lib/pm-wallet";
 import { deriveDepositWallet } from "../lib/pm-funder";
 import {
   isEmbeddedWallet,
+  isEvmAddress,
   primaryWalletAddress,
   useEnsureTradingWallet,
 } from "../lib/wallet";
@@ -77,11 +79,14 @@ function BookInner({ children }: { children: React.ReactNode }) {
     setLoading(true);
     const linked = (user?.linkedAccounts ?? [])
       .filter((a) => a.type === "wallet" && "address" in a)
-      .map((a) => a as { address: string; walletClientType?: string });
-    const connected = wallets.map((w) => ({
-      address: w.address,
-      walletClientType: w.walletClientType,
-    }));
+      .map((a) => a as { address: string; walletClientType?: string })
+      .filter((w) => isEvmAddress(w.address));
+    const connected = wallets
+      .filter((w) => isEvmAddress(w.address))
+      .map((w) => ({
+        address: w.address,
+        walletClientType: w.walletClientType,
+      }));
     const signers = [...linked];
     for (const w of connected) {
       if (
@@ -92,7 +97,13 @@ function BookInner({ children }: { children: React.ReactNode }) {
     }
     const derived = signers
       .filter((w) => isEmbeddedWallet(w.walletClientType))
-      .map((w) => deriveDepositWallet(w.address));
+      .flatMap((w) => {
+        try {
+          return [deriveDepositWallet(w.address)];
+        } catch {
+          return [];
+        }
+      });
     const owners = knownPortfolioAddresses([
       address,
       ...signers.map((w) => w.address),
@@ -146,17 +157,18 @@ function BookInner({ children }: { children: React.ReactNode }) {
         },
       )
       .catch(() => {
-        setCash(0);
-        setPositionsValue(0);
-        setOpenPositions([]);
+        /* keep last cash; a bad hop must not wipe the book */
       })
       .finally(() => setLoading(false));
   }, [address, user, wallets]);
 
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
   useEffect(() => {
     if (!ready) return;
-    return watchBalanceReloads(refresh);
-  }, [ready, refresh]);
+    return watchBalanceReloads(() => refreshRef.current());
+  }, [ready, address]);
 
   const value = useMemo<BookValue>(
     () => ({
@@ -384,7 +396,6 @@ function DepositModal({
     </div>
     {transfer && address ? (
       <TransferCryptoModal
-        key={transfer.id}
         address={address}
         cash={cash}
         initialChain={transfer}

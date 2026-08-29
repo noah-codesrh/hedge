@@ -8,9 +8,10 @@ import {
   type LeveragePosition,
 } from "../lib/leverage-chain";
 import type { TradeStage } from "../lib/leverage-actions";
-import { notifyBalancesChanged } from "../lib/positions";
+import { notifyBalancesChanged, watchBalanceReloads } from "../lib/positions";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { LayersIcon } from "./icons";
+import { PnlShareModal, type PnlShareData } from "./PnlShareModal";
 
 /**
  * Open leveraged positions, read straight from the engine.
@@ -21,7 +22,7 @@ import { LayersIcon } from "./icons";
  * settled by the keeper without the browser being involved, so local state
  * would go stale silently.
  */
-export function LeveragePositions({ compact = false }: { compact?: boolean }) {
+export function useLeveragePositions() {
   const { authenticated, getAccessToken } = usePrivy();
   const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
   const { generateAuthorizationSignature } = useAuthorizationSignature();
@@ -33,7 +34,7 @@ export function LeveragePositions({ compact = false }: { compact?: boolean }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!cashAddress) {
+    if (!leverageIsLive || !cashAddress) {
       setPositions([]);
       setLoading(false);
       return;
@@ -48,12 +49,9 @@ export function LeveragePositions({ compact = false }: { compact?: boolean }) {
       setLoading(false);
       return;
     }
-    void load();
-    // Marks move with the oracle and a position can be liquidated between
-    // renders, so this polls rather than waiting for a user action. Kept a
-    // little under the keeper's tick so a new price shows up promptly.
-    const timer = setInterval(() => void load(), 15_000);
-    return () => clearInterval(timer);
+    // Burst-reload after an open so the market page card appears as soon as
+    // the chain lists the new id, not on the next 15s poll.
+    return watchBalanceReloads(() => void load());
   }, [authenticated, load]);
 
   const close = async (position: LeveragePosition, fractionBps: number) => {
@@ -98,6 +96,13 @@ export function LeveragePositions({ compact = false }: { compact?: boolean }) {
     }
   };
 
+  return { positions, loading, busyId, stage, error, close };
+}
+
+export function LeveragePositions({ compact = false }: { compact?: boolean }) {
+  const { authenticated } = usePrivy();
+  const { positions, busyId, stage, error, close } = useLeveragePositions();
+
   // Nothing to show and nothing to say: the spot portfolio below is the whole
   // story for anyone who has never opened a levered position.
   if (!leverageIsLive || !authenticated || positions.length === 0) return null;
@@ -138,17 +143,52 @@ const STAGE_LABEL: Record<TradeStage, string> = {
   submitting: "Closing…",
 };
 
-function LeveragePositionCard({
+function leverageHref(position: LeveragePosition) {
+  if (position.eventSlug) {
+    return `/market/${position.eventSlug}${
+      position.gammaMarketId ? `?m=${position.gammaMarketId}` : ""
+    }`;
+  }
+  return "/";
+}
+
+export function shareFromLeverage(
+  position: LeveragePosition,
+  title = position.label ?? "Leveraged position",
+): PnlShareData {
+  const net = position.pnl - position.funding;
+  const pctChange = position.margin > 0 ? net / position.margin : 0;
+  const markPrice = position.isLong
+    ? position.entryPrice + position.pnl / Math.max(position.shares, 1e-9)
+    : position.entryPrice - position.pnl / Math.max(position.shares, 1e-9);
+
+  return {
+    title,
+    href: leverageHref(position),
+    outcome: position.isLong ? "Yes" : "No",
+    entryPrice: position.entryPrice,
+    markPrice,
+    pnl: net,
+    pctChange,
+    status: "open",
+    leverage: position.leverage,
+  };
+}
+
+export function LeveragePositionCard({
   position,
+  title: titleOverride,
   busy,
   stage,
   onClose,
 }: {
   position: LeveragePosition;
+  title?: string;
   busy: boolean;
   stage: TradeStage | null;
   onClose: (fractionBps: number) => void;
 }) {
+  const [shareOpen, setShareOpen] = useState(false);
   const net = position.pnl - position.funding;
   const tone = net > 0 ? "text-up" : net < 0 ? "text-down" : "text-muted";
   const pnlPct = position.margin > 0 ? (net / position.margin) * 100 : 0;
@@ -175,11 +215,8 @@ function LeveragePositionCard({
       : 0;
   const losing = net < 0;
 
-  const href = position.eventSlug
-    ? `/market/${position.eventSlug}${position.gammaMarketId ? `?m=${position.gammaMarketId}` : ""}`
-    : null;
-
-  const title = position.label ?? "Leveraged position";
+  const href = position.eventSlug ? leverageHref(position) : null;
+  const title = titleOverride ?? position.label ?? "Leveraged position";
 
   return (
     <div className="flex h-full flex-col rounded-2xl bg-card-2 p-4 ring-1 ring-white/5">
@@ -275,6 +312,13 @@ function LeveragePositionCard({
       </dl>
 
       <div className="mt-auto flex gap-2 pt-4">
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
+        >
+          PnL card
+        </button>
         {canHalve ? (
           <button
             type="button"
@@ -294,6 +338,13 @@ function LeveragePositionCard({
           {busy ? STAGE_LABEL[stage ?? "submitting"] : "Close"}
         </button>
       </div>
+
+      {shareOpen ? (
+        <PnlShareModal
+          share={shareFromLeverage(position, title)}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
