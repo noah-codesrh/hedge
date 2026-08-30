@@ -1,87 +1,71 @@
-# Welcome to React Router!
+# Hedge
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Prediction markets in USDG on Robinhood Chain. Spot buys real Yes/No shares on the venue book. Listed markets also offer 2x and 3x against the Earn vault.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+Site: [hedgeapp.trade](https://hedgeapp.trade)
 
-## Features
+## What this repo is
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+The web app (`app/`) plus the leverage contracts and keeper (`contracts/`). The app does not compile Solidity. The contracts are a self-contained Foundry project. See `contracts/README.md`.
 
-## Getting Started
+- **1x** routes to Polymarket. USDG converts, then a fill-or-kill buy.
+- **2x / 3x** stays on Robinhood Chain. Margin vs the vault. The keeper relays prices and liquidates.
+- **Earn** is senior LP deposits into `HedgeVault`. Do not send USDG to the vault address.
 
-### Installation
+Which markets get leverage is a hand-checked allowlist in `app/lib/leverage.ts` and `contracts/relayer/markets.json`. Those two must match the markets listed on-chain.
 
-Install the dependencies:
+## Run locally
+
+Node 22+ and pnpm.
 
 ```bash
-npm install
+pnpm install
+cp .env.example .env
+pnpm dev
 ```
 
-### Development
-
-Start the development server with HMR:
+The app is at `http://localhost:5174`.
 
 ```bash
-npm run dev
+pnpm typecheck
+pnpm build
+pnpm start
 ```
 
-Your application will be available at `http://localhost:5173`.
+## Environment
 
-## Building for Production
+Copy `.env.example`. Client values use the `VITE_` prefix (inlined at build time). Server secrets must not.
 
-Create a production build:
+| Variable | Role |
+|---|---|
+| `VITE_PRIVY_APP_ID` | Sign-in |
+| `VITE_LEVERAGE_ENABLED` | `true` shows 2x/3x. Anything else is spot only. |
+| `VITE_HEDGE_ENGINE_ADDRESS` | Leverage engine |
+| `VITE_HEDGE_VAULT_ADDRESS` | Earn vault. If set, deposits work even when leverage is off. |
+| `PRIVY_APP_SECRET` | Server-only Privy |
+| Builder / Relayer keys | Polymarket trading and gas sponsorship |
+
+A production rebuild is required after changing any `VITE_*` value.
+
+## Leverage markets
+
+`pnpm screen` in `contracts/relayer` prints candidates (35-65c, short-dated, real book). To list a new one:
+
+1. Add it to `contracts/relayer/markets.json` and `app/lib/leverage.ts`.
+2. Run `Configure.s.sol` as admin so the engine accepts the id.
+3. Redeploy the keeper and the site.
+
+The keeper prices at most 10 markets. Cap leverage per market: 3x only on deep books in the middle of the band.
+
+## Contracts and keeper
 
 ```bash
-npm run build
+cd contracts
+forge test
 ```
 
-## Deployment
+The Railway process is the keeper only (`contracts/relayer/relayer.ts`), not this website. Keep its Robinhood ETH above 0.01 or prices and liquidations stop.
 
-### Docker Deployment
+## License
 
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+Private. Not an invitation to deposit or trade.
