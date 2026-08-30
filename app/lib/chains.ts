@@ -1,8 +1,8 @@
 import { defineChain } from "viem";
-import { polygon } from "viem/chains";
+import { base, polygon } from "viem/chains";
 import { RH_EXPLORER, RH_RPC } from "./robinhood";
 
-export { polygon };
+export { base, polygon };
 
 export const RH_CHAIN_ID = 4663;
 export const RH_CHAIN_HEX = "0x1237" as const;

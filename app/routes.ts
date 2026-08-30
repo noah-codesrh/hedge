@@ -16,6 +16,7 @@ export default [
   route("api/pm/status", "routes/api.pm.status.ts"),
   route("api/pm/sponsor-tx", "routes/api.pm.sponsor-tx.ts"),
   route("api/rh/sponsor-send", "routes/api.rh.sponsor-send.ts"),
+  route("api/rh/cash-in", "routes/api.rh.cash-in.ts"),
   route("api/rh/tokens", "routes/api.rh.tokens.ts"),
   route("api/relay/quote", "routes/api.relay.quote.ts"),
   route("api/relay/swap", "routes/api.relay.swap.ts"),

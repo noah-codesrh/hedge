@@ -203,6 +203,50 @@ export function PencilIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+export function StripeMark({ size = 40 }: { size?: number }) {
+  return (
+    <img
+      src="/brands/stripe.jpg"
+      alt=""
+      width={size}
+      height={size}
+      decoding="async"
+      className="rounded-full object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+export function CoinbaseMark({ size = 40 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      aria-hidden
+      className="rounded-full"
+    >
+      <circle cx="20" cy="20" r="20" fill="#0052FF" />
+      <circle cx="20" cy="20" r="12" fill="none" stroke="white" strokeWidth="4.5" />
+      <rect x="14.5" y="14.5" width="11" height="11" rx="2.2" fill="white" />
+    </svg>
+  );
+}
+
+export function MoonpayMark({ size = 40 }: { size?: number }) {
+  return (
+    <img
+      src="/brands/moonpay.png"
+      alt=""
+      width={size}
+      height={size}
+      decoding="async"
+      className="rounded-full object-cover"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export function ArrowDownTrayIcon({ size = 16 }: { size?: number }) {
   return stroke(
     size,

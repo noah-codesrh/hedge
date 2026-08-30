@@ -5,20 +5,16 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { ENV } from "../lib/env";
+import { AuthModalProvider, useAuthModal } from "./auth-modal";
 import { LoginModal } from "./LoginModal";
 import { BookProvider } from "./Book";
 
 const PrivyRoot = lazy(() => import("./PrivyRoot"));
 
-interface AuthModalCtx {
-  open: boolean;
-  openModal: () => void;
-  closeModal: () => void;
-}
+export { useAuthModal } from "./auth-modal";
 
 /**
  * `loading` is the window where Privy is wanted but its chunk has not arrived.
@@ -27,14 +23,7 @@ interface AuthModalCtx {
  */
 type PrivyStatus = "unconfigured" | "loading" | "ready";
 
-const AuthModalContext = createContext<AuthModalCtx | null>(null);
 const PrivyStatusContext = createContext<PrivyStatus>("unconfigured");
-
-export function useAuthModal(): AuthModalCtx {
-  const ctx = useContext(AuthModalContext);
-  if (!ctx) throw new Error("useAuthModal must be used within <Providers>");
-  return ctx;
-}
 
 export function usePrivyStatus() {
   return useContext(PrivyStatusContext);
@@ -43,26 +32,6 @@ export function usePrivyStatus() {
 /** True only where a `PrivyProvider` is really above you and its hooks are safe. */
 export function usePrivyMounted() {
   return useContext(PrivyStatusContext) === "ready";
-}
-
-/**
- * Holds only the open/closed state, so it can sit above the Privy handoff and
- * keep a click that happened while Privy was still loading.
- */
-function AuthModalProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const openModal = useCallback(() => setOpen(true), []);
-  const closeModal = useCallback(() => setOpen(false), []);
-  const value = useMemo(
-    () => ({ open, openModal, closeModal }),
-    [open, openModal, closeModal],
-  );
-
-  return (
-    <AuthModalContext.Provider value={value}>
-      {children}
-    </AuthModalContext.Provider>
-  );
 }
 
 /**

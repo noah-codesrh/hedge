@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { fiat } from "../lib/format";
@@ -19,8 +20,20 @@ import {
   primaryWalletAddress,
   useEnsureTradingWallet,
 } from "../lib/wallet";
+import {
+  useWalletFunding,
+  type FundPhase,
+  type FundProvider,
+} from "../lib/wallet-funding";
 import { watchBalanceReloads } from "../lib/positions";
-import { ArrowDownTrayIcon, CheckIcon, CopyIcon, WalletIcon } from "./icons";
+import {
+  ArrowDownTrayIcon,
+  CheckIcon,
+  CoinbaseMark,
+  CopyIcon,
+  MoonpayMark,
+  StripeMark,
+} from "./icons";
 import { TransferCryptoModal, ChainIcons } from "./ChainDeposit";
 import { DEPOSIT_CHAINS, type DepositChain } from "../lib/deposit-chains";
 
@@ -199,6 +212,58 @@ function BookInner({ children }: { children: React.ReactNode }) {
   );
 }
 
+function cashHint(
+  kind: FundProvider,
+  busy: FundProvider | null,
+  phase: FundPhase | null,
+  opening: string,
+  hint: string,
+) {
+  if (busy !== kind) return hint;
+  if (phase === "wait") return "Waiting for the purchase to land…";
+  if (phase === "convert") return "Converting to USDG cash…";
+  return opening;
+}
+
+function CashMethod({
+  title,
+  hint,
+  opening,
+  icon,
+  kind,
+  busy,
+  phase,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  hint: string;
+  opening: string;
+  icon: ReactNode;
+  kind: FundProvider;
+  busy: FundProvider | null;
+  phase: FundPhase | null;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 rounded-2xl bg-[#1b1b1b] px-4 py-4 text-left ring-1 ring-white/5 transition hover:ring-white/15 disabled:opacity-60"
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{title}</p>
+        <p className="text-[12px] text-muted">
+          {cashHint(kind, busy, phase, opening, hint)}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 function DepositModal({
   address,
   cash,
@@ -209,6 +274,8 @@ function DepositModal({
   onClose: () => void;
 }) {
   const { refresh } = useBook();
+  const { busy, phase, error, openStripe, openCoinbase, openMoonpay } =
+    useWalletFunding();
   const [tab, setTab] = useState<"crypto" | "cash">("crypto");
   const [copied, setCopied] = useState(false);
   const [transfer, setTransfer] = useState<DepositChain | null>(null);
@@ -368,29 +435,47 @@ function DepositModal({
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-3 rounded-2xl bg-[#1b1b1b] px-4 py-4 ring-1 ring-white/5">
-                <WalletIcon size={22} />
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">Connect exchange</p>
-                  <p className="text-[12px] text-muted">No limit · Coming soon</p>
-                </div>
-                <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-semibold text-gold">
-                  Soon
-                </span>
-              </div>
+              <CashMethod
+                title="Connect exchange"
+                hint="Coinbase. Lands as USDG cash."
+                opening="Opening Coinbase…"
+                icon={<CoinbaseMark />}
+                kind="coinbase"
+                busy={busy}
+                phase={phase}
+                disabled={busy !== null}
+                onClick={() => void openCoinbase(address)}
+              />
             </div>
           ) : (
-            <div className="mt-4 rounded-2xl bg-[#1b1b1b] px-4 py-8 text-center ring-1 ring-white/5">
-              <p className="font-semibold">Card and bank deposits</p>
-              <p className="mt-1 text-sm text-muted">
-                Fiat on-ramp into USDG is coming soon. For now, transfer crypto
-                from another chain or send USDG on Robinhood Chain.
-              </p>
-              <span className="mt-3 inline-block rounded-full bg-gold/20 px-2.5 py-1 text-[11px] font-semibold text-gold">
-                Soon
-              </span>
+            <div className="mt-4 space-y-2">
+              <CashMethod
+                title="Stripe"
+                hint="Apple Pay, Google Pay, or card"
+                opening="Opening Stripe…"
+                icon={<StripeMark />}
+                kind="stripe"
+                busy={busy}
+                phase={phase}
+                disabled={busy !== null}
+                onClick={() => void openStripe(address)}
+              />
+              <CashMethod
+                title="MoonPay"
+                hint="Card or Apple Pay"
+                opening="Opening MoonPay…"
+                icon={<MoonpayMark />}
+                kind="moonpay"
+                busy={busy}
+                phase={phase}
+                disabled={busy !== null}
+                onClick={() => void openMoonpay(address)}
+              />
             </div>
           )}
+          {error ? (
+            <p className="mt-3 text-sm text-red-400">{error}</p>
+          ) : null}
         </div>
       </div>
     </div>

@@ -27,7 +27,7 @@ export function LoginModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4"
+      className="fixed inset-0 z-[80] flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
     >

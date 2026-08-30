@@ -1,5 +1,5 @@
 import { PrivyProvider } from "@privy-io/react-auth";
-import { polygon, robinhoodChain } from "../lib/chains";
+import { base, polygon, robinhoodChain } from "../lib/chains";
 import { ENV } from "../lib/env";
 
 export default function PrivyRoot({ children }: { children: React.ReactNode }) {
@@ -8,7 +8,10 @@ export default function PrivyRoot({ children }: { children: React.ReactNode }) {
       appId={ENV.privyAppId}
       config={{
         defaultChain: robinhoodChain,
-        supportedChains: [robinhoodChain, polygon],
+        supportedChains: [robinhoodChain, polygon, base],
+        fundingMethodConfig: {
+          moonpay: { useSandbox: false },
+        },
         appearance: {
           theme: "dark",
           accentColor: "#F1D65A",
