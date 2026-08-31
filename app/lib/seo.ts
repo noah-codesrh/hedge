@@ -30,7 +30,7 @@ export function originFromMatches(
   return data?.origin;
 }
 
-export const REWARDS_OG_IMAGE_PATH = "/premiere-league-rewards.png";
+export const REWARDS_OG_IMAGE_PATH = "/premiere-league-rewards-og.jpg";
 export const REWARDS_TITLE = "Premier League Rewards · Hedge";
 export const REWARDS_DESCRIPTION =
   "$1,000 Premier League pool. $500 top volume, $500 highest realized PnL. Spot EPL only.";
@@ -42,6 +42,7 @@ export function siteMeta(options?: {
   image?: string;
   imageWidth?: string;
   imageHeight?: string;
+  imageType?: string;
   url?: string;
 }) {
   const title = options?.title ?? SITE_TITLE;
@@ -60,6 +61,9 @@ export function siteMeta(options?: {
     { property: "og:image", content: image },
     { property: "og:image:width", content: options?.imageWidth ?? "1024" },
     { property: "og:image:height", content: options?.imageHeight ?? "537" },
+    ...(options?.imageType
+      ? [{ property: "og:image:type", content: options.imageType }]
+      : []),
     { name: "twitter:card", content: "summary_large_image" },
     { name: "twitter:title", content: title },
     { name: "twitter:description", content: description },
@@ -67,14 +71,16 @@ export function siteMeta(options?: {
   ];
 }
 
-export function rewardsMeta(origin?: string) {
+export function rewardsMeta(_origin?: string) {
+  const canonical = SITE_URL.replace(/\/$/, "");
   return siteMeta({
     title: REWARDS_TITLE,
     description: REWARDS_DESCRIPTION,
-    origin,
+    origin: canonical,
     image: REWARDS_OG_IMAGE_PATH,
-    imageWidth: "2090",
-    imageHeight: "1175",
+    imageWidth: "1200",
+    imageHeight: "674",
+    imageType: "image/jpeg",
     url: "/rewards",
   });
 }
