@@ -498,6 +498,7 @@ function TradePanelView({
           price: result.entryPrice,
           orderId: result.orderId,
           conversionId: result.conversionId,
+          tags: event.tags,
         });
         addPosition({
           id: crypto.randomUUID(),

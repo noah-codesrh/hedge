@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useFetcher } from "react-router";
+import { Link, redirect, useFetcher } from "react-router";
 import type { Route } from "./+types/home";
 import type { loader as eventsLoader } from "./api.events";
 import { FeaturedBanner } from "../components/FeaturedBanner";
@@ -22,6 +22,13 @@ import {
 } from "../lib/polymarket";
 import type { PolymarketEvent } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
+import {
+  CHALLENGE_PRIZE_PNL,
+  CHALLENGE_PRIZE_TOTAL,
+  CHALLENGE_PRIZE_VOLUME,
+  CHALLENGE_TAG,
+  rewardsHref,
+} from "../lib/challenge";
 
 export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({ origin: originFromMatches(matches) });
@@ -38,18 +45,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   const q = (url.searchParams.get("q") ?? "").trim();
   const sectionHint = url.searchParams.get("section");
 
-  // Leverage is an allowlist, not a sort. Categories and search do not apply
-  // to it, so it skips the normal listing path entirely.
+  if (sort === "rewards" && !q) {
+    throw redirect(rewardsHref());
+  }
+
   const leverageTab = sort === "leverage" && !q;
+  const skipFeed = leverageTab;
 
   try {
     const [page, browse, leverage] = await Promise.all([
-      leverageTab
+      skipFeed
         ? Promise.resolve({ events: [] as PolymarketEvent[], nextOffset: 0, hasMore: false })
         : q
           ? searchEvents(q)
           : listEvents({ tag, sort }),
-      q || leverageTab
+      q || skipFeed
         ? Promise.resolve({ section: null, children: [] })
         : resolveBrowse(tag, sectionHint),
       leverageTab ? listLeverageMarkets() : Promise.resolve([] as LeverageListing[]),
@@ -58,7 +68,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       events: page.events,
       leverage,
       nextOffset: page.nextOffset,
-      hasMore: page.hasMore && !q && !leverageTab,
+      hasMore: page.hasMore && !q && !skipFeed,
       tag,
       sort,
       q,
@@ -83,8 +93,16 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { events: initial, leverage, tag, sort, q, error, section, children } =
-    loaderData;
+  const {
+    events: initial,
+    leverage,
+    tag,
+    sort,
+    q,
+    error,
+    section,
+    children,
+  } = loaderData;
   const leverageTab = sort === "leverage" && !q;
   const fetcher = useFetcher<typeof eventsLoader>();
   const [extra, setExtra] = useState<PolymarketEvent[]>([]);
@@ -285,6 +303,24 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         q={q || undefined}
         section={section}
       />
+
+      {tag === CHALLENGE_TAG && !leverageTab ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-white">
+            <span className="font-semibold text-gold">
+              ${CHALLENGE_PRIZE_TOTAL.toLocaleString()} Premier League pool.
+            </span>{" "}
+            ${CHALLENGE_PRIZE_VOLUME} top volume. ${CHALLENGE_PRIZE_PNL} highest
+            realized PnL. Spot tickets only.
+          </p>
+          <Link
+            to={rewardsHref()}
+            className="shrink-0 rounded-full bg-gold px-3.5 py-2 text-center text-sm font-semibold text-black"
+          >
+            Leaderboard
+          </Link>
+        </div>
+      ) : null}
 
       {leverageTab ? (
         leverageFeed

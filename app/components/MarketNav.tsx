@@ -6,6 +6,13 @@ import {
   type SubTag,
 } from "../lib/polymarket";
 import {
+  CHALLENGE_PRIZE_TOTAL,
+  CHALLENGE_TAG,
+  challengeHref,
+  rewardsHref,
+} from "../lib/challenge";
+import {
+  BallIcon,
   ClockIcon,
   DiamondIcon,
   FlameIcon,
@@ -17,7 +24,7 @@ import { RemoteImg } from "./RemoteImg";
 
 const TABS = [
   { id: "trending", label: "Trending", icon: FlameIcon },
-  { id: "rewards", label: "Rewards", icon: DiamondIcon, soon: true },
+  { id: "rewards", label: "Rewards", icon: DiamondIcon },
   { id: "new", label: "New", icon: SparkleIcon },
   { id: "leverage", label: "Leverage", icon: LayersIcon },
   { id: "ending", label: "Ending soon", icon: ClockIcon },
@@ -84,7 +91,11 @@ export function MarketNav({
             return (
               <Link
                 key={tab.id}
-                to={browseHref({ tag, sort: tab.id, q, section })}
+                to={
+                  tab.id === "rewards"
+                    ? rewardsHref()
+                    : browseHref({ tag, sort: tab.id, q, section })
+                }
                 className={className}
               >
                 <Icon size={14} />
@@ -105,7 +116,7 @@ export function MarketNav({
       {/* Leverage is a fixed allowlist, so category filters do not apply. */}
       <div
         className={`-mx-3 justify-center overflow-x-auto border-t border-white/5 px-3 pt-3 no-scrollbar sm:mx-0 sm:px-0 ${
-          sort === "leverage" ? "hidden" : "flex"
+          sort === "leverage" || sort === "rewards" ? "hidden" : "flex"
         }`}
       >
         {CATEGORIES.map((cat) => {
@@ -125,6 +136,37 @@ export function MarketNav({
           );
         })}
       </div>
+
+      {sort !== "leverage" && sort !== "rewards" ? (
+        <div className="-mx-3 flex items-center justify-center gap-2 overflow-x-auto px-3 no-scrollbar sm:mx-0 sm:px-0">
+          <Link
+            to={challengeHref()}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold transition ${
+              tag === CHALLENGE_TAG || section === CHALLENGE_TAG
+                ? "bg-gold text-black"
+                : "bg-gold/15 text-gold ring-1 ring-gold/40 hover:bg-gold/25"
+            }`}
+          >
+            <BallIcon size={15} />
+            Premier League
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                tag === CHALLENGE_TAG
+                  ? "bg-black/15 text-black"
+                  : "bg-gold/20 text-gold"
+              }`}
+            >
+              ${CHALLENGE_PRIZE_TOTAL.toLocaleString()} pool
+            </span>
+          </Link>
+          <Link
+            to={rewardsHref()}
+            className="inline-flex shrink-0 items-center rounded-full bg-white/5 px-3.5 py-2 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/10"
+          >
+            Leaderboard
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

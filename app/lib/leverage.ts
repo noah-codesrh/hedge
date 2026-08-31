@@ -80,15 +80,6 @@ export const LEVERAGE_MARKETS: LeverageMarket[] = [
     title: "Fed hike 25 bps after the September 2026 meeting?",
   },
   {
-    marketId: "3953244",
-    eventSlug: "google-maps-renames-lake-ontario-to-lake-america-in-2026",
-    marketSlug: "google-maps-renames-lake-ontario-to-lake-america-by-september-4-2026",
-    yesTokenId:
-      "65716241034061531214551837337767952658252411366677852532758349743800598868311",
-    maxLeverage: 2,
-    title: "Google Maps renames Lake Ontario to Lake America by September 4?",
-  },
-  {
     marketId: "3775011",
     eventSlug: "lal-bet-rea-2026-09-04",
     marketSlug: "lal-bet-rea-2026-09-04-rea",

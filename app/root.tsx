@@ -10,7 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
-import { publicOrigin, siteMeta } from "./lib/seo";
+import { publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
@@ -29,7 +29,10 @@ export function loader({ request }: Route.LoaderArgs) {
   return { origin: publicOrigin(request) };
 }
 
-export function meta({ loaderData }: Route.MetaArgs) {
+export function meta({ loaderData, location }: Route.MetaArgs) {
+  if (location.pathname === "/rewards") {
+    return rewardsMeta(loaderData?.origin);
+  }
   return siteMeta({ origin: loaderData?.origin });
 }
 

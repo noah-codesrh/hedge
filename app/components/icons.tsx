@@ -247,6 +247,19 @@ export function MoonpayMark({ size = 40 }: { size?: number }) {
   );
 }
 
+export function BallIcon({ size = 16 }: { size?: number }) {
+  return stroke(
+    size,
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3c2.2 2.4 3.4 5.5 3.4 9S14.2 18.6 12 21" />
+      <path d="M12 3c-2.2 2.4-3.4 5.5-3.4 9S9.8 18.6 12 21" />
+      <path d="M4.2 8.5h15.6" />
+      <path d="M4.2 15.5h15.6" />
+    </>,
+  );
+}
+
 export function ArrowDownTrayIcon({ size = 16 }: { size?: number }) {
   return stroke(
     size,

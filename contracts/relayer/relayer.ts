@@ -89,6 +89,13 @@ const walletClient = createWalletClient({
 
 const markets = loadMarkets();
 
+/** CLOB 404s. Dropped for this process so a dead book does not fail every tick. */
+const dropped = new Set<string>();
+
+function liveMarkets() {
+  return markets.filter((market) => !dropped.has(market.slug));
+}
+
 /** Set at startup; when false the keeper never attempts to pause. */
 let isGuardian = false;
 
@@ -125,7 +132,12 @@ async function fetchYesPrice(market: ResolvedMarket): Promise<number | null> {
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
-      console.warn(`[price] ${market.label}: CLOB responded ${res.status}`);
+      if (res.status === 404) {
+        dropped.add(market.slug);
+        console.warn(`[price] ${market.label}: CLOB 404, dropping from this run`);
+      } else {
+        console.warn(`[price] ${market.label}: CLOB responded ${res.status}`);
+      }
       return null;
     }
     const body = (await res.json()) as { mid?: string };
@@ -175,21 +187,23 @@ async function heartbeatSeconds(): Promise<bigint> {
 async function relayPrices(): Promise<number> {
   const ids: Hex[] = [];
   const targets: bigint[] = [];
+  const watching = liveMarkets();
 
   // Fetch every book in parallel; one slow market should not delay the rest.
   const quotes = await Promise.all(
-    markets.map(async (market) => ({ market, mid: await fetchYesPrice(market) })),
+    watching.map(async (market) => ({ market, mid: await fetchYesPrice(market) })),
   );
 
   const priced = quotes.filter((q) => q.mid !== null);
+  const live = liveMarkets();
   if (priced.length === 0) {
-    throw new Error(`no usable price for any of ${markets.length} market(s)`);
+    throw new Error(`no usable price for any of ${live.length} market(s)`);
   }
-  if (priced.length < markets.length) {
+  if (priced.length < live.length) {
     await alert(
       "partial-prices",
       "warn",
-      `priced ${priced.length}/${markets.length} markets; the rest will go stale`,
+      `priced ${priced.length}/${live.length} markets; the rest will go stale`,
     );
   } else {
     await resolve("partial-prices", "all markets priced again");
@@ -221,6 +235,12 @@ async function relayPrices(): Promise<number> {
 
   if (ids.length === 0) return priced.length;
 
+  if (status.lowBalance) {
+    throw new Error(
+      `keeper gas too low to push ${ids.length} price(s) (${formatEther(BigInt(status.balanceWei ?? "0"))} ETH)`,
+    );
+  }
+
   const hash = await walletClient.writeContract({
     address: oracleAddress,
     abi: oracleAbi,
@@ -241,8 +261,9 @@ async function relayPrices(): Promise<number> {
  * a market stuck converging means the feed is oscillating or wrong.
  */
 async function reportConvergence(): Promise<void> {
+  const watching = liveMarkets();
   const flags = await Promise.all(
-    markets.map((market) =>
+    watching.map((market) =>
       publicClient.readContract({
         address: oracleAddress,
         abi: oracleAbi,
@@ -252,7 +273,7 @@ async function reportConvergence(): Promise<void> {
     ),
   );
 
-  const lagging = markets.filter((_, i) => flags[i]).map((m) => m.label);
+  const lagging = watching.filter((_, i) => flags[i]).map((m) => m.label);
   if (lagging.length > 0) {
     await alert(
       "converging",
@@ -378,7 +399,7 @@ async function settleResolved(ids: bigint[]): Promise<void> {
  * admin makes it, open positions cannot be settled at all.
  */
 async function checkResolutions(): Promise<void> {
-  for (const market of markets) {
+  for (const market of liveMarkets()) {
     let closed = false;
     let yesPrice: number | null = null;
 

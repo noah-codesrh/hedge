@@ -15,6 +15,7 @@ export type TradeReport = {
   price?: number | null;
   orderId?: string | null;
   conversionId?: string | null;
+  tags?: Array<{ slug?: string | null } | string> | null;
 };
 
 /**

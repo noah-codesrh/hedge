@@ -24,6 +24,7 @@ export default [
   route("api/relay/forward", "routes/api.relay.forward.ts"),
   route("api/track/trade", "routes/api.track.trade.ts"),
   route("api/track/nickname", "routes/api.track.nickname.ts"),
+  route("api/challenge/leaderboard", "routes/api.challenge.leaderboard.ts"),
   route("api/token", "routes/api.token.ts"),
   route("api/vault", "routes/api.vault.ts"),
   layout("routes/shell.tsx", [
@@ -33,5 +34,7 @@ export default [
     route("earn", "routes/earn.tsx"),
     route("token", "routes/token.tsx"),
     route("terms", "routes/terms.tsx"),
+    route("challenge", "routes/challenge.tsx"),
+    route("rewards", "routes/rewards.tsx"),
   ]),
 ] satisfies RouteConfig;

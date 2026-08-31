@@ -1,4 +1,5 @@
 import type { Route } from "./+types/api.track.trade";
+import { CHALLENGE_LEAGUE, isEplTrade } from "../lib/challenge";
 import { requirePrivyUser, userHasWallet } from "../lib/server/privy-auth";
 import { supabaseAdmin } from "../lib/server/supabase";
 
@@ -63,7 +64,20 @@ export async function action({ request }: Route.ActionArgs) {
   const proxyWallet = text(body.proxyWallet, 42);
   const price = amount(body.price);
 
-  const { error } = await db.from("trades").insert({
+  const eventSlug = text(body.eventSlug, 200);
+  const marketSlug = text(body.marketSlug, 200);
+  const title = text(body.title, 300);
+  const tags = Array.isArray(body.tags) ? body.tags : [];
+  const league = isEplTrade({
+    tags: tags as Array<{ slug?: string | null } | string>,
+    eventSlug,
+    marketSlug,
+    title,
+  })
+    ? CHALLENGE_LEAGUE
+    : null;
+
+  const row: Record<string, unknown> = {
     privy_user_id: userId,
     wallet: wallet.toLowerCase(),
     proxy_wallet: proxyWallet && ADDR.test(proxyWallet)
@@ -72,17 +86,24 @@ export async function action({ request }: Route.ActionArgs) {
     direction,
     outcome,
     outcome_label: text(body.outcomeLabel, 120),
-    event_slug: text(body.eventSlug, 200),
-    market_slug: text(body.marketSlug, 200),
+    event_slug: eventSlug,
+    market_slug: marketSlug,
     token_id: text(body.tokenId, 120),
-    title: text(body.title, 300),
+    title,
     usdg,
     pusd: amount(body.pusd),
     shares: amount(body.shares),
     price: price != null && price <= 1 ? price : null,
     order_id: text(body.orderId, 120),
     conversion_id: text(body.conversionId, 120),
-  });
+    league,
+  };
+
+  let { error } = await db.from("trades").insert(row);
+  if (error?.message?.includes("league")) {
+    delete row.league;
+    ({ error } = await db.from("trades").insert(row));
+  }
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
