@@ -28,3 +28,9 @@ export const engineAbi = parseAbi([
   "function effectiveMaxLeverageBps() view returns (uint256)",
   "function nextLeverageTier() view returns (uint256 atTvl, uint256 leverageBps)",
 ]);
+
+export const stockCollateralAbi = parseAbi([
+  "function marksReporter() view returns (address)",
+  "function markUsd6(address token) view returns (uint256)",
+  "function pushMarks(address[] tokens, uint256[] marks)",
+]);

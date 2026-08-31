@@ -9,6 +9,8 @@
  *      liquidation level set when the position was opened.
  *   3. Report on itself, loudly, so that when it stops doing 1 and 2 somebody
  *      finds out in minutes rather than from the vault balance.
+ *   4. If STOCK_COLLATERAL is set, pull Blockscout exchange_rate for the
+ *      listed stock tokens and write markUsd6 on the desk.
  *
  * Jobs 1 and 2 are safe to run from more than one instance. Liquidation is
  * permissionless and re-verified on-chain, so a duplicate call simply reverts
@@ -30,7 +32,8 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { engineAbi, oracleAbi } from "./abi.ts";
+import { engineAbi, oracleAbi, stockCollateralAbi } from "./abi.ts";
+import { fetchStockMarksUsd6 } from "./stock-marks.ts";
 import { alert, resolve } from "./alerts.ts";
 import { startHealthServer, status } from "./health.ts";
 import {
@@ -70,6 +73,7 @@ const robinhoodChain = defineChain({
 const account = privateKeyToAccount(requireEnv("RELAYER_PRIVATE_KEY") as Hex);
 const oracleAddress = requireEnv("ORACLE_ADDRESS") as Hex;
 const engineAddress = requireEnv("ENGINE_ADDRESS") as Hex;
+const stockCollateral = (process.env.STOCK_COLLATERAL ?? "").trim() as Hex | "";
 
 const rpcTransport = fallback(
   RH_RPCS.map((url) =>
@@ -253,6 +257,48 @@ async function relayPrices(): Promise<number> {
 
   await reportConvergence();
   return priced.length;
+}
+
+const STOCK_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Stock marks are USD * 1e6, from Blockscout's `exchange_rate`. Isolated from
+ * the Polymarket oracle. A failed fetch must not fail the prediction tick.
+ */
+async function pushStockMarks() {
+  if (!STOCK_ADDRESS.test(stockCollateral)) return;
+
+  const quotes = await fetchStockMarksUsd6();
+  const tokens: Hex[] = [];
+  const marks: bigint[] = [];
+  for (const quote of quotes) {
+    const current = await publicClient.readContract({
+      address: stockCollateral as Hex,
+      abi: stockCollateralAbi,
+      functionName: "markUsd6",
+      args: [quote.token],
+    });
+    if (current === quote.markUsd6) continue;
+    tokens.push(quote.token);
+    marks.push(quote.markUsd6);
+  }
+  if (tokens.length === 0) return;
+
+  if (status.lowBalance) {
+    throw new Error(
+      `keeper gas too low to push ${tokens.length} stock mark(s) (${formatEther(BigInt(status.balanceWei ?? "0"))} ETH)`,
+    );
+  }
+
+  const hash = await walletClient.writeContract({
+    address: stockCollateral as Hex,
+    abi: stockCollateralAbi,
+    functionName: "pushMarks",
+    args: [tokens, marks],
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+  status.marksPushed += tokens.length;
+  console.log(`[marks] pushed ${tokens.length} token(s) · ${hash}`);
 }
 
 /**
@@ -556,6 +602,11 @@ async function tick() {
   try {
     await checkBalance();
     await relayPrices();
+    try {
+      await pushStockMarks();
+    } catch (err) {
+      console.warn("[marks] skipped", describe(err));
+    }
     await checkResolutions();
 
     const ids = await openIds();
@@ -634,6 +685,26 @@ async function main() {
 
   const once = process.argv.includes("--once");
   if (!once) startHealthServer();
+
+  if (STOCK_ADDRESS.test(stockCollateral)) {
+    try {
+      const reporter = await publicClient.readContract({
+        address: stockCollateral as Hex,
+        abi: stockCollateralAbi,
+        functionName: "marksReporter",
+      });
+      if (reporter.toLowerCase() !== account.address.toLowerCase()) {
+        console.warn(
+          `[marks] ${account.address} is not marksReporter (${reporter}). ` +
+            `pushMarks will revert until setMarksReporter is called.`,
+        );
+      } else {
+        console.log(`[marks] writing Blockscout rates to ${stockCollateral}`);
+      }
+    } catch (err) {
+      console.warn("[marks] could not read marksReporter", describe(err));
+    }
+  }
 
   console.log(
     `[keeper] ${account.address} watching ${markets.length} market(s) every ${TICK_MS}ms` +

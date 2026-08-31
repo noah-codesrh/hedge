@@ -22,6 +22,7 @@ export type KeeperStatus = {
   consecutiveFailures: number;
   ticks: number;
   pricesPushed: number;
+  marksPushed: number;
   liquidations: number;
   settlements: number;
   /** Native balance in wei, for gas exhaustion. */
@@ -39,6 +40,7 @@ export const status: KeeperStatus = {
   consecutiveFailures: 0,
   ticks: 0,
   pricesPushed: 0,
+  marksPushed: 0,
   liquidations: 0,
   settlements: 0,
   balanceWei: null,
@@ -117,6 +119,9 @@ function prometheus(): string {
     `# HELP hedge_keeper_prices_pushed_total Oracle updates submitted.`,
     `# TYPE hedge_keeper_prices_pushed_total counter`,
     `hedge_keeper_prices_pushed_total ${s.pricesPushed}`,
+    `# HELP hedge_keeper_marks_pushed_total Stock desk mark updates submitted.`,
+    `# TYPE hedge_keeper_marks_pushed_total counter`,
+    `hedge_keeper_marks_pushed_total ${s.marksPushed}`,
     `# HELP hedge_keeper_liquidations_total Positions liquidated.`,
     `# TYPE hedge_keeper_liquidations_total counter`,
     `hedge_keeper_liquidations_total ${s.liquidations}`,
