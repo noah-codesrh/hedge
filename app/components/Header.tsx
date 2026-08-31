@@ -32,7 +32,7 @@ function SearchBar() {
       key={`${tag}-${sort}-${section}-${q}`}
       action="/"
       method="get"
-      className="mx-auto hidden w-full max-w-md items-center gap-2.5 rounded-full border border-white/10 bg-[#1e1e1e] px-4 py-2.5 md:flex"
+      className="mx-auto hidden min-w-0 flex-1 max-w-md items-center gap-2.5 rounded-full border border-white/10 bg-[#1e1e1e] px-4 py-2.5 md:flex"
     >
       {tag ? <input type="hidden" name="tag" value={tag} /> : null}
       {sort ? <input type="hidden" name="sort" value={sort} /> : null}
@@ -63,8 +63,8 @@ function HeaderShell({
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur">
-      <div className="mx-auto flex h-14 min-w-0 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-4">
-        <Link to="/" prefetch="intent" className="min-w-0 shrink">
+      <div className="mx-auto flex h-14 min-w-0 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-3 lg:gap-4">
+        <Link to="/" prefetch="intent" className="shrink-0">
           <img
             src="/logo-full.png"
             alt="Hedge"
@@ -76,7 +76,7 @@ function HeaderShell({
           />
         </Link>
 
-        <nav className="hidden items-center gap-1 lg:flex">
+        <nav className="hidden shrink-0 items-center gap-0.5 lg:flex">
           <Link
             to="/"
             prefetch="intent"
