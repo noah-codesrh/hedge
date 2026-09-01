@@ -172,6 +172,15 @@ export function DiamondIcon({ size = 16 }: { size?: number }) {
   return stroke(size, <path d="M6 9 12 3l6 6-6 12z" />);
 }
 
+export function ChatIcon({ size = 16 }: { size?: number }) {
+  return stroke(
+    size,
+    <>
+      <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7A2.5 2.5 0 0 1 16.5 16H11l-4 3.2V16H7.5A2.5 2.5 0 0 1 5 13.5z" />
+    </>,
+  );
+}
+
 export function LayersIcon({ size = 16 }: { size?: number }) {
   return stroke(
     size,

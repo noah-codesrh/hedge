@@ -25,6 +25,7 @@ export default [
   route("api/track/trade", "routes/api.track.trade.ts"),
   route("api/track/nickname", "routes/api.track.nickname.ts"),
   route("api/challenge/leaderboard", "routes/api.challenge.leaderboard.ts"),
+  route("api/venue/chat", "routes/api.venue.chat.ts"),
   route("api/token", "routes/api.token.ts"),
   route("api/vault", "routes/api.vault.ts"),
   layout("routes/shell.tsx", [

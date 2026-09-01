@@ -5,6 +5,7 @@ import { ArrowLeftIcon } from "../components/icons";
 import { ChanceBar } from "../components/OutrightCard";
 import { PriceChart } from "../components/PriceChart";
 import { TradePanel } from "../components/TradePanel";
+import { VenueChat } from "../components/VenueChat";
 import {
   getEvent,
   getPriceHistory,
@@ -151,7 +152,7 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
           )}
         </div>
 
-        <div className="order-1 min-w-0 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <div className="order-1 min-w-0 lg:order-none lg:col-start-2 lg:row-span-3 lg:row-start-1">
           <div className="lg:sticky lg:top-20">
             <TradePanel
               event={event}
@@ -190,6 +191,18 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
             })}
           </div>
         ) : null}
+
+        <div
+          className={`order-4 min-w-0 lg:order-none lg:col-start-1 ${
+            event.markets.length > 1 ? "lg:row-start-3" : "lg:row-start-2"
+          }`}
+        >
+          <VenueChat
+            eventId={event.id}
+            eventSlug={event.slug}
+            marketId={market.id}
+          />
+        </div>
       </div>
     </main>
   );
