@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Route } from "./+types/market.$id";
 import { ArrowLeftIcon } from "../components/icons";
@@ -14,9 +14,20 @@ import {
   type PricePoint,
 } from "../lib/polymarket";
 import { formatEnd, pct, usd } from "../lib/format";
-import type { Side } from "../lib/types";
+import type { Market, Side } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { RemoteImg } from "../components/RemoteImg";
+
+const MARKET_PREVIEW = 6;
+
+function previewMarkets(markets: Market[], activeId: string, limit: number) {
+  if (markets.length <= limit) return markets;
+  const head = markets.slice(0, limit);
+  if (head.some((row) => row.id === activeId)) return head;
+  const active = markets.find((row) => row.id === activeId);
+  if (!active) return head;
+  return [...head.slice(0, limit - 1), active];
+}
 
 export function meta({ loaderData, matches }: Route.MetaArgs) {
   const title = loaderData?.event?.title ?? "Market";
@@ -47,10 +58,15 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   );
   const [history, setHistory] = useState(loaderData.history);
   const [chartBusy, setChartBusy] = useState(false);
+  const [outcomesOpen, setOutcomesOpen] = useState(false);
 
   useEffect(() => {
     if (queriedMarket) setActiveId(queriedMarket);
   }, [queriedMarket]);
+
+  useEffect(() => {
+    setOutcomesOpen(false);
+  }, [event?.id]);
 
   const market =
     event?.markets.find((m) => m.id === activeId) ??
@@ -163,33 +179,13 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
         </div>
 
         {event.markets.length > 1 ? (
-          <div className="order-3 min-w-0 space-y-2 lg:order-none lg:col-start-1 lg:row-start-2">
-            {event.markets.map((m) => {
-              const rowLive = isLiveMarket(m);
-              const maxPrice = Math.max(
-                ...event.markets.map((x) => x.yes.price),
-                0.01,
-              );
-              return (
-                <div
-                  key={m.id}
-                  className={`rounded-2xl px-2 py-1.5 ring-1 transition sm:px-3 ${
-                    m.id === market.id
-                      ? "bg-white/8 ring-white/20"
-                      : "ring-transparent hover:bg-white/[0.03]"
-                  } ${rowLive ? "" : "opacity-50"}`}
-                >
-                  <ChanceBar
-                    label={m.groupItemTitle ?? m.question}
-                    image={m.icon ?? m.image}
-                    price={m.yes.price}
-                    maxPrice={maxPrice}
-                    onClick={() => setActiveId(m.id)}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          <OutcomeList
+            markets={event.markets}
+            activeId={market.id}
+            expanded={outcomesOpen}
+            onExpand={setOutcomesOpen}
+            onSelect={setActiveId}
+          />
         ) : null}
 
         <div
@@ -205,5 +201,61 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
         </div>
       </div>
     </main>
+  );
+}
+
+function OutcomeList({
+  markets,
+  activeId,
+  expanded,
+  onExpand,
+  onSelect,
+}: {
+  markets: Market[];
+  activeId: string;
+  expanded: boolean;
+  onExpand: (open: boolean) => void;
+  onSelect: (id: string) => void;
+}) {
+  const hidden = Math.max(0, markets.length - MARKET_PREVIEW);
+  const rows = useMemo(
+    () => (expanded ? markets : previewMarkets(markets, activeId, MARKET_PREVIEW)),
+    [activeId, expanded, markets],
+  );
+  const maxPrice = Math.max(...markets.map((row) => row.yes.price), 0.01);
+
+  return (
+    <div className="order-3 min-w-0 space-y-2 lg:order-none lg:col-start-1 lg:row-start-2">
+      {rows.map((m) => {
+        const rowLive = isLiveMarket(m);
+        return (
+          <div
+            key={m.id}
+            className={`rounded-2xl px-2 py-1.5 ring-1 transition sm:px-3 ${
+              m.id === activeId
+                ? "bg-white/8 ring-white/20"
+                : "ring-transparent hover:bg-white/[0.03]"
+            } ${rowLive ? "" : "opacity-50"}`}
+          >
+            <ChanceBar
+              label={m.groupItemTitle ?? m.question}
+              image={m.icon ?? m.image}
+              price={m.yes.price}
+              maxPrice={maxPrice}
+              onClick={() => onSelect(m.id)}
+            />
+          </div>
+        );
+      })}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          onClick={() => onExpand(!expanded)}
+          className="w-full rounded-2xl py-2.5 text-[13px] font-semibold text-muted ring-1 ring-white/10 transition hover:bg-white/[0.04] hover:text-white"
+        >
+          {expanded ? "Show less" : `See more · ${hidden} more`}
+        </button>
+      ) : null}
+    </div>
   );
 }
