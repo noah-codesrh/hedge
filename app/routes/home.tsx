@@ -172,7 +172,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           Leverage markets
         </h2>
         <p className="max-w-2xl text-[13px] leading-relaxed text-muted">
-          2x–3x against the vault. 1x is still ordinary Polymarket.
+          2x–4x against the vault. 1x is still ordinary Polymarket.
         </p>
       </div>
 

@@ -1,7 +1,7 @@
 export const SITE_TITLE = "Hedge";
 /** Canonical public URL. Shared artwork must not point at a preview host. */
 export const SITE_URL = "https://hedgeapp.trade/";
-export const SITE_DESCRIPTION = "Trade predictions. Up to 3x-10x leverage";
+export const SITE_DESCRIPTION = "Trade predictions. Up to 4x leverage";
 export const OG_IMAGE_PATH = "/og-preview.jpg";
 
 export function publicOrigin(request: Request) {

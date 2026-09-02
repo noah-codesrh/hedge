@@ -1225,7 +1225,7 @@ function CollateralPicker({
         </p>
       ) : (
         <p className="mt-2 text-[11px] leading-snug text-muted">
-          1x is USDG on the book. 2x and 3x can lock listed stock instead of
+          1x is USDG on the book. 2x to 4x can lock listed stock instead of
           cash.
         </p>
       )}
@@ -1267,7 +1267,7 @@ function LeverageSelector({
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
         {LEVERAGE_STEPS.map((step) => {
           // Steps above this market's cap stay visible rather than hidden, so
           // the ceiling is legible instead of just absent.
