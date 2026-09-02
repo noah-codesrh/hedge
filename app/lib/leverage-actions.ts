@@ -9,7 +9,9 @@ import {
 import { robinhoodChain } from "./chains";
 import { engineAbi, vaultAbi } from "./leverage-abi";
 import { ENGINE_ADDRESS, VAULT_ADDRESS } from "./leverage";
+import { LEVERAGE_MARKETS } from "./leverage";
 import { marketIdFor, readAllowance, toUsdgRaw, waitForTx } from "./leverage-chain";
+import { ensureOracleFresh } from "./leverage-refresh";
 import { USDG } from "./robinhood";
 import { sponsoredTokenSend, type SignPrivyAuthorization } from "./sponsored-send";
 import { isEmbeddedWallet, robinhoodProvider } from "./wallet";
@@ -41,7 +43,7 @@ const REVERTS: Record<string, string> = {
     "This market has drifted outside the $0.35–$0.65 band where leverage is offered.",
   PriceConverging:
     "The price feed is catching up after a jump. Opening reopens in a few seconds.",
-  StalePrice: "The price feed is stale. Give it a moment and try again.",
+  StalePrice: "The price feed is stale. Try again in a moment.",
   OpeningIsPaused: "New leveraged positions are paused.",
   MarginTooLarge: "That's above the deposit cap for a leveraged position.",
   MarginTooSmall: "That's below the minimum for a leveraged position.",
@@ -204,6 +206,23 @@ export type TradeStage = "approving" | "checking" | "submitting";
 
 export type StageFn = (stage: TradeStage) => void;
 
+async function slugsForPosition(id: bigint): Promise<string[]> {
+  try {
+    const p = await client.readContract({
+      address: ENGINE_ADDRESS as Hex,
+      abi: engineAbi,
+      functionName: "positions",
+      args: [id],
+    });
+    const slug = LEVERAGE_MARKETS.find(
+      (m) => marketIdFor(m.marketSlug).toLowerCase() === p[1].toLowerCase(),
+    )?.marketSlug;
+    return slug ? [slug] : LEVERAGE_MARKETS.map((m) => m.marketSlug);
+  } catch {
+    return LEVERAGE_MARKETS.map((m) => m.marketSlug);
+  }
+}
+
 export async function openLeveragePosition(
   ctx: SendContext,
   input: { marketSlug: string; isLong: boolean; margin: number; leverage: number },
@@ -221,6 +240,7 @@ export async function openLeveragePosition(
   await ensureAllowance(ctx, ENGINE_ADDRESS, marginRaw);
 
   onStage?.("checking");
+  await ensureOracleFresh(ctx.accessToken, [input.marketSlug]);
   await simulate(ctx.from, ENGINE_ADDRESS as Hex, engineAbi, "openPosition", args);
 
   onStage?.("submitting");
@@ -238,6 +258,89 @@ export async function openLeveragePosition(
  * remainder below its minimum margin, so the UI should offer a "close all"
  * rather than let someone scrape a position down to dust.
  */
+function limitThrough(
+  kind: "open" | "close",
+  isLong: boolean,
+  triggerAbove: boolean,
+  mark: number,
+  limitPrice: number,
+) {
+  if (kind === "open") return isLong ? mark <= limitPrice : mark >= limitPrice;
+  return triggerAbove ? mark >= limitPrice : mark <= limitPrice;
+}
+
+export async function placeOpenLimit(
+  ctx: SendContext,
+  input: {
+    marketSlug: string;
+    isLong: boolean;
+    margin: number;
+    leverage: number;
+    limitPrice: number;
+    mark: number;
+  },
+  onStage?: StageFn,
+) {
+  if (!(input.limitPrice > 0 && input.limitPrice < 1)) {
+    throw new Error("Set a limit between 1¢ and 99¢.");
+  }
+  if (limitThrough("open", input.isLong, false, input.mark, input.limitPrice)) {
+    return openLeveragePosition(ctx, input, onStage);
+  }
+  onStage?.("submitting");
+  const { restOpenOrder } = await import("./leverage-limits");
+  await restOpenOrder(ctx.accessToken, {
+    wallet: ctx.from,
+    marketSlug: input.marketSlug,
+    isLong: input.isLong,
+    margin: input.margin,
+    leverage: input.leverage,
+    limitPrice: input.limitPrice,
+  });
+}
+
+export async function placeCloseLimit(
+  ctx: SendContext,
+  input: {
+    positionId: bigint;
+    limitPrice: number;
+    triggerAbove: boolean;
+    isLong: boolean;
+    mark: number;
+    marketSlug?: string;
+  },
+  onStage?: StageFn,
+) {
+  if (!(input.limitPrice > 0 && input.limitPrice < 1)) {
+    throw new Error("Set a limit between 1¢ and 99¢.");
+  }
+  if (
+    limitThrough("close", input.isLong, input.triggerAbove, input.mark, input.limitPrice)
+  ) {
+    return closeLeveragePosition(ctx, input.positionId, 10_000, onStage);
+  }
+  onStage?.("submitting");
+  const { restCloseOrder } = await import("./leverage-limits");
+  await restCloseOrder(ctx.accessToken, {
+    wallet: ctx.from,
+    marketSlug: input.marketSlug ?? "",
+    isLong: input.isLong,
+    triggerAbove: input.triggerAbove,
+    limitPrice: input.limitPrice,
+    positionId: input.positionId.toString(),
+  });
+}
+
+export async function cancelLeverageOrder(
+  ctx: SendContext,
+  id: string,
+  onStage?: StageFn,
+) {
+  onStage?.("submitting");
+  const { cancelRestingOrder } = await import("./leverage-limits");
+  await cancelRestingOrder(ctx.accessToken, id);
+}
+
 export async function closeLeveragePosition(
   ctx: SendContext,
   id: bigint,
@@ -246,6 +349,7 @@ export async function closeLeveragePosition(
 ) {
   const args = [id, BigInt(fractionBps)] as const;
   onStage?.("checking");
+  await ensureOracleFresh(ctx.accessToken, await slugsForPosition(id));
   await simulate(ctx.from, ENGINE_ADDRESS as Hex, engineAbi, "reducePosition", args);
 
   onStage?.("submitting");

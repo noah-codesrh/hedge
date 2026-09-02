@@ -236,6 +236,17 @@ export type LeveragePosition = {
   openedAt: number;
   atRisk: boolean;
   resolved: boolean;
+  /**
+   * Stock-desk ticket. The engine row is owned by the desk, so close must go
+   * through `closeTicket` rather than `reducePosition`.
+   */
+  ticketId?: bigint;
+  stock?: {
+    symbol: string;
+    name: string;
+    address: string;
+    amount: number;
+  };
 };
 
 /**
@@ -341,6 +352,121 @@ export async function readPositionsFor(
     });
   } catch {
     return [];
+  }
+}
+
+export type LeverageOrder = {
+  id: string;
+  marketId: string;
+  marketSlug: string;
+  label: string | null;
+  isLong: boolean;
+  isClose: boolean;
+  triggerAbove: boolean;
+  margin: number;
+  leverage: number;
+  limitPrice: number;
+  positionId: string | null;
+  fillable: boolean;
+};
+
+/** Limits rest off-chain and fill through the live engine. No new address. */
+export async function limitOrdersLive(): Promise<boolean> {
+  return leverageIsLive;
+}
+
+export async function readOrdersFor(
+  _trader: string,
+  accessToken?: string | null,
+): Promise<LeverageOrder[]> {
+  if (!leverageIsLive || !accessToken) return [];
+  try {
+    const { listRestingOrders } = await import("./leverage-limits");
+    return await listRestingOrders(accessToken);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * One engine row by id, including when the trader is the stock desk.
+ *
+ * Stock tickets own the engine position through the desk, so the usual
+ * "positions for this wallet" scan never sees them.
+ */
+export async function readPositionById(
+  id: bigint,
+): Promise<LeveragePosition | null> {
+  if (!engineIsDeployed) return null;
+
+  try {
+    const p = await client.readContract({
+      ...engine,
+      functionName: "positions",
+      args: [id],
+    });
+    if (!p[3]) return null;
+
+    const [pnlResult, fundingResult, liqResult, riskResult, market] =
+      await Promise.allSettled([
+        client.readContract({ ...engine, functionName: "pnlOf", args: [id] }),
+        client.readContract({ ...engine, functionName: "fundingOwed", args: [id] }),
+        client.readContract({
+          ...engine,
+          functionName: "liquidationPriceNow",
+          args: [id],
+        }),
+        client.readContract({
+          ...engine,
+          functionName: "isLiquidatable",
+          args: [id],
+        }),
+        client.readContract({ ...engine, functionName: "markets", args: [p[1]] }),
+      ]);
+
+    const marketId = p[1];
+    const known = MARKET_BY_ID.get(marketId) ?? null;
+    const margin = toUsd(p[6]);
+    const size = toUsd(p[5]);
+    const netMargin = toUsd(p[7]);
+    const pnl =
+      pnlResult.status === "fulfilled" ? toUsd(pnlResult.value as bigint) : 0;
+    const funding =
+      fundingResult.status === "fulfilled"
+        ? toUsd(fundingResult.value as bigint)
+        : 0;
+
+    return {
+      id,
+      marketId,
+      marketSlug: known?.marketSlug ?? marketId,
+      label: known?.title ?? known?.marketSlug ?? null,
+      eventSlug: known?.eventSlug ?? null,
+      gammaMarketId: known?.marketId ?? null,
+      isLong: p[2],
+      entryPrice: toPrice(p[4]),
+      size,
+      margin,
+      netMargin,
+      shares: toUsd(p[8]),
+      leverage: margin > 0 ? size / margin : 1,
+      liquidationPrice:
+        liqResult.status === "fulfilled"
+          ? toPrice(liqResult.value as bigint)
+          : toPrice(p[9]),
+      liquidationPriceAtOpen: toPrice(p[9]),
+      funding,
+      pnl,
+      value: Math.max(0, netMargin + pnl - funding),
+      openedAt: Number(p[11]) * 1000,
+      atRisk: riskResult.status === "fulfilled" && riskResult.value === true,
+      resolved:
+        market.status === "fulfilled" &&
+        Array.isArray(market.value) &&
+        Boolean(market.value[1]),
+    };
+  } catch {
+    return null;
   }
 }
 

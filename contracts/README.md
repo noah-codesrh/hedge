@@ -412,7 +412,8 @@ APY = (1 + APR/52)^52 - 1
 ## The frontend side
 
 Built and wired, but inert until the addresses exist. Set
-`VITE_HEDGE_ENGINE_ADDRESS` and `VITE_HEDGE_VAULT_ADDRESS` in the app's `.env`
+`VITE_HEDGE_ENGINE_ADDRESS`, `VITE_HEDGE_VAULT_ADDRESS`, and
+`VITE_HEDGE_STOCK_COLLATERAL` in the app's `.env`
 after deploying and the leverage selector starts submitting and the Earn page
 comes alive. Until then the panel shows sizing and refuses to submit, and Earn
 says the vault is not live — both deliberate, so a levered ticket can never

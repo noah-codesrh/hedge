@@ -7,6 +7,7 @@ interface ImportMetaEnv {
    */
   readonly VITE_HEDGE_ENGINE_ADDRESS?: string;
   readonly VITE_HEDGE_VAULT_ADDRESS?: string;
+  readonly VITE_HEDGE_STOCK_COLLATERAL?: string;
   /**
    * Master switch for leveraged trading. Anything but "true" hides the
    * leverage selector. Earn is independent: a set vault address is enough

@@ -22,6 +22,15 @@ export function serverSecrets() {
       required("HEDGE_ENGINE_ADDRESS") ?? required("VITE_HEDGE_ENGINE_ADDRESS"),
     hedgeVaultAddress:
       required("HEDGE_VAULT_ADDRESS") ?? required("VITE_HEDGE_VAULT_ADDRESS"),
+    hedgeStockCollateral:
+      required("HEDGE_STOCK_COLLATERAL") ??
+      required("VITE_HEDGE_STOCK_COLLATERAL"),
+    // Reporter key for on-demand oracle pushes. Same key the Railway keeper
+    // used. Never prefix with VITE_.
+    oracleReporterKey:
+      required("ORACLE_REPORTER_KEY") ?? required("RELAYER_PRIVATE_KEY"),
+    oracleAddress:
+      required("ORACLE_ADDRESS") ?? required("VITE_HEDGE_ORACLE_ADDRESS"),
     supabaseUrl: required("SUPABASE_URL"),
     // sb_secret_..., or the legacy service_role JWT. Either bypasses row level
     // security, so this must never be sent to the browser.

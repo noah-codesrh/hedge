@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import {
   usePrivy,
@@ -6,7 +7,7 @@ import {
   useLoginWithEmail,
   useLoginWithOAuth,
 } from "@privy-io/react-auth";
-import { usePrivyStatus } from "./Providers";
+import { useAuthModal } from "./auth-modal";
 import { HoneycombMarquee } from "./HoneycombMarquee";
 import {
   DiscordIcon,
@@ -15,32 +16,36 @@ import {
   XIcon,
 } from "./icons";
 
-export function LoginModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const privyStatus = usePrivyStatus();
-  if (!open) return null;
+/**
+ * Login chrome. No Privy hooks. Lives outside the Privy handoff so a Get
+ * Started click is never thrown away when the provider chunk arrives.
+ *
+ * Methods render into `#hedge-login-methods` from inside `PrivyRoot`.
+ */
+export function LoginModal() {
+  const { open, closeModal, walletLayer } = useAuthModal();
 
-  return (
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[80] flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4"
+      className={`hedge-login-root fixed inset-0 flex items-end justify-center p-0 animate-fade-in sm:items-center sm:p-4 ${
+        walletLayer ? "z-[80] pointer-events-none" : "z-[1000001]"
+      }`}
       role="dialog"
       aria-modal="true"
     >
       <div
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={closeModal}
       />
-      <div className="relative z-10 max-h-[92dvh] w-full max-w-[440px] overflow-y-auto rounded-t-[28px] border border-white/10 bg-[#161616] shadow-2xl animate-pop-in sm:rounded-[28px]">
+      <div className="relative z-10 max-h-[92dvh] w-full max-w-[440px] overflow-y-auto rounded-t-[28px] border border-white/10 bg-[#161616] shadow-2xl animate-pop-in pointer-events-auto sm:rounded-[28px]">
         <div className="relative h-36 overflow-hidden sm:h-52">
           <HoneycombMarquee columns={3} />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-[#161616]" />
           <button
-            onClick={onClose}
+            type="button"
+            onClick={closeModal}
             aria-label="Close"
             className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-black transition hover:bg-white"
           >
@@ -68,45 +73,81 @@ export function LoginModal({
               Log in or sign up
             </h2>
           </div>
-          {privyStatus === "ready" ? (
-            <PrivyAuthArea onClose={onClose} />
-          ) : privyStatus === "loading" ? (
-            <p className="rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
-              Loading login…
-            </p>
-          ) : (
-            <p className="rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
-              Set <code className="text-gold">VITE_PRIVY_APP_ID</code> to enable
-              login.
-            </p>
-          )}
+          <div id="hedge-login-methods" />
+          <p className="hedge-login-fallback rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
+            Loading login…
+          </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
+/** Mounted under `PrivyProvider`. Fills the stable login sheet. */
+export function PrivyLoginMethods() {
+  const { open, closeModal } = useAuthModal();
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setSlot(null);
+      return;
+    }
+    setSlot(document.getElementById("hedge-login-methods"));
+  }, [open]);
+
+  if (!slot) return null;
+  return createPortal(<PrivyAuthArea onClose={closeModal} />, slot);
+}
+
 function PrivyAuthArea({ onClose }: { onClose: () => void }) {
-  const { authenticated } = usePrivy();
+  const { authenticated, ready } = usePrivy();
+
+  useEffect(() => {
+    if (authenticated) onClose();
+  }, [authenticated, onClose]);
+
+  if (!ready) {
+    return (
+      <p className="rounded-xl bg-card-2 p-4 text-center text-sm text-muted">
+        Loading login…
+      </p>
+    );
+  }
+
+  return <PrivyAuthForm onClose={onClose} />;
+}
+
+function PrivyAuthForm({ onClose }: { onClose: () => void }) {
+  const { openWalletLayer, closeWalletLayer } = useAuthModal();
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { initOAuth } = useLoginWithOAuth();
   const { login } = useLogin();
 
   const loginWithWallet = () => {
-    // Stay on this modal. Closing first used to hand the page to Privy's
-    // overlay — and when that overlay's chunk 504'd, the trader was left
-    // staring at a dimmed homepage with nothing to dismiss.
     setError(null);
+    openWalletLayer();
     try {
       const result = login({
         loginMethods: ["wallet"],
         walletChainType: "ethereum-only",
       });
       void Promise.resolve(result).catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not open the wallet list. Refresh and try again.");
+        closeWalletLayer();
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not open the wallet list. Refresh and try again.",
+        );
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open the wallet list. Refresh and try again.");
+      closeWalletLayer();
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not open the wallet list. Refresh and try again.",
+      );
     }
   };
 
@@ -115,10 +156,6 @@ function PrivyAuthArea({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (authenticated) onClose();
-  }, [authenticated, onClose]);
 
   async function run<T>(fn: () => Promise<T>) {
     setError(null);

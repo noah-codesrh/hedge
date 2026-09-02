@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useAuthorizationSignature, usePrivy } from "@privy-io/react-auth";
 import { cents, fiat, signedFiat } from "../lib/format";
 import { leverageIsLive } from "../lib/leverage";
 import {
+  readOrdersFor,
   readPositionsFor,
+  type LeverageOrder,
   type LeveragePosition,
 } from "../lib/leverage-chain";
+import { readStockTicketsFor } from "../lib/stock-collateral";
 import type { TradeStage } from "../lib/leverage-actions";
 import { notifyBalancesChanged, watchBalanceReloads } from "../lib/positions";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { LayersIcon } from "./icons";
+import { LeverageOrders } from "./LeverageOrders";
 import { PnlShareModal, type PnlShareData } from "./PnlShareModal";
 
 /**
@@ -28,6 +32,7 @@ export function useLeveragePositions() {
   const { generateAuthorizationSignature } = useAuthorizationSignature();
 
   const [positions, setPositions] = useState<LeveragePosition[]>([]);
+  const [orders, setOrders] = useState<LeverageOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [stage, setStage] = useState<TradeStage | null>(null);
@@ -36,13 +41,20 @@ export function useLeveragePositions() {
   const load = useCallback(async () => {
     if (!leverageIsLive || !cashAddress) {
       setPositions([]);
+      setOrders([]);
       setLoading(false);
       return;
     }
-    const next = await readPositionsFor(cashAddress);
-    setPositions(next);
+    const token = await getAccessToken().catch(() => null);
+    const [cash, stock, resting] = await Promise.all([
+      readPositionsFor(cashAddress),
+      readStockTicketsFor(cashAddress),
+      readOrdersFor(cashAddress, token),
+    ]);
+    setPositions([...stock, ...cash]);
+    setOrders(resting);
     setLoading(false);
-  }, [cashAddress]);
+  }, [cashAddress, getAccessToken]);
 
   useEffect(() => {
     if (!leverageIsLive || !authenticated) {
@@ -54,6 +66,12 @@ export function useLeveragePositions() {
     return watchBalanceReloads(() => void load());
   }, [authenticated, load]);
 
+  useEffect(() => {
+    if (!leverageIsLive || !authenticated) return;
+    const id = window.setInterval(() => void load(), 12_000);
+    return () => window.clearInterval(id);
+  }, [authenticated, load]);
+
   const close = async (position: LeveragePosition, fractionBps: number) => {
     setBusyId(`${position.id}`);
     setError(null);
@@ -63,28 +81,38 @@ export function useLeveragePositions() {
       const cashWallet = await ensureCashWallet();
       if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
 
-      const { closeLeveragePosition } = await import("../lib/leverage-actions");
-      await closeLeveragePosition(
-        {
-          accessToken,
-          from: cashWallet.address,
-          wallet: cashWallet,
-          signAuthorization: async (payload) => {
-            const { signature } = await generateAuthorizationSignature(payload);
-            if (!signature) throw new Error("Could not authorize this wallet.");
-            return signature;
-          },
+      const ctx = {
+        accessToken,
+        from: cashWallet.address,
+        wallet: cashWallet,
+        signAuthorization: async (
+          payload: Parameters<typeof generateAuthorizationSignature>[0],
+        ) => {
+          const { signature } = await generateAuthorizationSignature(payload);
+          if (!signature) throw new Error("Could not authorize this wallet.");
+          return signature;
         },
-        position.id,
-        fractionBps,
-        setStage,
-      );
+      };
+
+      if (position.ticketId != null) {
+        const { closeStockTicket } = await import("../lib/stock-collateral");
+        await closeStockTicket(ctx, position.ticketId, setStage);
+      } else {
+        const { closeLeveragePosition } = await import("../lib/leverage-actions");
+        await closeLeveragePosition(ctx, position.id, fractionBps, setStage);
+      }
 
       // Drop it locally before refetching. The close is already mined by this
       // point, but the list read is several round trips and leaving a closed
       // position on screen for that long reads as a failed tap.
-      if (fractionBps === 10_000) {
-        setPositions((all) => all.filter((p) => p.id !== position.id));
+      if (fractionBps === 10_000 || position.ticketId != null) {
+        setPositions((all) =>
+          all.filter((p) =>
+            position.ticketId != null
+              ? p.ticketId !== position.ticketId
+              : p.id !== position.id,
+          ),
+        );
       }
       notifyBalancesChanged();
       await load();
@@ -96,16 +124,139 @@ export function useLeveragePositions() {
     }
   };
 
-  return { positions, loading, busyId, stage, error, close };
+  const withWallet = async () => {
+    const accessToken = await getAccessToken();
+    if (!accessToken) throw new Error("Session expired. Sign in again.");
+    const cashWallet = await ensureCashWallet();
+    if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
+    return {
+      accessToken,
+      from: cashWallet.address,
+      wallet: cashWallet,
+      signAuthorization: async (
+        payload: Parameters<typeof generateAuthorizationSignature>[0],
+      ) => {
+        const { signature } = await generateAuthorizationSignature(payload);
+        if (!signature) throw new Error("Could not authorize this wallet.");
+        return signature;
+      },
+    };
+  };
+
+  const cancelOrder = async (order: LeverageOrder) => {
+    setBusyId(`order:${order.id}`);
+    setError(null);
+    try {
+      const { cancelLeverageOrder } = await import("../lib/leverage-actions");
+      await cancelLeverageOrder(await withWallet(), order.id, setStage);
+      setOrders((all) => all.filter((row) => row.id !== order.id));
+      notifyBalancesChanged();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not cancel that order.");
+    } finally {
+      setBusyId(null);
+      setStage(null);
+    }
+  };
+
+  const placeClose = async (
+    position: LeveragePosition,
+    limitPrice: number,
+    triggerAbove: boolean,
+  ) => {
+    setBusyId(`${position.id}`);
+    setError(null);
+    try {
+      const { placeCloseLimit } = await import("../lib/leverage-actions");
+      const mark = position.isLong
+        ? position.entryPrice + position.pnl / Math.max(position.shares, 1e-9)
+        : position.entryPrice - position.pnl / Math.max(position.shares, 1e-9);
+      await placeCloseLimit(
+        await withWallet(),
+        {
+          positionId: position.id,
+          limitPrice,
+          triggerAbove,
+          isLong: position.isLong,
+          mark,
+          marketSlug: position.marketSlug,
+        },
+        setStage,
+      );
+      notifyBalancesChanged();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not rest that close.");
+    } finally {
+      setBusyId(null);
+      setStage(null);
+    }
+  };
+
+  const filling = useRef(new Set<string>());
+  useEffect(() => {
+    const due = orders.filter((row) => row.fillable && !filling.current.has(row.id));
+    if (due.length === 0) return;
+    let alive = true;
+    void (async () => {
+      for (const order of due) {
+        if (!alive) return;
+        filling.current.add(order.id);
+        try {
+          const ctx = await withWallet();
+          if (order.isClose && order.positionId) {
+            const { closeLeveragePosition } = await import("../lib/leverage-actions");
+            await closeLeveragePosition(ctx, BigInt(order.positionId), 10_000);
+          } else if (!order.isClose) {
+            const { openLeveragePosition } = await import("../lib/leverage-actions");
+            await openLeveragePosition(ctx, {
+              marketSlug: order.marketSlug,
+              isLong: order.isLong,
+              margin: order.margin,
+              leverage: order.leverage,
+            });
+          } else {
+            filling.current.delete(order.id);
+            continue;
+          }
+          const { markOrderFilled } = await import("../lib/leverage-limits");
+          await markOrderFilled(ctx.accessToken, order.id);
+          notifyBalancesChanged();
+        } catch {
+          /* next poll retries */
+        }
+        filling.current.delete(order.id);
+      }
+      if (alive) await load();
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [orders, load]);
+
+  return {
+    positions,
+    orders,
+    loading,
+    busyId,
+    stage,
+    error,
+    close,
+    cancelOrder,
+    placeClose,
+  };
 }
 
 export function LeveragePositions({ compact = false }: { compact?: boolean }) {
   const { authenticated } = usePrivy();
-  const { positions, busyId, stage, error, close } = useLeveragePositions();
+  const { positions, orders, busyId, stage, error, close, cancelOrder, placeClose } =
+    useLeveragePositions();
 
   // Nothing to show and nothing to say: the spot portfolio below is the whole
   // story for anyone who has never opened a levered position.
-  if (!leverageIsLive || !authenticated || positions.length === 0) return null;
+  if (!leverageIsLive || !authenticated) return null;
+  if (positions.length === 0 && orders.length === 0) return null;
 
   return (
     <section className={compact ? "mb-6" : "mt-6"}>
@@ -129,10 +280,21 @@ export function LeveragePositions({ compact = false }: { compact?: boolean }) {
               busy={busyId === `${position.id}`}
               stage={busyId === `${position.id}` ? stage : null}
               onClose={(fractionBps) => void close(position, fractionBps)}
+              onRestClose={
+                position.ticketId == null
+                  ? (price, above) => void placeClose(position, price, above)
+                  : undefined
+              }
             />
           </li>
         ))}
       </ul>
+      <LeverageOrders
+        orders={orders}
+        busyId={busyId}
+        stage={stage}
+        onCancel={(order) => void cancelOrder(order)}
+      />
     </section>
   );
 }
@@ -181,21 +343,25 @@ export function LeveragePositionCard({
   busy,
   stage,
   onClose,
+  onRestClose,
 }: {
   position: LeveragePosition;
   title?: string;
   busy: boolean;
   stage: TradeStage | null;
   onClose: (fractionBps: number) => void;
+  onRestClose?: (limitPrice: number, triggerAbove: boolean) => void;
 }) {
   const [shareOpen, setShareOpen] = useState(false);
+  const [tp, setTp] = useState("");
+  const [sl, setSl] = useState("");
   const net = position.pnl - position.funding;
   const tone = net > 0 ? "text-up" : net < 0 ? "text-down" : "text-muted";
   const pnlPct = position.margin > 0 ? (net / position.margin) * 100 : 0;
 
   // Below the engine's $1 floor there is no valid partial close left, so the
   // card stops offering one rather than letting the call revert.
-  const canHalve = position.margin / 2 >= 1;
+  const canHalve = position.ticketId == null && position.margin / 2 >= 1;
 
   /**
    * How much of the buffer to liquidation has been used up.
@@ -241,6 +407,11 @@ export function LeveragePositionCard({
         <span className="inline-flex items-center rounded-full bg-white/5 px-2.5 py-1 text-[12px] font-medium text-white/80">
           {position.isLong ? "Yes" : "No"}
         </span>
+        {position.stock ? (
+          <span className="inline-flex items-center rounded-full bg-gold/15 px-2.5 py-1 text-[12px] font-semibold text-gold">
+            {position.stock.symbol}
+          </span>
+        ) : null}
         {position.resolved ? (
           <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-medium text-white/80">
             Resolved — settling
@@ -310,6 +481,67 @@ export function LeveragePositionCard({
           </dd>
         </div>
       </dl>
+
+      {onRestClose && !position.resolved ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="min-w-0">
+            <span className="text-[11px] text-muted">Take profit</span>
+            <div className="mt-1 flex items-center gap-1 rounded-full bg-white/5 px-3 py-1.5">
+              <input
+                type="number"
+                min={1}
+                max={99}
+                inputMode="decimal"
+                value={tp}
+                onChange={(e) => setTp(e.target.value)}
+                placeholder="¢"
+                className="w-full bg-transparent text-[13px] outline-none"
+              />
+              <button
+                type="button"
+                disabled={busy || !tp}
+                onClick={() => {
+                  const n = Number(tp) / 100;
+                  if (!(n > 0 && n < 1)) return;
+                  onRestClose(n, position.isLong);
+                  setTp("");
+                }}
+                className="text-[11px] font-semibold text-gold disabled:opacity-40"
+              >
+                Rest
+              </button>
+            </div>
+          </label>
+          <label className="min-w-0">
+            <span className="text-[11px] text-muted">Stop</span>
+            <div className="mt-1 flex items-center gap-1 rounded-full bg-white/5 px-3 py-1.5">
+              <input
+                type="number"
+                min={1}
+                max={99}
+                inputMode="decimal"
+                value={sl}
+                onChange={(e) => setSl(e.target.value)}
+                placeholder="¢"
+                className="w-full bg-transparent text-[13px] outline-none"
+              />
+              <button
+                type="button"
+                disabled={busy || !sl}
+                onClick={() => {
+                  const n = Number(sl) / 100;
+                  if (!(n > 0 && n < 1)) return;
+                  onRestClose(n, !position.isLong);
+                  setSl("");
+                }}
+                className="text-[11px] font-semibold text-gold disabled:opacity-40"
+              >
+                Rest
+              </button>
+            </div>
+          </label>
+        </div>
+      ) : null}
 
       <div className="mt-auto flex gap-2 pt-4">
         <button

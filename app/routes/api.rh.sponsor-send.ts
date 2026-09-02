@@ -88,10 +88,12 @@ export async function action({ request }: Route.ActionArgs) {
       { status: 400 },
     );
   }
-  const { hedgeEngineAddress, hedgeVaultAddress } = serverSecrets();
+  const { hedgeEngineAddress, hedgeVaultAddress, hedgeStockCollateral } =
+    serverSecrets();
   const refusal = refuseSponsoredCall(token, data as `0x${string}`, {
     engine: hedgeEngineAddress,
     vault: hedgeVaultAddress,
+    stockCollateral: hedgeStockCollateral,
   });
   if (refusal) {
     return Response.json({ error: refusal }, { status: 400 });

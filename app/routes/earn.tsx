@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
 import { useAuthorizationSignature, usePrivy } from "@privy-io/react-auth";
 import type { Route } from "./+types/earn";
 import { fiat, pct, shorten } from "../lib/format";
@@ -24,6 +23,7 @@ import { notifyBalancesChanged } from "../lib/positions";
 import { RH_EXPLORER } from "../lib/robinhood";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
+import { StockBook } from "../components/StockBook";
 import { CheckIcon, CopyIcon, VaultIcon } from "../components/icons";
 
 /** Typical ticket the yield model is sized against ($3 margin at 2x). */
@@ -111,7 +111,7 @@ export function meta() {
     { title: "Earn · Hedge" },
     {
       name: "description",
-      content: "Deposit USDG into the Hedge vault.",
+      content: "Deposit USDG or listed stock into Hedge.",
     },
   ];
 }
@@ -128,7 +128,10 @@ export async function loader() {
 export default function Earn({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto min-w-0 max-w-5xl px-3 pt-5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-10 lg:pb-10">
-      {earnIsLive ? <EarnLive initial={loaderData} /> : <NotLive />}
+      {earnIsLive ? <EarnLive initial={loaderData} /> : null}
+      <div className={earnIsLive ? "mt-4" : undefined}>
+        <StockBook />
+      </div>
     </main>
   );
 }
@@ -722,17 +725,3 @@ function Preview({
   );
 }
 
-function NotLive() {
-  return (
-    <section className="rounded-[1.75rem] bg-card px-6 py-14 text-center ring-1 ring-white/5">
-      <VaultIcon size={22} />
-      <p className="mt-3 text-[15px] font-semibold">Soon</p>
-      <Link
-        to="/"
-        className="mt-5 inline-flex rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black"
-      >
-        Markets
-      </Link>
-    </section>
-  );
-}

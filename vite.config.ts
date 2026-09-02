@@ -14,7 +14,7 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 5174,
+    port: 5173,
     // Fail loudly instead of drifting to another port: the port is part of the
     // origin, so a silent move changes which storage and which Privy allowlist
     // entry the app is running against.

@@ -30,11 +30,22 @@ body {
 }
 
 /*
- * Privy's dialog shell is z-index 999999. A 504'd login chunk leaves it
- * mounted with no content, which swallows Get Started / Connect.
+ * Privy's dialog is z-index 999999. A cold Chrome profile often leaves it
+ * mounted (spinner or empty shell) which swallows Get Started. Keep the
+ * whole shell inert unless we have flipped on a real wallet/MFA UI.
  */
-#privy-modal-content:empty {
-  pointer-events: none;
+#privy-dialog,
+#privy-dialog-backdrop {
+  pointer-events: none !important;
+}
+
+html.privy-interact #privy-dialog,
+html.privy-interact #privy-dialog-backdrop {
+  pointer-events: auto !important;
+}
+
+#hedge-login-methods:not(:empty) + .hedge-login-fallback {
+  display: none;
 }
 
 @media (hover: none) {

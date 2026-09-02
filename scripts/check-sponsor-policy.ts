@@ -18,13 +18,64 @@ import {
 } from "../app/lib/server/sponsor-policy";
 import { RELAY_NATIVE, RELAY_ROUTER, USDG, WETH } from "../app/lib/robinhood";
 import { engineAbi, vaultAbi } from "../app/lib/leverage-abi";
+import { STOCK_TOKENS } from "../app/lib/stock-tokens";
+
+const stockAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "openWithStock",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "stockAmount", type: "uint256" },
+      { name: "marketId", type: "bytes32" },
+      { name: "isLong", type: "bool" },
+      { name: "leverageBps", type: "uint256" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "closeTicket",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "ticketId", type: "uint256" }],
+    outputs: [],
+  },
+] as const;
 
 const ENGINE = "0x1111111111111111111111111111111111111111";
 const VAULT = "0x2222222222222222222222222222222222222222";
 const STRANGER = "0x3333333333333333333333333333333333333333";
+const STOCK = "0x4444444444444444444444444444444444444444";
+const NVDA = STOCK_TOKENS[0]!.address;
 /** Some token a trader holds that Hedge has never heard of. */
 const MEMECOIN = "0x8f86a15ec17cb3369d8b3e666dadbc11daa82b79";
 const DEPLOYED: HedgeContracts = { engine: ENGINE, vault: VAULT };
+const WITH_STOCK: HedgeContracts = {
+  engine: ENGINE,
+  vault: VAULT,
+  stockCollateral: STOCK,
+};
 const UNDEPLOYED: HedgeContracts = { engine: null, vault: null };
 
 let failures = 0;
@@ -192,6 +243,75 @@ refuses(
 refuses("engine calls before deployment", ENGINE, transfer, UNDEPLOYED);
 refuses("approving a blank engine address", USDG, approve(ENGINE), UNDEPLOYED);
 allows("plain transfers before deployment", USDG, transfer, UNDEPLOYED);
+
+allows(
+  "approving the stock desk to pull NVDA",
+  NVDA,
+  approve(STOCK),
+  WITH_STOCK,
+);
+allows(
+  "depositing stock",
+  STOCK,
+  encodeFunctionData({
+    abi: stockAbi,
+    functionName: "deposit",
+    args: [NVDA as `0x${string}`, 1n],
+  }),
+  WITH_STOCK,
+);
+allows(
+  "withdrawing stock",
+  STOCK,
+  encodeFunctionData({
+    abi: stockAbi,
+    functionName: "withdraw",
+    args: [NVDA as `0x${string}`, 1n],
+  }),
+  WITH_STOCK,
+);
+allows(
+  "opening with stock",
+  STOCK,
+  encodeFunctionData({
+    abi: stockAbi,
+    functionName: "openWithStock",
+    args: [
+      NVDA as `0x${string}`,
+      1n,
+      `0x${"11".repeat(32)}`,
+      true,
+      20_000n,
+    ],
+  }),
+  WITH_STOCK,
+);
+allows(
+  "closing a stock ticket",
+  STOCK,
+  encodeFunctionData({
+    abi: stockAbi,
+    functionName: "closeTicket",
+    args: [1n],
+  }),
+  WITH_STOCK,
+);
+refuses(
+  "stock calls before the desk is addressed",
+  STOCK,
+  encodeFunctionData({
+    abi: stockAbi,
+    functionName: "deposit",
+    args: [NVDA as `0x${string}`, 1n],
+  }),
+  DEPLOYED,
+);
+refuses(
+  "approving a stranger to pull NVDA",
+  NVDA,
+  approve(STRANGER),
+  WITH_STOCK,
+);
 
 console.log(
   failures === 0

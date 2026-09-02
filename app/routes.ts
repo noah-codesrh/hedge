@@ -28,6 +28,8 @@ export default [
   route("api/venue/chat", "routes/api.venue.chat.ts"),
   route("api/token", "routes/api.token.ts"),
   route("api/vault", "routes/api.vault.ts"),
+  route("api/leverage/orders", "routes/api.leverage.orders.ts"),
+  route("api/leverage/refresh", "routes/api.leverage.refresh.ts"),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),

@@ -24,7 +24,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-The app is at `http://localhost:5174`.
+The app is at `http://localhost:5173`.
 
 ```bash
 pnpm typecheck
@@ -42,6 +42,7 @@ Copy `.env.example`. Client values use the `VITE_` prefix (inlined at build time
 | `VITE_LEVERAGE_ENABLED` | `true` shows 2x/3x. Anything else is spot only. |
 | `VITE_HEDGE_ENGINE_ADDRESS` | Leverage engine |
 | `VITE_HEDGE_VAULT_ADDRESS` | Earn vault. If set, deposits work even when leverage is off. |
+| `VITE_HEDGE_STOCK_COLLATERAL` | Stock desk. Earn deposits of the top five and stock-margin leverage. |
 | `PRIVY_APP_SECRET` | Server-only Privy |
 | Builder / Relayer keys | Polymarket trading and gas sponsorship |
 

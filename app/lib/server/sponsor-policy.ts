@@ -1,5 +1,6 @@
 import { decodeFunctionData, erc20Abi } from "viem";
 import { isRelaySwapTarget, RELAY_ROUTER, USDG, WETH } from "../robinhood";
+import { STOCK_TOKENS } from "../stock-tokens";
 
 /**
  * Decides which Robinhood Chain calls Hedge will pay gas for.
@@ -29,6 +30,15 @@ const ENGINE_METHODS = new Set([
 ]);
 
 const VAULT_METHODS = new Set(["depositSenior", "withdrawSenior"]);
+const STOCK_METHODS = new Set([
+  "deposit",
+  "withdraw",
+  "openWithStock",
+  "closeTicket",
+]);
+const STOCK_ADDRESSES = new Set(
+  STOCK_TOKENS.map((t) => t.address.toLowerCase()),
+);
 
 const hedgeAbi = [
   {
@@ -81,6 +91,46 @@ const hedgeAbi = [
     inputs: [{ name: "shares", type: "uint256" }],
     outputs: [{ type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "openWithStock",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "stockAmount", type: "uint256" },
+      { name: "marketId", type: "bytes32" },
+      { name: "isLong", type: "bool" },
+      { name: "leverageBps", type: "uint256" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "closeTicket",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "ticketId", type: "uint256" }],
+    outputs: [],
+  },
 ] as const;
 
 export type HedgeContracts = {
@@ -88,6 +138,8 @@ export type HedgeContracts = {
   engine: string | null;
   /** HedgeVault, or null before it is deployed. */
   vault: string | null;
+  /** HedgeStockCollateral, or null before it is deployed. */
+  stockCollateral?: string | null;
 };
 
 /**
@@ -124,6 +176,7 @@ export function refuseSponsoredCall(
   const to = target.toLowerCase();
   const engine = contracts.engine?.toLowerCase() || null;
   const vault = contracts.vault?.toLowerCase() || null;
+  const stock = contracts.stockCollateral?.toLowerCase() || null;
   const router = RELAY_ROUTER.toLowerCase();
 
   // Selling a token for cash is the one flow where the trader picks the
@@ -133,6 +186,8 @@ export function refuseSponsoredCall(
   // calldata itself is Relay's and is not decoded here — those addresses
   // are the trust boundary, not the arguments.
   if (isRelaySwapTarget(to) && to !== WETH.toLowerCase()) return null;
+
+  if (stock && STOCK_ADDRESSES.has(to) && isApproveTo(data, stock)) return null;
 
   if (SPONSORED_TOKENS.has(to) || isApproveTo(data, router)) {
     let decoded;
@@ -160,8 +215,10 @@ export function refuseSponsoredCall(
     return "Invalid sponsored send.";
   }
 
-  if (!engine && !vault) return "That contract is not sponsored.";
-  if (to !== engine && to !== vault) return "That contract is not sponsored.";
+  if (!engine && !vault && !stock) return "That contract is not sponsored.";
+  if (to !== engine && to !== vault && to !== stock) {
+    return "That contract is not sponsored.";
+  }
 
   let decoded;
   try {
@@ -170,6 +227,11 @@ export function refuseSponsoredCall(
     return "Invalid sponsored call.";
   }
 
-  const allowed = to === engine ? ENGINE_METHODS : VAULT_METHODS;
+  const allowed =
+    to === engine
+      ? ENGINE_METHODS
+      : to === vault
+        ? VAULT_METHODS
+        : STOCK_METHODS;
   return allowed.has(decoded.functionName) ? null : "That call is not sponsored.";
 }
