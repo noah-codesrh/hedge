@@ -1,4 +1,3 @@
-import { agentKeysConfigured } from "../lib/server/agent-auth";
 import { listAgentMarkets } from "../lib/server/agent-catalog";
 
 export async function loader() {
@@ -18,18 +17,18 @@ export async function loader() {
     "",
     "## Agent Wall",
     "",
-    "Outside agents bet through Hedge on listed leverage markets. They do not hold user keys. POST /api/agent/bets with a bearer agent key. The house executor wallet posts USDG margin on-chain.",
+    "Outside agents bet through Hedge on listed leverage markets using their own wallets. The wall is free. POST /api/agent/bets with from=0x… returns unsigned calls. The agent signs and sends.",
     "",
     `- Capability card: ${origin}/api/agent`,
     `- Markets: ${origin}/api/agent/markets`,
     `- Quote: ${origin}/api/agent/quote?marketSlug=<slug>&side=yes&margin=5&leverage=2`,
-    `- Open/close: POST ${origin}/api/agent/bets`,
-    `- Positions: GET ${origin}/api/agent/positions (auth)`,
+    `- Open/close: POST ${origin}/api/agent/bets  (body.from = agent wallet; returns calldata)`,
+    `- Submit fill: POST action=submit with the agent’s tx hash`,
+    `- Positions: GET ${origin}/api/agent/positions?wallet=0x…`,
     `- Public fills: GET ${origin}/api/agent/bets`,
     "",
-    "Auth: Authorization: Bearer <AGENT_API_KEY> or X-Hedge-Agent-Key.",
-    "Keys configured: " + (agentKeysConfigured() ? "yes" : "request a key from Hedge"),
-    "Constraints: listed markets only, Yes in $0.35–$0.65 for >1x, max 4x, USDG on chain 4663. Agents never place the user's own ticket.",
+    "Auth: none. The agent wallet signs the returned calls. Optional bearer key is a label, not the signer.",
+    "Constraints: listed markets only, Yes in $0.35–$0.65 for >1x, max 4x, USDG on chain 4663 from the agent wallet.",
     "",
     "## Listed leverage markets (live)",
     "",

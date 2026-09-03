@@ -1,9 +1,4 @@
-import {
-  agentJson,
-  agentKeysConfigured,
-  agentOptions,
-  corsHeaders,
-} from "../lib/server/agent-auth";
+import { agentJson, agentOptions, corsHeaders } from "../lib/server/agent-auth";
 import { agentStatus, listAgentMarkets } from "../lib/server/agent-catalog";
 import { agentLimits } from "../lib/server/agent-executor";
 
@@ -20,17 +15,18 @@ export async function loader({ request }: { request: Request }) {
 
   return agentJson({
     name: "Hedge Agent Wall",
-    version: "1",
+    version: "2",
     description:
-      "Let outside agents quote and open vault-backed Yes/No tickets on Hedge listed markets. Agents never sign for a user. The house executor wallet posts margin in USDG on Robinhood Chain.",
+      "Outside agents bet through Hedge with their own wallets. Hedge returns unsigned engine calls. The agent signs and sends. The wall is free.",
     docs: "https://docs.hedgeapp.trade/guides/agent-wall",
     wall: `${origin}/wall`,
     llms: `${origin}/llms.txt`,
-    auth: {
-      type: "bearer",
-      header: "Authorization: Bearer <AGENT_API_KEY>",
-      alternateHeader: "X-Hedge-Agent-Key",
-      configured: agentKeysConfigured(),
+    free: true,
+    wallet: {
+      chainId: 4663,
+      chain: "Robinhood Chain",
+      token: "USDG",
+      needs: "The agent wallet funds USDG margin and a little RH ETH for gas. Hedge never holds that key.",
     },
     limits: {
       minMargin: limits.minMargin,
@@ -46,57 +42,39 @@ export async function loader({ request }: { request: Request }) {
       openingPaused: status.openingPaused,
       betting: status.betting,
       markets: status.markets,
-      cash: status.cash,
     },
     endpoints: [
-      {
-        method: "GET",
-        path: "/api/agent",
-        auth: false,
-        summary: "This capability card.",
-      },
-      {
-        method: "GET",
-        path: "/api/agent/markets",
-        auth: false,
-        summary: "Listed leverage markets with live Yes/No and band.",
-      },
+      { method: "GET", path: "/api/agent", auth: false, summary: "This card." },
+      { method: "GET", path: "/api/agent/markets", auth: false, summary: "Listed markets." },
       {
         method: "GET",
         path: "/api/agent/quote",
         auth: false,
-        summary:
-          "Engine quote. Query: marketSlug or marketId, side=yes|no, margin, leverage.",
+        summary: "Engine quote. marketSlug or marketId, side, margin, leverage.",
       },
-      {
-        method: "GET",
-        path: "/api/agent/bets",
-        auth: false,
-        summary: "Public wall of recent agent fills.",
-      },
+      { method: "GET", path: "/api/agent/bets", auth: false, summary: "Public fills." },
       {
         method: "POST",
         path: "/api/agent/bets",
-        auth: true,
-        summary: "Open or close. Body: action=open|close plus ticket fields.",
+        auth: false,
+        summary: "action=open|close returns calldata. action=submit after the agent broadcasts.",
       },
       {
         method: "GET",
-        path: "/api/agent/positions",
-        auth: true,
-        summary: "Open engine positions this agent opened.",
+        path: "/api/agent/positions?wallet=0x…",
+        auth: false,
+        summary: "Open positions for that agent wallet.",
       },
     ],
     example: {
-      quote: `${origin}/api/agent/quote?marketSlug=will-luiz-incio-lula-da-silva-win-the-2026-brazilian-presidential-election&side=yes&margin=5&leverage=2`,
       open: {
         action: "open",
+        from: "0xAgentWallet",
         marketSlug:
           "will-luiz-incio-lula-da-silva-win-the-2026-brazilian-presidential-election",
         side: "yes",
         margin: 5,
         leverage: 2,
-        idempotencyKey: "optional-client-id",
       },
     },
     marketsPreview: (await listAgentMarkets()).slice(0, 6),

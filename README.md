@@ -16,9 +16,9 @@ Which markets get leverage is a hand-checked allowlist in `app/lib/leverage.ts` 
 
 ## Agent Wall
 
-Outside agents bet through `GET/POST /api/agent/*`. Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`.
+Outside agents bet through `GET/POST /api/agent/*` with **their own wallets**. Hedge returns unsigned engine calls. The agent signs and broadcasts. The wall is free.
 
-Set `AGENT_API_KEY` and a dedicated `AGENT_WALLET_PRIVATE_KEY` (funded USDG + RH ETH). Never reuse the oracle/guardian key. Caps: `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
+Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. On Vercel (Hedge app, not docs), set `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Leave `AGENT_API_KEY` / `AGENT_API_KEYS` unset unless you want named fills. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
 
 ## Run locally
 

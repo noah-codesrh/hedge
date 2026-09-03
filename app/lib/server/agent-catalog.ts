@@ -5,13 +5,9 @@ import {
   leverageIsLive,
   type LeverageMarket,
 } from "../leverage";
-import {
-  quoteOpenOnChain,
-  readEngineState,
-  readUsdgBalance,
-} from "../leverage-chain";
+import { quoteOpenOnChain, readEngineState } from "../leverage-chain";
 import { listLeverageMarkets } from "../polymarket";
-import { agentExecutorAddress, agentLimits } from "./agent-executor";
+import { agentLimits } from "./agent-executor";
 
 export type AgentMarket = {
   marketSlug: string;
@@ -71,13 +67,11 @@ export async function listAgentMarkets(): Promise<AgentMarket[]> {
 }
 
 export async function agentStatus() {
-  const [engine, markets, wallet] = await Promise.all([
+  const [engine, markets] = await Promise.all([
     readEngineState(),
     listAgentMarkets(),
-    agentExecutorAddress(),
   ]);
   const limits = agentLimits();
-  const cash = wallet ? await readUsdgBalance(wallet).catch(() => null) : null;
   return {
     live: leverageIsLive && !engine?.openingPaused,
     openingPaused: engine?.openingPaused ?? true,
@@ -85,10 +79,8 @@ export async function agentStatus() {
     minMargin: engine?.minMargin ?? limits.minMargin,
     maxMargin: Math.min(engine?.maxMargin ?? limits.maxMargin, limits.maxMargin),
     capacity: engine?.capacity ?? null,
-    wallet,
-    cash,
     markets: markets.length,
-    betting: Boolean(wallet),
+    betting: leverageIsLive && !engine?.openingPaused,
   };
 }
 

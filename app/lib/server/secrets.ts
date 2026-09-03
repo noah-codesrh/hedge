@@ -41,11 +41,8 @@ export function serverSecrets() {
     openrouterKey: required("OPENROUTER_API_KEY"),
     openrouterModel:
       required("OPENROUTER_MODEL") ?? "openai/gpt-4o-mini",
-    // Agent wall. Keys never prefix with VITE_. The executor wallet is a
-    // dedicated funded account — never the oracle/guardian relayer key.
     agentApiKey: required("AGENT_API_KEY"),
     agentApiKeys: required("AGENT_API_KEYS"),
-    agentWalletKey: required("AGENT_WALLET_PRIVATE_KEY"),
     agentMaxMargin: required("AGENT_MAX_MARGIN"),
     agentMaxLeverage: required("AGENT_MAX_LEVERAGE"),
     agentDailyNotional: required("AGENT_DAILY_NOTIONAL"),

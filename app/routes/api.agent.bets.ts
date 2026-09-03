@@ -1,12 +1,12 @@
 import {
   agentJson,
+  agentKeysConfigured,
   agentOptions,
   corsHeaders,
-  requireAgent,
+  identifyAgent,
 } from "../lib/server/agent-auth";
 import {
   agentNotionalToday,
-  agentOwnsPosition,
   findIdempotentBet,
   insertAgentBet,
   listPublicAgentBets,
@@ -14,9 +14,12 @@ import {
 import { listedMarket } from "../lib/server/agent-catalog";
 import {
   agentLimits,
-  closeAgentPosition,
-  openAgentPosition,
+  buildCloseTicket,
+  buildOpenTicket,
+  confirmAgentTx,
+  parseAgentWallet,
 } from "../lib/server/agent-executor";
+import type { Hex } from "viem";
 
 export function headers() {
   return corsHeaders();
@@ -53,13 +56,15 @@ function sideOf(value: unknown): "yes" | "no" | null {
   return null;
 }
 
+function agentLabel(from: string, named: { name: string } | null) {
+  return named?.name ?? from.toLowerCase();
+}
+
 export async function action({ request }: { request: Request }) {
   if (request.method === "OPTIONS") return agentOptions();
   if (request.method !== "POST") {
     return agentJson({ error: "Method not allowed." }, 405);
   }
-
-  const agent = requireAgent(request);
 
   let body: Record<string, unknown>;
   try {
@@ -68,6 +73,16 @@ export async function action({ request }: { request: Request }) {
     return agentJson({ error: "Invalid JSON." }, 400);
   }
 
+  const from = parseAgentWallet(body.from ?? body.wallet);
+  if (!from) {
+    return agentJson(
+      { error: "Set from to the agent wallet that will sign the ticket." },
+      400,
+    );
+  }
+
+  const named = identifyAgent(request);
+  const label = agentLabel(from, named);
   const actionName = String(body.action ?? "open")
     .trim()
     .toLowerCase();
@@ -77,7 +92,7 @@ export async function action({ request }: { request: Request }) {
     null;
 
   if (idempotencyKey) {
-    const prior = await findIdempotentBet(agent.name, idempotencyKey);
+    const prior = await findIdempotentBet(label, idempotencyKey);
     if (prior) {
       return agentJson({
         ok: true,
@@ -89,40 +104,61 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  if (actionName === "close") {
-    const positionId = String(body.positionId ?? body.id ?? "").trim();
-    if (!positionId) return agentJson({ error: "Missing positionId." }, 400);
-    const owns = await agentOwnsPosition(agent.name, positionId);
-    if (!owns) {
-      return agentJson(
-        { error: "That position was not opened by this agent." },
-        403,
-      );
+  if (actionName === "submit") {
+    const hash = String(body.hash ?? "").trim() as Hex;
+    if (!hash.startsWith("0x") || hash.length < 66) {
+      return agentJson({ error: "Missing tx hash." }, 400);
     }
-    const result = await closeAgentPosition(positionId);
+    const result = await confirmAgentTx({ from, hash });
     if ("error" in result) return agentJson({ error: result.error }, result.status);
+    const listed = listedMarket({
+      marketSlug: typeof body.marketSlug === "string" ? body.marketSlug : undefined,
+      marketId: typeof body.marketId === "string" ? body.marketId : undefined,
+    });
+    const kind = String(body.kind ?? "open") === "close" ? "close" : "open";
+    const side = sideOf(body.side) ?? "yes";
     await insertAgentBet({
-      agent: agent.name,
-      kind: "close",
-      marketSlug: result.marketSlug,
-      title: result.title,
-      side: result.side,
-      margin: 0,
-      leverage: 1,
-      positionId,
+      agent: label,
+      kind,
+      marketSlug: listed?.marketSlug ?? "",
+      title: listed?.title ?? null,
+      side,
+      margin: Number(body.margin) || 0,
+      leverage: Number(body.leverage) || 1,
+      positionId: result.positionId,
       txHash: result.hash,
       idempotencyKey,
     });
     return agentJson({
       ok: true,
-      action: "close",
+      action: "submit",
+      from,
       hash: result.hash,
-      positionId,
+      positionId: result.positionId,
+    });
+  }
+
+  if (actionName === "close") {
+    const positionId = String(body.positionId ?? body.id ?? "").trim();
+    if (!positionId) return agentJson({ error: "Missing positionId." }, 400);
+    const result = await buildCloseTicket({ from, positionId });
+    if ("error" in result) return agentJson({ error: result.error }, result.status);
+    return agentJson({
+      ok: true,
+      action: "close",
+      from,
+      chainId: result.chainId,
+      calls: result.calls,
+      positionId: result.positionId,
+      marketSlug: result.marketSlug,
+      title: result.title,
+      side: result.side,
+      next: "Sign and send calls from `from`, then POST action=submit with the hash.",
     });
   }
 
   if (actionName !== "open") {
-    return agentJson({ error: "action must be open or close." }, 400);
+    return agentJson({ error: "action must be open, close, or submit." }, 400);
   }
 
   const side = sideOf(body.side);
@@ -137,7 +173,7 @@ export async function action({ request }: { request: Request }) {
   if (!(margin > 0)) return agentJson({ error: "Set a margin in USDG." }, 400);
 
   const limits = agentLimits();
-  const used = await agentNotionalToday(agent.name);
+  const used = await agentNotionalToday(label);
   const next = used + margin * leverage;
   if (next > limits.dailyNotional + 1e-6) {
     return agentJson(
@@ -148,7 +184,8 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  const result = await openAgentPosition({
+  const result = await buildOpenTicket({
+    from,
     marketSlug: listed.marketSlug,
     isLong: side === "yes",
     margin,
@@ -156,31 +193,20 @@ export async function action({ request }: { request: Request }) {
   });
   if ("error" in result) return agentJson({ error: result.error }, result.status);
 
-  const logged = await insertAgentBet({
-    agent: agent.name,
-    kind: "open",
-    marketSlug: listed.marketSlug,
-    title: listed.title,
-    side,
-    margin,
-    leverage,
-    positionId: result.positionId,
-    txHash: result.hash,
-    idempotencyKey,
-  });
-
   return agentJson({
     ok: true,
     action: "open",
-    id: logged.id,
-    hash: result.hash,
-    positionId: result.positionId,
-    wallet: result.wallet,
+    from,
+    chainId: result.chainId,
+    token: result.token,
+    calls: result.calls,
     quote: result.quote,
     marketSlug: listed.marketSlug,
     title: listed.title,
     side,
     margin,
     leverage,
+    keysOptional: !agentKeysConfigured(),
+    next: "Sign and send each call from `from` (the agent wallet). Then POST action=submit with the open hash.",
   });
 }

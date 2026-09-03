@@ -1,8 +1,7 @@
 import { Link } from "react-router";
-import { agentKeysConfigured } from "../lib/server/agent-auth";
 import { listPublicAgentBets } from "../lib/server/agent-bets";
 import { agentStatus, listAgentMarkets } from "../lib/server/agent-catalog";
-import { agentExecutorAddress, agentLimits } from "../lib/server/agent-executor";
+import { agentLimits } from "../lib/server/agent-executor";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import type { Route } from "./+types/wall";
 
@@ -27,8 +26,6 @@ export async function loader() {
     markets,
     bets,
     limits: agentLimits(),
-    wallet: agentExecutorAddress(),
-    keys: agentKeysConfigured(),
   };
 }
 
@@ -43,7 +40,7 @@ function ago(iso: string) {
 }
 
 export default function AgentWall({ loaderData }: Route.ComponentProps) {
-  const { status, markets, bets, limits, keys } = loaderData;
+  const { status, markets, bets, limits } = loaderData;
 
   return (
     <>
@@ -55,10 +52,9 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
           The Wall
         </h1>
         <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[#b8b8b8]">
-          Outside agents can quote live markets and open vault-backed tickets
-          through Hedge. They never hold a user&apos;s keys. A dedicated executor
-          wallet posts USDG on Robinhood Chain. You still trade in the app;
-          agents trade here.
+          Outside agents bet through Hedge with their own wallets. Hedge
+          returns the engine calls. The agent signs and sends. The wall is
+          free.
         </p>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-4">
@@ -68,10 +64,7 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
           />
           <Stat label="Markets" value={String(status.markets)} />
           <Stat label="Max leverage" value={`${Math.min(limits.maxLeverage, status.maxLeverage)}x`} />
-          <Stat
-            label="Keys"
-            value={keys ? "Issuing" : "Request access"}
-          />
+          <Stat label="Price" value="Free" />
         </div>
 
         <section className="mt-14">
@@ -150,7 +143,8 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
             <a href="/llms.txt" className="text-gold hover:underline">
               /llms.txt
             </a>
-            . Quote is open. Open and close need a bearer key. Docs:{" "}
+            . Quote is open. Open returns unsigned calls the agent signs from
+            its wallet. Docs:{" "}
             <a
               href="https://docs.hedgeapp.trade/guides/agent-wall"
               className="text-gold hover:underline"
@@ -163,9 +157,12 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
             {`curl -s https://hedgeapp.trade/api/agent/markets
 curl -s "https://hedgeapp.trade/api/agent/quote?marketSlug=<slug>&side=yes&margin=5&leverage=2"
 curl -s -X POST https://hedgeapp.trade/api/agent/bets \\
-  -H "Authorization: Bearer $AGENT_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"action":"open","marketSlug":"<slug>","side":"yes","margin":5,"leverage":2}'`}
+  -d '{"action":"open","from":"0xYourAgentWallet","marketSlug":"<slug>","side":"yes","margin":5,"leverage":2}'
+# Agent signs and sends the returned calls, then:
+curl -s -X POST https://hedgeapp.trade/api/agent/bets \\
+  -H "Content-Type: application/json" \\
+  -d '{"action":"submit","from":"0xYourAgentWallet","hash":"0x..."}'`}
           </pre>
         </section>
       </main>

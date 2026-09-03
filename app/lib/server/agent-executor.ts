@@ -1,6 +1,5 @@
 import {
   createPublicClient,
-  createWalletClient,
   defineChain,
   encodeFunctionData,
   erc20Abi,
@@ -8,7 +7,6 @@ import {
   http,
   type Hex,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { engineAbi } from "../leverage-abi";
 import { ENGINE_ADDRESS, LEVERAGE_MARKETS, PRICE_BAND } from "../leverage";
 import {
@@ -19,11 +17,12 @@ import {
   readPositionsFor,
   readUsdgBalance,
   toUsdgRaw,
-  waitForTx,
 } from "../leverage-chain";
 import { RH_CHAIN_ID, RH_RPC, RH_RPC_FALLBACK, USDG } from "../robinhood";
 import { refreshOracleFor, reporterConfigured } from "./oracle-refresh";
 import { serverSecrets } from "./secrets";
+
+const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
 const chain = defineChain({
   id: RH_CHAIN_ID,
@@ -32,10 +31,13 @@ const chain = defineChain({
   rpcUrls: { default: { http: [RH_RPC_FALLBACK, RH_RPC] } },
 });
 
-const transport = fallback([
-  http(RH_RPC_FALLBACK, { retryCount: 2, timeout: 12_000 }),
-  http(RH_RPC, { retryCount: 2, timeout: 12_000 }),
-]);
+const publicClient = createPublicClient({
+  chain,
+  transport: fallback([
+    http(RH_RPC_FALLBACK, { retryCount: 2, timeout: 12_000 }),
+    http(RH_RPC, { retryCount: 2, timeout: 12_000 }),
+  ]),
+});
 
 const REVERTS: Record<string, string> = {
   PoolCapacityReached: "The pool is full. Try a smaller size.",
@@ -59,22 +61,9 @@ function readableRevert(err: unknown) {
     if (text.includes(name)) return message;
   }
   if (/insufficient funds|exceeds balance|transfer amount/i.test(text)) {
-    return "The agent wallet does not have enough USDG.";
+    return "That wallet does not have enough USDG.";
   }
-  return "That ticket did not go through.";
-}
-
-function executorAccount() {
-  const { agentWalletKey } = serverSecrets();
-  if (!agentWalletKey) return null;
-  const key = agentWalletKey.startsWith("0x")
-    ? (agentWalletKey as Hex)
-    : (`0x${agentWalletKey}` as Hex);
-  return privateKeyToAccount(key);
-}
-
-export function agentExecutorAddress() {
-  return executorAccount()?.address ?? null;
+  return "That ticket would revert on-chain.";
 }
 
 export function agentLimits() {
@@ -87,37 +76,27 @@ export function agentLimits() {
   };
 }
 
-function clients() {
-  const account = executorAccount();
-  if (!account) return null;
-  return {
-    account,
-    publicClient: createPublicClient({ chain, transport }),
-    wallet: createWalletClient({ account, chain, transport }),
-  };
+export function parseAgentWallet(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!ADDR.test(raw)) return null;
+  return raw as Hex;
 }
 
-async function sendCall(to: Hex, data: Hex) {
-  const ctx = clients();
-  if (!ctx) throw new Error("Agent execution is not configured.");
-  const hash = await ctx.wallet.sendTransaction({
-    account: ctx.account,
-    to,
-    data,
-  });
-  await waitForTx(hash);
-  return hash;
-}
+export type AgentCall = {
+  to: string;
+  data: Hex;
+  value: "0x0";
+  description: string;
+};
 
 async function simulate(
+  from: Hex,
   functionName: "openPosition" | "reducePosition",
   args: readonly unknown[],
 ) {
-  const ctx = clients();
-  if (!ctx) throw new Error("Agent execution is not configured.");
   try {
-    await ctx.publicClient.simulateContract({
-      account: ctx.account,
+    await publicClient.simulateContract({
+      account: from,
       address: ENGINE_ADDRESS as Hex,
       abi: engineAbi,
       functionName,
@@ -128,45 +107,20 @@ async function simulate(
   }
 }
 
-const APPROVAL_BUDGET = 250;
-
-async function ensureAllowance(amount: bigint) {
-  const from = agentExecutorAddress();
-  if (!from) throw new Error("Agent execution is not configured.");
-  const current = await readAllowance(from, ENGINE_ADDRESS);
-  if (current >= amount) return;
-  const grant =
-    toUsdgRaw(APPROVAL_BUDGET) > amount ? toUsdgRaw(APPROVAL_BUDGET) : amount;
-  await sendCall(
-    USDG,
-    encodeFunctionData({
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [ENGINE_ADDRESS as Hex, grant],
-    }),
-  );
-}
-
-export async function openAgentPosition(input: {
+export async function buildOpenTicket(input: {
+  from: Hex;
   marketSlug: string;
   isLong: boolean;
   margin: number;
   leverage: number;
 }) {
-  const account = executorAccount();
-  if (!account) {
-    return { error: "Agent execution is not configured.", status: 503 as const };
-  }
-
   const listed = LEVERAGE_MARKETS.find((m) => m.marketSlug === input.marketSlug);
   if (!listed) {
     return { error: "That market is not on the agent wall.", status: 404 as const };
   }
 
   const engine = await readEngineState();
-  if (!engine) {
-    return { error: "The engine is not reachable.", status: 502 as const };
-  }
+  if (!engine) return { error: "The engine is not reachable.", status: 502 as const };
   if (engine.openingPaused) {
     return { error: "New leveraged positions are paused.", status: 503 as const };
   }
@@ -182,7 +136,6 @@ export async function openAgentPosition(input: {
   if (input.margin > cap) {
     return { error: `Margin cannot exceed ${cap} USDG.`, status: 400 as const };
   }
-
   const maxLev = Math.min(listed.maxLeverage, engine.maxLeverage, limits.maxLeverage);
   if (input.leverage < 1 || input.leverage > maxLev) {
     return {
@@ -197,9 +150,7 @@ export async function openAgentPosition(input: {
     margin: input.margin,
     leverage: input.leverage,
   });
-  if (!quote) {
-    return { error: "Could not quote that ticket.", status: 502 as const };
-  }
+  if (!quote) return { error: "Could not quote that ticket.", status: 502 as const };
   if (!quote.hasCapacity) {
     return { error: "The pool cannot back that size right now.", status: 409 as const };
   }
@@ -210,68 +161,86 @@ export async function openAgentPosition(input: {
     return { error: "Yes is outside the $0.35–$0.65 band.", status: 409 as const };
   }
 
-  const cash = await readUsdgBalance(account.address);
+  const cash = await readUsdgBalance(input.from);
   if (cash + 1e-6 < input.margin) {
     return {
-      error: `Agent wallet has ${cash.toFixed(2)} USDG. Need ${input.margin}.`,
-      status: 402 as const,
+      error: `Wallet has ${cash.toFixed(2)} USDG. Need ${input.margin}. Fund this address on Robinhood Chain.`,
+      status: 400 as const,
     };
   }
 
   if (reporterConfigured()) {
-    await refreshOracleFor([listed.marketSlug]);
+    await refreshOracleFor([listed.marketSlug]).catch(() => {});
   }
 
   const marginRaw = toUsdgRaw(input.margin);
-  const args = [
+  const openArgs = [
     marketIdFor(listed.marketSlug),
     input.isLong,
     marginRaw,
     BigInt(Math.round(input.leverage * 10_000)),
   ] as const;
 
+  const calls: AgentCall[] = [];
+  const allowance = await readAllowance(input.from, ENGINE_ADDRESS);
+  if (allowance < marginRaw) {
+    calls.push({
+      to: USDG,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [ENGINE_ADDRESS as Hex, toUsdgRaw(250)],
+      }),
+      value: "0x0",
+      description: "Approve USDG for HedgeLeverageEngine",
+    });
+  }
+
   try {
-    await ensureAllowance(marginRaw);
-    await simulate("openPosition", args);
-    const hash = await sendCall(
-      ENGINE_ADDRESS as Hex,
-      encodeFunctionData({ abi: engineAbi, functionName: "openPosition", args }),
-    );
-    const positions = await readPositionsFor(account.address);
-    const opened = [...positions]
-      .filter((p) => p.marketSlug === listed.marketSlug && p.isLong === input.isLong)
-      .sort((a, b) => b.openedAt - a.openedAt)[0];
-    return {
-      ok: true as const,
-      hash,
-      positionId: opened ? opened.id.toString() : null,
-      quote,
-      wallet: account.address,
-    };
+    await simulate(input.from, "openPosition", openArgs);
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "That ticket did not go through.",
-      status: 502 as const,
+      error: err instanceof Error ? err.message : "That ticket would revert.",
+      status: 409 as const,
     };
   }
+
+  calls.push({
+    to: ENGINE_ADDRESS,
+    data: encodeFunctionData({
+      abi: engineAbi,
+      functionName: "openPosition",
+      args: openArgs,
+    }),
+    value: "0x0",
+    description: "openPosition",
+  });
+
+  return {
+    ok: true as const,
+    from: input.from,
+    chainId: RH_CHAIN_ID,
+    token: USDG,
+    calls,
+    quote,
+    title: listed.title,
+    marketSlug: listed.marketSlug,
+    marketId: listed.marketId,
+  };
 }
 
-export async function closeAgentPosition(positionId: string) {
-  const account = executorAccount();
-  if (!account) {
-    return { error: "Agent execution is not configured.", status: 503 as const };
-  }
+export async function buildCloseTicket(input: { from: Hex; positionId: string }) {
   let id: bigint;
   try {
-    id = BigInt(positionId);
+    id = BigInt(input.positionId);
   } catch {
     return { error: "Invalid position id.", status: 400 as const };
   }
 
-  const mine = await readPositionsFor(account.address);
+  const mine = await readPositionsFor(input.from);
   const row = mine.find((p) => p.id === id);
   if (!row) {
-    return { error: "That position is not open on the agent wallet.", status: 404 as const };
+    return { error: "That position is not open on this wallet.", status: 404 as const };
   }
 
   if (reporterConfigured() && row.marketSlug) {
@@ -280,27 +249,63 @@ export async function closeAgentPosition(positionId: string) {
 
   const args = [id, 10_000n] as const;
   try {
-    await simulate("reducePosition", args);
-    const hash = await sendCall(
-      ENGINE_ADDRESS as Hex,
-      encodeFunctionData({
-        abi: engineAbi,
-        functionName: "reducePosition",
-        args,
-      }),
-    );
-    return {
-      ok: true as const,
-      hash,
-      positionId: id.toString(),
-      marketSlug: row.marketSlug,
-      title: row.label,
-      side: row.isLong ? ("yes" as const) : ("no" as const),
-    };
+    await simulate(input.from, "reducePosition", args);
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "Could not close that position.",
-      status: 502 as const,
+      error: err instanceof Error ? err.message : "That close would revert.",
+      status: 409 as const,
     };
   }
+
+  return {
+    ok: true as const,
+    from: input.from,
+    chainId: RH_CHAIN_ID,
+    calls: [
+      {
+        to: ENGINE_ADDRESS,
+        data: encodeFunctionData({
+          abi: engineAbi,
+          functionName: "reducePosition",
+          args,
+        }),
+        value: "0x0" as const,
+        description: "reducePosition (close all)",
+      },
+    ] satisfies AgentCall[],
+    positionId: id.toString(),
+    marketSlug: row.marketSlug,
+    title: row.label,
+    side: row.isLong ? ("yes" as const) : ("no" as const),
+  };
+}
+
+export async function confirmAgentTx(input: { from: Hex; hash: Hex }) {
+  const receipt = await publicClient
+    .waitForTransactionReceipt({ hash: input.hash, timeout: 60_000 })
+    .catch(async () =>
+      publicClient.getTransactionReceipt({ hash: input.hash }),
+    );
+  if (!receipt) {
+    return { error: "Transaction not found yet.", status: 404 as const };
+  }
+  if (receipt.status !== "success") {
+    return { error: "That transaction reverted.", status: 409 as const };
+  }
+  if (receipt.from.toLowerCase() !== input.from.toLowerCase()) {
+    return { error: "That hash was not sent from this wallet.", status: 403 as const };
+  }
+  const toEngine = receipt.to?.toLowerCase() === ENGINE_ADDRESS.toLowerCase();
+  const toUsdg = receipt.to?.toLowerCase() === USDG.toLowerCase();
+  if (!toEngine && !toUsdg) {
+    return { error: "That hash is not a Hedge engine or USDG approval.", status: 400 as const };
+  }
+
+  const positions = await readPositionsFor(input.from);
+  const opened = [...positions].sort((a, b) => b.openedAt - a.openedAt)[0];
+  return {
+    ok: true as const,
+    hash: input.hash,
+    positionId: toEngine && opened ? opened.id.toString() : null,
+  };
 }

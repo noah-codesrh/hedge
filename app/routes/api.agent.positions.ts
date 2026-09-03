@@ -2,12 +2,10 @@ import {
   agentJson,
   agentOptions,
   corsHeaders,
-  requireAgent,
 } from "../lib/server/agent-auth";
 import { listAgentPositionsLog } from "../lib/server/agent-bets";
-import { agentExecutorAddress } from "../lib/server/agent-executor";
+import { parseAgentWallet } from "../lib/server/agent-executor";
 import { readPositionsFor } from "../lib/leverage-chain";
-import { supabaseAdmin } from "../lib/server/supabase";
 
 export function headers() {
   return corsHeaders();
@@ -15,31 +13,25 @@ export function headers() {
 
 export async function loader({ request }: { request: Request }) {
   if (request.method === "OPTIONS") return agentOptions();
-  const agent = requireAgent(request);
-  const wallet = agentExecutorAddress();
-  const live = wallet ? await readPositionsFor(wallet) : [];
-  const log = await listAgentPositionsLog(agent.name);
-  const mine = new Set(
-    log
-      .filter((row) => row.kind === "open" && row.position_id)
-      .map((row) => row.position_id as string),
-  );
-  const tracked = Boolean(supabaseAdmin());
-  const positions = live
-    .filter((p) => !tracked || mine.has(p.id.toString()))
-    .map((p) => ({
-      positionId: p.id.toString(),
-      marketSlug: p.marketSlug,
-      title: p.label,
-      side: p.isLong ? "yes" : "no",
-      margin: p.margin,
-      leverage: Number(p.leverage.toFixed(2)),
-      size: p.size,
-      entryPrice: p.entryPrice,
-      pnl: p.pnl,
-      liquidationPrice: p.liquidationPrice,
-      atRisk: p.atRisk,
-    }));
-
-  return agentJson({ agent: agent.name, wallet, positions, recent: log });
+  const url = new URL(request.url);
+  const wallet = parseAgentWallet(url.searchParams.get("wallet"));
+  if (!wallet) {
+    return agentJson({ error: "Set ?wallet=0x… to the agent wallet." }, 400);
+  }
+  const live = await readPositionsFor(wallet);
+  const log = await listAgentPositionsLog(wallet.toLowerCase());
+  const positions = live.map((p) => ({
+    positionId: p.id.toString(),
+    marketSlug: p.marketSlug,
+    title: p.label,
+    side: p.isLong ? "yes" : "no",
+    margin: p.margin,
+    leverage: Number(p.leverage.toFixed(2)),
+    size: p.size,
+    entryPrice: p.entryPrice,
+    pnl: p.pnl,
+    liquidationPrice: p.liquidationPrice,
+    atRisk: p.atRisk,
+  }));
+  return agentJson({ wallet, positions, recent: log });
 }
