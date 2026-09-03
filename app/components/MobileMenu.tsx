@@ -184,11 +184,23 @@ export function MobileMenu({
 
         <nav className="no-scrollbar flex-1 overflow-y-auto px-2 py-2">
           <Link
-            to="/token"
+            to="/ai"
             prefetch="intent"
             onClick={close}
             style={stagger(0)}
             className={item(0)}
+          >
+            Hedgie
+            <span className="text-muted">
+              <ChevronRight />
+            </span>
+          </Link>
+          <Link
+            to="/token"
+            prefetch="intent"
+            onClick={close}
+            style={stagger(1)}
+            className={item(1)}
           >
             <span className="font-semibold text-gold">$HEDGE</span>
             <span className="text-gold/50">
@@ -200,8 +212,8 @@ export function MobileMenu({
             target="_blank"
             rel="noreferrer"
             onClick={close}
-            style={stagger(1)}
-            className={item(1)}
+            style={stagger(2)}
+            className={item(2)}
           >
             Docs
             <span className="text-muted">
@@ -211,8 +223,8 @@ export function MobileMenu({
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             onClick={close}
-            style={stagger(2)}
-            className={item(2)}
+            style={stagger(3)}
+            className={item(3)}
           >
             Support
             <span className="text-muted">
@@ -223,8 +235,8 @@ export function MobileMenu({
             to="/terms"
             prefetch="intent"
             onClick={close}
-            style={stagger(3)}
-            className={item(3)}
+            style={stagger(4)}
+            className={item(4)}
           >
             Terms and Conditions
             <span className="text-muted">
@@ -241,7 +253,7 @@ export function MobileMenu({
                 close();
                 onLogout();
               }}
-              style={stagger(4)}
+              style={stagger(5)}
               className={`w-full rounded-full border border-white/15 bg-white/5 px-5 py-4 text-base font-semibold text-[#cfcfcf] transition active:scale-[0.98] hover:bg-white/10 hover:text-white ${
                 shown ? "animate-menu-item" : ""
               }`}
@@ -255,7 +267,7 @@ export function MobileMenu({
                 close();
                 onGetStarted();
               }}
-              style={stagger(4)}
+              style={stagger(5)}
               className={`w-full rounded-full bg-gold px-5 py-4 text-base font-semibold text-black transition active:scale-[0.98] hover:brightness-105 ${
                 shown ? "animate-menu-item" : ""
               }`}

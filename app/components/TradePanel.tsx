@@ -68,6 +68,7 @@ export function TradePanel(props: {
   event: PolymarketEvent;
   market: Market;
   initialSide?: Side;
+  initialLeverage?: number;
 }) {
   const privyMounted = usePrivyMounted();
   if (privyMounted) return <AuthedTradePanel {...props} />;
@@ -78,6 +79,7 @@ function AuthedTradePanel(props: {
   event: PolymarketEvent;
   market: Market;
   initialSide?: Side;
+  initialLeverage?: number;
 }) {
   const { authenticated, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
@@ -129,6 +131,7 @@ function TradePanelView({
   event,
   market,
   initialSide = "yes",
+  initialLeverage = 1,
   authenticated,
   getAccessToken,
   cashAddress,
@@ -149,6 +152,7 @@ function TradePanelView({
   event: PolymarketEvent;
   market: Market;
   initialSide?: Side;
+  initialLeverage?: number;
   authenticated: boolean;
   getAccessToken?: () => Promise<string | null>;
   signAuthorization?: SignPrivyAuthorization;
@@ -243,7 +247,7 @@ function TradePanelView({
   const [ticketKind, setTicketKind] = useState<"market" | "limit">("market");
   const [limitPrice, setLimitPrice] = useState(0);
   const [limitsOn, setLimitsOn] = useState(false);
-  const [leverage, setLeverage] = useState(1);
+  const [leverage, setLeverage] = useState(initialLeverage);
   const [collateral, setCollateral] = useState<StockToken | null>(null);
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [desk, setDesk] = useState<DeskState | null>(null);

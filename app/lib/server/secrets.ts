@@ -36,6 +36,11 @@ export function serverSecrets() {
     // security, so this must never be sent to the browser.
     supabaseServiceRoleKey:
       required("SUPABASE_SECRET_KEY") ?? required("SUPABASE_SERVICE_ROLE_KEY"),
+    // Server-only. Never prefix with VITE_ — the example app leaked this in
+    // the browser bundle. Hedgie streams through /api/hedgie instead.
+    openrouterKey: required("OPENROUTER_API_KEY"),
+    openrouterModel:
+      required("OPENROUTER_MODEL") ?? "openai/gpt-4o-mini",
   };
 }
 

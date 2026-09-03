@@ -119,6 +119,20 @@ function HeaderShell({
         <SearchBar />
 
         <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          <Link
+            to="/ai"
+            prefetch="intent"
+            aria-label="Hedgie"
+            title="Ask Hedgie"
+            className="group relative grid h-10 w-10 place-items-center rounded-full ring-1 ring-white/10 transition hover:ring-gold/60"
+          >
+            <span className="absolute inset-0 rounded-full bg-gold/20 opacity-0 blur-md transition group-hover:opacity-100" />
+            <img
+              src="/hedgie-ai-tag.jpg"
+              alt="Hedgie"
+              className="animate-hedgie-nudge h-8 w-8 rounded-full object-cover"
+            />
+          </Link>
           {authenticated ? (
             <>
               {book ? <HeaderBook /> : null}

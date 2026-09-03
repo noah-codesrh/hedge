@@ -52,6 +52,8 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   const { event, defaultMarketId } = loaderData;
   const [params] = useSearchParams();
   const initialSide = (params.get("s") === "no" ? "no" : "yes") as Side;
+  const lev = Number(params.get("lev"));
+  const initialLeverage = lev === 2 || lev === 3 || lev === 4 ? lev : 1;
   const queriedMarket = params.get("m");
   const [activeId, setActiveId] = useState<string | undefined>(
     queriedMarket ?? defaultMarketId ?? undefined,
@@ -174,6 +176,7 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
               event={event}
               market={market}
               initialSide={initialSide}
+              initialLeverage={initialLeverage}
             />
           </div>
         </div>

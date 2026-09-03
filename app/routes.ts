@@ -30,6 +30,8 @@ export default [
   route("api/vault", "routes/api.vault.ts"),
   route("api/leverage/orders", "routes/api.leverage.orders.ts"),
   route("api/leverage/refresh", "routes/api.leverage.refresh.ts"),
+  route("api/hedgie", "routes/api.hedgie.ts"),
+  route("ai", "routes/ai.tsx"),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),

@@ -285,3 +285,96 @@ body > div {
 .hedge-topbar-finish {
   animation: hedge-topbar-finish 0.22s ease-out forwards;
 }
+
+@keyframes hedgie-nudge {
+  0%,
+  70%,
+  100% {
+    transform: translateX(0);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+  90% {
+    transform: translateX(-1px);
+  }
+}
+.animate-hedgie-nudge {
+  animation: hedgie-nudge 3.2s ease-in-out infinite;
+}
+
+@keyframes hedgie-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.animate-hedgie-float {
+  animation: hedgie-float 4s ease-in-out infinite;
+}
+
+@keyframes hedgie-look {
+  0%,
+  100% {
+    transform: rotate(-7deg) translateX(-5px);
+  }
+  50% {
+    transform: rotate(7deg) translateX(5px);
+  }
+}
+.animate-hedgie-look {
+  animation: hedgie-look 3.6s ease-in-out infinite;
+}
+
+@keyframes hedgie-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+}
+.animate-hedgie-glow {
+  animation: hedgie-glow 4s ease-in-out infinite;
+}
+
+.hedgie-grid {
+  background-image: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 1.6px
+  );
+  background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(
+    ellipse 65% 55% at 50% 42%,
+    #000 35%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 65% 55% at 50% 42%,
+    #000 35%,
+    transparent 100%
+  );
+}
+
+@keyframes hedgie-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+.animate-hedgie-typing {
+  animation: hedgie-typing 1.2s ease-in-out infinite;
+}
