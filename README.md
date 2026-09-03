@@ -14,6 +14,12 @@ The web app (`app/`) plus the leverage contracts and keeper (`contracts/`). The 
 
 Which markets get leverage is a hand-checked allowlist in `app/lib/leverage.ts` and `contracts/relayer/markets.json`. Those two must match the markets listed on-chain.
 
+## Agent Wall
+
+Outside agents bet through `GET/POST /api/agent/*`. Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`.
+
+Set `AGENT_API_KEY` and a dedicated `AGENT_WALLET_PRIVATE_KEY` (funded USDG + RH ETH). Never reuse the oracle/guardian key. Caps: `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
+
 ## Run locally
 
 Node 22+ and pnpm.

@@ -31,6 +31,12 @@ export default [
   route("api/leverage/orders", "routes/api.leverage.orders.ts"),
   route("api/leverage/refresh", "routes/api.leverage.refresh.ts"),
   route("api/hedgie", "routes/api.hedgie.ts"),
+  route("api/agent", "routes/api.agent.ts"),
+  route("api/agent/markets", "routes/api.agent.markets.ts"),
+  route("api/agent/quote", "routes/api.agent.quote.ts"),
+  route("api/agent/bets", "routes/api.agent.bets.ts"),
+  route("api/agent/positions", "routes/api.agent.positions.ts"),
+  route("llms.txt", "routes/llms.txt.ts"),
   route("ai", "routes/ai.tsx"),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
@@ -41,5 +47,6 @@ export default [
     route("terms", "routes/terms.tsx"),
     route("challenge", "routes/challenge.tsx"),
     route("rewards", "routes/rewards.tsx"),
+    route("wall", "routes/wall.tsx"),
   ]),
 ] satisfies RouteConfig;
