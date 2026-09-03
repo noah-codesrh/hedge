@@ -18,9 +18,9 @@ export const SOCIALS = [
     icon: <XIcon size={15} />,
   },
   {
-    href: "https://t.me/hedgeapptrade",
+    href: "https://t.me/hedgetradeltd",
     name: "Telegram",
-    handle: "@hedgeapptrade",
+    handle: "@hedgetradeltd",
     label: "Hedge on Telegram",
     icon: <TelegramIcon size={16} />,
   },
