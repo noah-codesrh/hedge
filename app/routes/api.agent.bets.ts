@@ -175,7 +175,7 @@ export async function action({ request }: { request: Request }) {
     return agentJson(
       {
         error:
-          "Vault tickets are on listed leverage names. This market is 1x in the app.",
+          "This market is 1x. Quote it here and fill in the app. Vault tickets are only on listed leverage names.",
         desk: target.desk,
         ticketUrl: target.ticketUrl,
       },

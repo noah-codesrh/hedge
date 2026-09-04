@@ -2,10 +2,16 @@ import { listAgentMarkets } from "../lib/server/agent-catalog";
 
 export async function loader() {
   const origin = "https://hedgeapp.trade";
-  const page = await listAgentMarkets({ desk: "leverage" }).catch(() => ({
-    markets: [] as Awaited<ReturnType<typeof listAgentMarkets>>["markets"],
-  }));
-  const markets = page.markets;
+  const [venue, vault] = await Promise.all([
+    listAgentMarkets({ desk: "spot", limit: 40 }).catch(() => ({
+      markets: [] as Awaited<ReturnType<typeof listAgentMarkets>>["markets"],
+    })),
+    listAgentMarkets({ desk: "leverage", limit: 40 }).catch(() => ({
+      markets: [] as Awaited<ReturnType<typeof listAgentMarkets>>["markets"],
+    })),
+  ]);
+  const markets = venue.markets;
+  const vaultMarkets = vault.markets;
   const lines = [
     "# Hedge",
     "",
@@ -20,27 +26,37 @@ export async function loader() {
     "",
     "## Agent Wall",
     "",
-    "Outside agents quote every live Hedge market using their own wallets. The wall is free. POST /api/agent/bets with from=0x… returns unsigned vault calls on listed leverage names. Spot 1x fills in the app.",
+    "Outside agents quote every live Hedge market. The wall is free. 1x fills in the app via ticketUrl. POST /api/agent/bets with from=0x… returns unsigned vault calls only on listed leverage names. status.live is the venue, not the vault pause.",
     "",
     `- Capability card: ${origin}/api/agent`,
     `- Markets (all live): ${origin}/api/agent/markets`,
+    `- Markets (spot): ${origin}/api/agent/markets?desk=spot`,
     `- Markets (vault): ${origin}/api/agent/markets?desk=leverage`,
-    `- Quote: ${origin}/api/agent/quote?marketSlug=<slug>&side=yes&margin=5&leverage=2`,
-    `- Open/close: POST ${origin}/api/agent/bets  (body.from = agent wallet; returns calldata on desk=leverage)`,
+    `- Quote: ${origin}/api/agent/quote?marketSlug=<slug>&side=yes&margin=5`,
+    `- Open/close vault: POST ${origin}/api/agent/bets  (desk=leverage only; body.from = agent wallet)`,
     `- Submit fill: POST action=submit with the agent’s tx hash`,
     `- Positions: GET ${origin}/api/agent/positions?wallet=0x…`,
     `- Public fills: GET ${origin}/api/agent/bets`,
     "",
-    "Auth: none. The agent wallet signs the returned calls. Optional bearer key is a label, not the signer.",
-    "Vault tickets: listed leverage names, Yes in $0.35-$0.65 for >1x, max 4x, USDG on chain 4663 from the agent wallet.",
+    "Auth: none. Optional bearer key is a label, not the signer.",
     "Spot: quote any live market. Fill 1x in the app via ticketUrl.",
+    "Vault tickets: listed leverage names, Yes in $0.35-$0.65 for >1x, max 4x, USDG on chain 4663 from the agent wallet. openingPaused is vault-only.",
     "",
-    "## Vault leverage markets (live)",
+    "## Live markets",
     "",
     ...markets.map(
       (m) =>
-        `- ${m.title} | slug=${m.marketSlug} | id=${m.marketId} | Yes ${m.yesCents} | ${m.band} | max ${m.maxLeverage}x | ${m.ticketUrl}`,
+        `- ${m.title} | slug=${m.marketSlug} | id=${m.marketId} | Yes ${m.yesCents} | 1x | ${m.ticketUrl}`,
     ),
+    "",
+    "## Vault leverage markets",
+    "",
+    ...(vaultMarkets.length > 0
+      ? vaultMarkets.map(
+          (m) =>
+            `- ${m.title} | slug=${m.marketSlug} | id=${m.marketId} | Yes ${m.yesCents} | ${m.band} | max ${m.maxLeverage}x | ${m.ticketUrl}`,
+        )
+      : ["- none listed right now"]),
     "",
   ];
 

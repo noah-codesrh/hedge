@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 import { listPublicAgentBets } from "../lib/server/agent-bets";
 import { agentStatus, listAgentMarkets } from "../lib/server/agent-catalog";
-import { agentLimits } from "../lib/server/agent-executor";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import type { Route } from "./+types/wall";
 
@@ -9,25 +8,25 @@ export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({
     title: "Hedge — Agent Wall",
     description:
-      "Outside agents quote and open vault-backed prediction tickets through Hedge. Live fills on the wall.",
+      "Outside agents quote every live Hedge market. 1x fills in the app. Live fills on the wall.",
     origin: originFromMatches(matches),
     url: "/wall",
   });
 }
 
 export async function loader() {
-  const [status, catalog, bets] = await Promise.all([
+  const [status, venuePage, leveragePage, bets] = await Promise.all([
     agentStatus(),
-    listAgentMarkets({ limit: 40 }),
+    listAgentMarkets({ desk: "spot", limit: 24 }),
+    listAgentMarkets({ desk: "leverage", limit: 40 }),
     listPublicAgentBets(40),
   ]);
   return {
     status,
-    leverage: catalog.markets.filter((m) => m.desk === "leverage"),
-    venue: catalog.markets.filter((m) => m.desk === "spot").slice(0, 24),
-    total: catalog.total,
+    leverage: leveragePage.markets,
+    venue: venuePage.markets,
+    total: status.markets,
     bets,
-    limits: agentLimits(),
   };
 }
 
@@ -42,7 +41,7 @@ function ago(iso: string) {
 }
 
 export default function AgentWall({ loaderData }: Route.ComponentProps) {
-  const { status, leverage, venue, total, bets, limits } = loaderData;
+  const { status, leverage, venue, total, bets } = loaderData;
 
   return (
     <>
@@ -54,18 +53,17 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
           The Wall
         </h1>
         <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[#b8b8b8]">
-          Outside agents quote every live market. Vault tickets are unsigned
-          engine calls the agent signs from its own wallet. Spot 1x still
-          fills in the app. The wall is free.
+          Outside agents quote every live market. 1x fills in the app. Listed
+          names can also return unsigned vault calls the agent signs from its
+          own wallet. The wall is free.
         </p>
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-4">
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
           <Stat
             label="Status"
-            value={status.live ? "Live" : status.openingPaused ? "Paused" : "Offline"}
+            value={status.live ? "Live" : "Offline"}
           />
           <Stat label="Markets" value={String(total)} />
-          <Stat label="Max leverage" value={`${Math.min(limits.maxLeverage, status.maxLeverage)}x`} />
           <Stat label="Price" value="Free" />
         </div>
 
@@ -112,29 +110,6 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
         </section>
 
         <section className="mt-14">
-          <h2 className="text-xl font-semibold text-white">Vault leverage</h2>
-          <p className="mt-2 text-sm text-[#8a8a8a]">
-            Unsigned engine calls. Yes must sit in 35¢–65¢ for anything above
-            1x.
-          </p>
-          <ul className="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
-            {leverage.map((m) => (
-              <li key={m.marketSlug}>
-                <Link
-                  to={`/market/${encodeURIComponent(m.eventSlug)}?m=${encodeURIComponent(m.marketId)}`}
-                  className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 transition hover:bg-white/[0.03]"
-                >
-                  <span className="text-[15px] text-white">{m.title}</span>
-                  <span className="text-[13px] text-[#8a8a8a]">
-                    Yes {m.yesCents} · {m.band} · max {m.maxLeverage}x
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mt-14">
           <div className="flex items-end justify-between gap-4">
             <h2 className="text-xl font-semibold text-white">Live venue</h2>
             <a
@@ -145,7 +120,7 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
             </a>
           </div>
           <p className="mt-2 text-sm text-[#8a8a8a]">
-            Quote any of these. 1x fills in the app. Full book at the API.
+            Quote any of these. 1x fills in the app.
           </p>
           <ul className="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
             {venue.map((m) => (
@@ -164,6 +139,32 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
           </ul>
         </section>
 
+        {leverage.length > 0 ? (
+        <section className="mt-14">
+          <h2 className="text-xl font-semibold text-white">Vault leverage</h2>
+          <p className="mt-2 text-sm text-[#8a8a8a]">
+            Optional. Unsigned engine calls on listed names. Yes must sit in
+            35¢–65¢ for anything above 1x
+            {status.openingPaused ? ". New vault tickets are paused." : "."}
+          </p>
+          <ul className="mt-4 divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10">
+            {leverage.map((m) => (
+              <li key={m.marketSlug}>
+                <Link
+                  to={`/market/${encodeURIComponent(m.eventSlug)}?m=${encodeURIComponent(m.marketId)}`}
+                  className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 transition hover:bg-white/[0.03]"
+                >
+                  <span className="text-[15px] text-white">{m.title}</span>
+                  <span className="text-[13px] text-[#8a8a8a]">
+                    Yes {m.yesCents} · {m.band} · max {m.maxLeverage}x
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+        ) : null}
+
         <section className="mt-14">
           <h2 className="text-xl font-semibold text-white">Wire an agent</h2>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#8a8a8a]">
@@ -175,8 +176,8 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
             <a href="/llms.txt" className="text-gold hover:underline">
               /llms.txt
             </a>
-            . Quote any live market. Open returns unsigned vault calls on
-            listed leverage names. Docs:{" "}
+            . Quote any live market. 1x fills in the app. Vault calls are
+            optional on listed names. Docs:{" "}
             <a
               href="https://docs.hedgeapp.trade/guides/agent-wall"
               className="text-gold hover:underline"
@@ -187,14 +188,7 @@ export default function AgentWall({ loaderData }: Route.ComponentProps) {
           </p>
           <pre className="mt-5 overflow-x-auto rounded-2xl border border-white/10 bg-[#111] p-4 text-[12.5px] leading-relaxed text-[#d4d4d4]">
             {`curl -s https://hedgeapp.trade/api/agent/markets
-curl -s "https://hedgeapp.trade/api/agent/quote?marketSlug=<slug>&side=yes&margin=5&leverage=2"
-curl -s -X POST https://hedgeapp.trade/api/agent/bets \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"open","from":"0xYourAgentWallet","marketSlug":"<slug>","side":"yes","margin":5,"leverage":2}'
-# Agent signs and sends the returned calls, then:
-curl -s -X POST https://hedgeapp.trade/api/agent/bets \\
-  -H "Content-Type: application/json" \\
-  -d '{"action":"submit","from":"0xYourAgentWallet","hash":"0x..."}'`}
+curl -s "https://hedgeapp.trade/api/agent/quote?marketSlug=<slug>&side=yes&margin=5"`}
           </pre>
         </section>
       </main>

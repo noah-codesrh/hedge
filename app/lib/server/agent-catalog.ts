@@ -164,13 +164,6 @@ export async function listAgentMarkets(opts?: {
   const seen = new Set<string>();
   const all: AgentMarket[] = [];
 
-  for (const row of leverage) {
-    const item = fromListing(row);
-    if (seen.has(item.marketSlug)) continue;
-    seen.add(item.marketSlug);
-    all.push(item);
-  }
-
   for (const event of page.events) {
     const live = event.markets.filter(isLiveMarket);
     const markets = live.length > 0 ? live : event.markets.slice(0, 1);
@@ -180,6 +173,13 @@ export async function listAgentMarkets(opts?: {
       seen.add(item.marketSlug);
       all.push(item);
     }
+  }
+
+  for (const row of leverage) {
+    const item = fromListing(row);
+    if (seen.has(item.marketSlug)) continue;
+    seen.add(item.marketSlug);
+    all.push(item);
   }
 
   const filtered =
@@ -199,16 +199,19 @@ export async function agentStatus() {
     listAgentMarkets({ limit: 200 }),
   ]);
   const limits = agentLimits();
+  const openingPaused = engine?.openingPaused ?? false;
+  const live = catalog.total > 0;
   return {
-    live: leverageIsLive && !engine?.openingPaused,
-    openingPaused: engine?.openingPaused ?? true,
+    live,
+    openingPaused,
+    vaultLive: leverageIsLive && !openingPaused,
     maxLeverage: engine?.maxLeverage ?? 1,
     minMargin: engine?.minMargin ?? limits.minMargin,
     maxMargin: Math.min(engine?.maxMargin ?? limits.maxMargin, limits.maxMargin),
     capacity: engine?.capacity ?? null,
     markets: catalog.total,
     leverageMarkets: catalog.leverageMarkets,
-    betting: leverageIsLive && !engine?.openingPaused,
+    betting: live,
   };
 }
 
@@ -228,7 +231,7 @@ export async function quoteAgentTicket(input: {
     if (input.leverage > 1) {
       return {
         error:
-          "Vault leverage is only on listed names. This market is 1x. Open it in the app or drop leverage to 1 to quote the book.",
+          "This market is 1x on the venue book. Drop leverage to 1 to quote it, then fill in the app.",
         status: 409 as const,
         ticketUrl: listed.ticketUrl,
         desk: listed.desk,
@@ -259,7 +262,7 @@ export async function quoteAgentTicket(input: {
         hasCapacity: true,
         source: "book" as const,
       },
-      next: "1x fills on the venue book in the app. POST /api/agent/bets opens vault tickets on desk=leverage only.",
+      next: "1x fills on the venue book in the app via ticketUrl. POST /api/agent/bets only builds vault tickets on desk=leverage.",
     };
   }
 
