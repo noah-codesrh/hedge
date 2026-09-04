@@ -1,5 +1,6 @@
-import { fetchHedgePair } from "../lib/hedge-token";
+import { fetchHedgeBurns, fetchHedgePair } from "../lib/hedge-token";
 
 export async function loader() {
-  return { pair: await fetchHedgePair() };
+  const [pair, burns] = await Promise.all([fetchHedgePair(), fetchHedgeBurns()]);
+  return { pair, burns };
 }

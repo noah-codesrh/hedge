@@ -33,6 +33,9 @@ export async function loader({ request }: { request: Request }) {
     margin,
     leverage,
   });
-  if ("error" in result) return agentJson({ error: result.error }, result.status);
+  if ("error" in result) {
+    const { error, status, ...rest } = result;
+    return agentJson({ error, ...rest }, status);
+  }
   return agentJson(result);
 }

@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { CheckIcon, CopyIcon } from "../components/icons";
 import { originFromMatches, siteMeta } from "../lib/seo";
+import { shorten } from "../lib/format";
 import {
   HEDGE_CA,
   HEDGE_DEXSCREENER,
   HEDGE_EXPLORER,
+  HEDGE_SITE,
+  fetchHedgeBurns,
   fetchHedgePair,
+  formatHedgeAmount,
   formatTokenUsd,
+  type HedgeBurns,
   type HedgePair,
 } from "../lib/hedge-token";
 import type { Route } from "./+types/token";
@@ -19,15 +24,18 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 export async function loader() {
-  return { pair: await fetchHedgePair() };
+  const [pair, burns] = await Promise.all([fetchHedgePair(), fetchHedgeBurns()]);
+  return { pair, burns };
 }
 
 export default function Token({ loaderData }: Route.ComponentProps) {
   const [pair, setPair] = useState<HedgePair | null>(loaderData.pair);
+  const [burns, setBurns] = useState<HedgeBurns>(loaderData.burns);
 
   useEffect(() => {
     setPair(loaderData.pair);
-  }, [loaderData.pair]);
+    setBurns(loaderData.burns);
+  }, [loaderData.pair, loaderData.burns]);
 
   useEffect(() => {
     let alive = true;
@@ -36,8 +44,10 @@ export default function Token({ loaderData }: Route.ComponentProps) {
         const res = await fetch("/api/token");
         if (!res.ok) return;
         const data: unknown = await res.json();
-        const next = (data as { pair?: HedgePair | null }).pair;
-        if (alive && next) setPair(next);
+        const next = data as { pair?: HedgePair | null; burns?: HedgeBurns };
+        if (!alive) return;
+        if (next.pair) setPair(next.pair);
+        if (next.burns) setBurns(next.burns);
       } catch {
         /* keep the last good snapshot */
       }
@@ -80,6 +90,25 @@ export default function Token({ loaderData }: Route.ComponentProps) {
         </div>
 
         <ContractRow />
+
+        <div className="divide-y divide-white/5 border-t border-white/5">
+          <InfoLink
+            label="Website"
+            href={HEDGE_SITE}
+            value="hedgeapp.trade"
+          />
+          {burns.latestHref ? (
+            <InfoLink
+              label="Burn txn"
+              href={burns.latestHref}
+              value={shorten(burns.latestHash)}
+            />
+          ) : null}
+          <InfoRow
+            label="Total burnt"
+            value={`${formatHedgeAmount(burns.total)} $HEDGE`}
+          />
+        </div>
       </section>
 
       <section className="rounded-3xl bg-card p-5 ring-1 ring-white/5 sm:p-6">
@@ -140,5 +169,40 @@ function ContractRow() {
         {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
       </button>
     </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-5 py-3.5 sm:px-6">
+      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate font-mono text-[13px] font-semibold tabular-nums sm:text-[14px]">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function InfoLink({
+  label,
+  href,
+  value,
+}: {
+  label: string;
+  href: string;
+  value: string;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-white/[0.03] sm:px-6"
+    >
+      <p className="text-[11px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="truncate font-mono text-[13px] font-semibold text-gold sm:text-[14px]">
+        {value}
+      </p>
+    </a>
   );
 }

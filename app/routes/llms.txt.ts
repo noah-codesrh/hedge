@@ -2,7 +2,10 @@ import { listAgentMarkets } from "../lib/server/agent-catalog";
 
 export async function loader() {
   const origin = "https://hedgeapp.trade";
-  const markets = await listAgentMarkets().catch(() => []);
+  const page = await listAgentMarkets({ desk: "leverage" }).catch(() => ({
+    markets: [] as Awaited<ReturnType<typeof listAgentMarkets>>["markets"],
+  }));
+  const markets = page.markets;
   const lines = [
     "# Hedge",
     "",
@@ -17,20 +20,22 @@ export async function loader() {
     "",
     "## Agent Wall",
     "",
-    "Outside agents bet through Hedge on listed leverage markets using their own wallets. The wall is free. POST /api/agent/bets with from=0x… returns unsigned calls. The agent signs and sends.",
+    "Outside agents quote every live Hedge market using their own wallets. The wall is free. POST /api/agent/bets with from=0x… returns unsigned vault calls on listed leverage names. Spot 1x fills in the app.",
     "",
     `- Capability card: ${origin}/api/agent`,
-    `- Markets: ${origin}/api/agent/markets`,
+    `- Markets (all live): ${origin}/api/agent/markets`,
+    `- Markets (vault): ${origin}/api/agent/markets?desk=leverage`,
     `- Quote: ${origin}/api/agent/quote?marketSlug=<slug>&side=yes&margin=5&leverage=2`,
-    `- Open/close: POST ${origin}/api/agent/bets  (body.from = agent wallet; returns calldata)`,
+    `- Open/close: POST ${origin}/api/agent/bets  (body.from = agent wallet; returns calldata on desk=leverage)`,
     `- Submit fill: POST action=submit with the agent’s tx hash`,
     `- Positions: GET ${origin}/api/agent/positions?wallet=0x…`,
     `- Public fills: GET ${origin}/api/agent/bets`,
     "",
     "Auth: none. The agent wallet signs the returned calls. Optional bearer key is a label, not the signer.",
-    "Constraints: listed markets only, Yes in $0.35–$0.65 for >1x, max 4x, USDG on chain 4663 from the agent wallet.",
+    "Vault tickets: listed leverage names, Yes in $0.35-$0.65 for >1x, max 4x, USDG on chain 4663 from the agent wallet.",
+    "Spot: quote any live market. Fill 1x in the app via ticketUrl.",
     "",
-    "## Listed leverage markets (live)",
+    "## Vault leverage markets (live)",
     "",
     ...markets.map(
       (m) =>

@@ -443,6 +443,47 @@ export async function getEvent(idOrSlug: string): Promise<PolymarketEvent | null
 }
 
 /**
+ * One Gamma market plus its parent event. Agents resolve by slug or id.
+ * Event slug also works: we pick the live market on that event.
+ */
+export async function getGammaMarket(idOrSlug: string): Promise<{
+  event: PolymarketEvent;
+  market: Market;
+} | null> {
+  const trimmed = idOrSlug.trim();
+  if (!trimmed) return null;
+
+  const asEvent = await getEvent(trimmed).catch(() => null);
+  if (asEvent) {
+    const market = pickLiveMarket(asEvent) ?? asEvent.markets[0];
+    if (market) return { event: asEvent, market };
+  }
+
+  const byNumericId = /^\d+$/.test(trimmed) && trimmed.length <= 12;
+  const url = byNumericId
+    ? `${GAMMA}/markets/${trimmed}`
+    : `${GAMMA}/markets/slug/${encodeURIComponent(trimmed)}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Gamma market failed (${res.status})`);
+  const raw = (await res.json()) as Record<string, unknown>;
+  const nested = Array.isArray(raw.events) ? raw.events : [];
+  const parent = nested[0] as Record<string, unknown> | undefined;
+  const eventSlug = str(parent?.slug);
+  const eventId = str(parent?.id) ?? str(raw.eventId);
+  const event =
+    (eventSlug ? await getEvent(eventSlug).catch(() => null) : null) ??
+    (eventId ? await getEvent(eventId).catch(() => null) : null);
+  if (!event) return null;
+  const market =
+    event.markets.find(
+      (m) => m.id === String(raw.id ?? "") || m.slug === String(raw.slug ?? ""),
+    ) ?? mapMarket(raw, event.id, { includeClosed: true });
+  if (!market) return null;
+  return { event, market };
+}
+
+/**
  * A leverage-listed market paired with the event it belongs to.
  *
  * Both are needed downstream: the market carries the prices and token ids, the

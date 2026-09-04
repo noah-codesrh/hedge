@@ -100,7 +100,13 @@ export type OracleRefreshResult = {
   opened: boolean;
 };
 
+export type OracleRefreshOptions = {
+  /** Page load only needs a live feed. Sweeping every ticket is for a real trade. */
+  sweep?: boolean;
+};
+
 const inflight = new Map<string, Promise<void>>();
+let unpauseInflight: Promise<boolean> | null = null;
 
 async function withSlugLock(slug: string, work: () => Promise<void>) {
   const prior = inflight.get(slug) ?? Promise.resolve();
@@ -113,7 +119,7 @@ async function withSlugLock(slug: string, work: () => Promise<void>) {
   await next;
 }
 
-export async function refreshOracleFor(slugs: string[]): Promise<OracleRefreshResult> {
+function reporterSession() {
   const { oracleReporterKey, hedgeEngineAddress, oracleAddress } = serverSecrets();
   if (!oracleReporterKey) {
     throw new Error("Oracle reporter key is not configured on the server.");
@@ -121,7 +127,51 @@ export async function refreshOracleFor(slugs: string[]): Promise<OracleRefreshRe
   if (!hedgeEngineAddress) {
     throw new Error("Engine address is not configured.");
   }
+  const account = privateKeyToAccount(oracleReporterKey as Hex);
+  return {
+    account,
+    oracle: (oracleAddress ?? LIVE_ORACLE) as Hex,
+    engine: hedgeEngineAddress as Hex,
+    publicClient: createPublicClient({ chain, transport }),
+    wallet: createWalletClient({ account, chain, transport }),
+  };
+}
 
+async function assertReporter(session: ReturnType<typeof reporterSession>) {
+  const reporter = await session.publicClient.readContract({
+    address: session.oracle,
+    abi: oracleAbi,
+    functionName: "isReporter",
+    args: [session.account.address],
+  });
+  if (!reporter) {
+    throw new Error("This key is not a reporter on the live oracle.");
+  }
+  const balance = await session.publicClient.getBalance({
+    address: session.account.address,
+  });
+  if (balance === 0n) {
+    throw new Error(`The price-feed wallet has no RH ETH left (${formatEther(balance)}).`);
+  }
+}
+
+/** Lift a keeper pause without walking prices or open tickets. */
+export async function liftGuardianPause(): Promise<{ ok: true; opened: boolean }> {
+  const session = reporterSession();
+  await assertReporter(session);
+  const opened = await maybeUnpause(
+    session.publicClient,
+    session.wallet,
+    session.engine,
+    session.account,
+  );
+  return { ok: true, opened };
+}
+
+export async function refreshOracleFor(
+  slugs: string[],
+  opts: OracleRefreshOptions = {},
+): Promise<OracleRefreshResult> {
   const wanted = [...new Set(slugs.map((s) => s.trim()).filter(Boolean))];
   const listed = listedBySlug();
   const markets = wanted
@@ -131,27 +181,9 @@ export async function refreshOracleFor(slugs: string[]): Promise<OracleRefreshRe
     throw new Error("That market is not on the leverage list.");
   }
 
-  const account = privateKeyToAccount(oracleReporterKey as Hex);
-  const oracle = (oracleAddress ?? LIVE_ORACLE) as Hex;
-  const engine = hedgeEngineAddress as Hex;
-
-  const publicClient = createPublicClient({ chain, transport });
-  const wallet = createWalletClient({ account, chain, transport });
-
-  const reporter = await publicClient.readContract({
-    address: oracle,
-    abi: oracleAbi,
-    functionName: "isReporter",
-    args: [account.address],
-  });
-  if (!reporter) {
-    throw new Error("This key is not a reporter on the live oracle.");
-  }
-
-  const balance = await publicClient.getBalance({ address: account.address });
-  if (balance === 0n) {
-    throw new Error(`The price-feed wallet has no RH ETH left (${formatEther(balance)}).`);
-  }
+  const session = reporterSession();
+  const { account, oracle, engine, publicClient, wallet } = session;
+  await assertReporter(session);
 
   let opened = true;
   try {
@@ -184,12 +216,33 @@ export async function refreshOracleFor(slugs: string[]): Promise<OracleRefreshRe
     });
   }
 
-  const { liquidated, settled } = await sweep(publicClient, wallet, account, engine, priced);
+  let liquidated = 0;
+  let settled = 0;
+  if (opts.sweep !== false) {
+    const swept = await sweep(publicClient, wallet, account, engine, priced);
+    liquidated = swept.liquidated;
+    settled = swept.settled;
+  }
 
   return { ok: true, pushed, liquidated, settled, opened };
 }
 
 async function maybeUnpause(
+  publicClient: ReturnType<typeof createPublicClient>,
+  wallet: ReturnType<typeof createWalletClient>,
+  engine: Hex,
+  reporter: PrivateKeyAccount,
+) {
+  if (unpauseInflight) return unpauseInflight;
+  unpauseInflight = liftPause(publicClient, wallet, engine, reporter).finally(
+    () => {
+      unpauseInflight = null;
+    },
+  );
+  return unpauseInflight;
+}
+
+async function liftPause(
   publicClient: ReturnType<typeof createPublicClient>,
   wallet: ReturnType<typeof createWalletClient>,
   engine: Hex,

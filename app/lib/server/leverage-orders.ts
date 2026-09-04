@@ -3,6 +3,28 @@ import { PRICE_BAND } from "../leverage";
 import type { LeverageOrder } from "../leverage-chain";
 import { supabaseAdmin } from "./supabase";
 
+let missingTableLogged = false;
+
+function isMissingTable(error: { code?: string; message?: string } | null) {
+  return (
+    error?.code === "PGRST205" ||
+    (error?.message ?? "").includes("Could not find the table")
+  );
+}
+
+function logOrderError(op: string, error: { code?: string; message?: string }) {
+  if (isMissingTable(error)) {
+    if (!missingTableLogged) {
+      missingTableLogged = true;
+      console.warn(
+        "[leverage-orders] public.leverage_orders is missing. Run supabase/migrations/0005_leverage_orders.sql.",
+      );
+    }
+    return;
+  }
+  console.error(`[leverage-orders] ${op}`, error);
+}
+
 const GAMMA = "https://gamma-api.polymarket.com";
 
 type Row = {
@@ -89,7 +111,7 @@ export async function listUserOrders(userId: string): Promise<LeverageOrder[]> {
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) {
-    console.error("[leverage-orders] list", error);
+    logOrderError("list", error);
     return [];
   }
   const rows = (data ?? []) as Row[];
@@ -136,8 +158,13 @@ export async function insertUserOrder(input: {
     status: "open",
   });
   if (error) {
-    console.error("[leverage-orders] insert", error);
-    return { error: "Could not rest that limit.", status: 500 as const };
+    logOrderError("insert", error);
+    return {
+      error: isMissingTable(error)
+        ? "Limits are not connected yet."
+        : "Could not rest that limit.",
+      status: isMissingTable(error) ? (503 as const) : (500 as const),
+    };
   }
   return { ok: true as const };
 }
@@ -152,7 +179,7 @@ export async function cancelUserOrder(userId: string, id: string) {
     .eq("privy_user_id", userId)
     .eq("status", "open");
   if (error) {
-    console.error("[leverage-orders] cancel", error);
+    logOrderError("cancel", error);
     return { error: "Could not cancel that limit.", status: 500 as const };
   }
   return { ok: true as const };
@@ -168,7 +195,7 @@ export async function fillUserOrder(userId: string, id: string) {
     .eq("privy_user_id", userId)
     .eq("status", "open");
   if (error) {
-    console.error("[leverage-orders] fill", error);
+    logOrderError("fill", error);
     return { error: "Could not close that limit.", status: 500 as const };
   }
   return { ok: true as const };

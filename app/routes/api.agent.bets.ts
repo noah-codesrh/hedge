@@ -11,7 +11,7 @@ import {
   insertAgentBet,
   listPublicAgentBets,
 } from "../lib/server/agent-bets";
-import { listedMarket } from "../lib/server/agent-catalog";
+import { listedMarket, resolveAgentMarket } from "../lib/server/agent-catalog";
 import {
   agentLimits,
   buildCloseTicket,
@@ -164,11 +164,24 @@ export async function action({ request }: { request: Request }) {
   const side = sideOf(body.side);
   const margin = Number(body.margin);
   const leverage = Number(body.leverage ?? 1);
-  const listed = listedMarket({
+  const target = await resolveAgentMarket({
     marketSlug: typeof body.marketSlug === "string" ? body.marketSlug : undefined,
     marketId: typeof body.marketId === "string" ? body.marketId : undefined,
   });
-  if (!listed) return agentJson({ error: "That market is not on the agent wall." }, 404);
+  if (!target) {
+    return agentJson({ error: "No live market with that slug or id." }, 404);
+  }
+  if (target.desk !== "leverage" || !target.openable) {
+    return agentJson(
+      {
+        error:
+          "Vault tickets are on listed leverage names. This market is 1x in the app.",
+        desk: target.desk,
+        ticketUrl: target.ticketUrl,
+      },
+      409,
+    );
+  }
   if (!side) return agentJson({ error: "Set side to yes or no." }, 400);
   if (!(margin > 0)) return agentJson({ error: "Set a margin in USDG." }, 400);
 
@@ -186,7 +199,7 @@ export async function action({ request }: { request: Request }) {
 
   const result = await buildOpenTicket({
     from,
-    marketSlug: listed.marketSlug,
+    marketSlug: target.marketSlug,
     isLong: side === "yes",
     margin,
     leverage,
@@ -201,8 +214,9 @@ export async function action({ request }: { request: Request }) {
     token: result.token,
     calls: result.calls,
     quote: result.quote,
-    marketSlug: listed.marketSlug,
-    title: listed.title,
+    desk: target.desk,
+    marketSlug: target.marketSlug,
+    title: target.title,
     side,
     margin,
     leverage,

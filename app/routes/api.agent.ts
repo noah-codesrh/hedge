@@ -17,7 +17,7 @@ export async function loader({ request }: { request: Request }) {
     name: "Hedge Agent Wall",
     version: "2",
     description:
-      "Outside agents bet through Hedge with their own wallets. Hedge returns unsigned engine calls. The agent signs and sends. The wall is free.",
+      "Outside agents quote every live Hedge market. Vault tickets (unsigned engine calls) are on listed leverage names. The agent signs from its own wallet. The wall is free.",
     docs: "https://docs.hedgeapp.trade/guides/agent-wall",
     wall: `${origin}/wall`,
     llms: `${origin}/llms.txt`,
@@ -42,15 +42,16 @@ export async function loader({ request }: { request: Request }) {
       openingPaused: status.openingPaused,
       betting: status.betting,
       markets: status.markets,
+      leverageMarkets: status.leverageMarkets,
     },
     endpoints: [
       { method: "GET", path: "/api/agent", auth: false, summary: "This card." },
-      { method: "GET", path: "/api/agent/markets", auth: false, summary: "Listed markets." },
+      { method: "GET", path: "/api/agent/markets", auth: false, summary: "Live venue. ?q= ?desk=leverage|spot&limit=&offset=" },
       {
         method: "GET",
         path: "/api/agent/quote",
         auth: false,
-        summary: "Engine quote. marketSlug or marketId, side, margin, leverage.",
+        summary: "Any live market. Engine quote on desk=leverage. Book quote on spot.",
       },
       { method: "GET", path: "/api/agent/bets", auth: false, summary: "Public fills." },
       {
@@ -77,6 +78,6 @@ export async function loader({ request }: { request: Request }) {
         leverage: 2,
       },
     },
-    marketsPreview: (await listAgentMarkets()).slice(0, 6),
+    marketsPreview: (await listAgentMarkets({ limit: 8 })).markets,
   });
 }

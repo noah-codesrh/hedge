@@ -29,6 +29,7 @@ import {
 } from "../lib/leverage-chain";
 import { LeverageOrders } from "./LeverageOrders";
 import type { TradeStage } from "../lib/leverage-actions";
+import { ensureOpeningLive, ensureOracleFresh } from "../lib/leverage-refresh";
 import type { SignPrivyAuthorization } from "../lib/sponsored-send";
 import { trackTrade } from "../lib/track";
 import {
@@ -214,6 +215,7 @@ function TradePanelView({
   // limit; the engine's tier schedule is a liquidity limit that moves on its
   // own as LPs deposit. A trader gets whichever is lower.
   const [engineState, setEngineState] = useState<EngineState | null>(null);
+  const [openingWarm, setOpeningWarm] = useState(false);
   useEffect(() => {
     if (!leverageConfig || !leverageIsLive) return;
     let alive = true;
@@ -223,12 +225,42 @@ function TradePanelView({
       });
     };
     load();
-    const timer = setInterval(load, 30_000);
+    const timer = setInterval(load, openingWarm ? 2_000 : 30_000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [leverageConfig]);
+  }, [leverageConfig, openingWarm]);
+
+  // Unpause first so the selector is usable. Push this market's price after.
+  // Skip the position sweep on load; that walk is what made the panel sit on
+  // Unavailable for a minute.
+  useEffect(() => {
+    if (!leverageConfig || !leverageIsLive) return;
+    if (!getAccessToken) return;
+    let alive = true;
+    setOpeningWarm(true);
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token || !alive) return;
+        await ensureOpeningLive(token);
+        if (!alive) return;
+        const next = await readEngineState();
+        if (alive && next) setEngineState(next);
+        void ensureOracleFresh(token, [leverageConfig.marketSlug], {
+          sweep: false,
+        }).catch(() => {});
+      } catch {
+        /* stay paused if the reporter cannot sign */
+      } finally {
+        if (alive) setOpeningWarm(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [getAccessToken, leverageConfig]);
 
   useEffect(() => {
     if (!leverageConfig || !leverageIsLive) return;
@@ -246,7 +278,7 @@ function TradePanelView({
   );
   const [ticketKind, setTicketKind] = useState<"market" | "limit">("market");
   const [limitPrice, setLimitPrice] = useState(0);
-  const [limitsOn, setLimitsOn] = useState(false);
+  const [limitsOn, setLimitsOn] = useState(leverageIsLive);
   const [leverage, setLeverage] = useState(initialLeverage);
   const [collateral, setCollateral] = useState<StockToken | null>(null);
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
@@ -766,7 +798,7 @@ function TradePanelView({
           </button>
         </div>
 
-        {leverageConfig && limitsOn && levered ? (
+        {leverageConfig && limitsOn && leverageOffered ? (
           <div className="mb-3 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -785,6 +817,7 @@ function TradePanelView({
                 pickCollateral(null);
                 setLimitPrice((p) => (p > 0 ? p : market.yes.price));
                 setTicketKind("limit");
+                if (leverage <= 1 && maxLeverage > 1) setLeverage(2);
               }}
               className={`rounded-full py-2 text-[13px] font-semibold transition ${
                 usingLimit
@@ -810,6 +843,7 @@ function TradePanelView({
             engine={engineState}
             reserveNeeded={reserveNeeded}
             paused={engineState?.openingPaused ?? false}
+            warming={openingWarm}
           />
         ) : null}
 
@@ -1246,6 +1280,7 @@ function LeverageSelector({
   engine,
   reserveNeeded,
   paused,
+  warming,
 }: {
   value: number;
   max: number;
@@ -1256,6 +1291,7 @@ function LeverageSelector({
   /** Vault capital this ticket would tie up, so a full pool is caught early. */
   reserveNeeded: number;
   paused: boolean;
+  warming: boolean;
 }) {
   const poolFull =
     engine != null && reserveNeeded > 0 && reserveNeeded > engine.capacity.available;
@@ -1267,7 +1303,7 @@ function LeverageSelector({
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <span className="text-[15px] text-muted">Leverage</span>
         <span className="text-[17px] font-bold text-gold">
-          {offered ? `${value}x` : "Unavailable"}
+          {offered ? `${value}x` : warming ? "Refreshing" : "Unavailable"}
         </span>
       </div>
 
@@ -1303,7 +1339,9 @@ function LeverageSelector({
       ) : null}
 
       <p className="mt-2.5 text-[11px] leading-snug text-muted">
-        {paused
+        {warming
+          ? "Refreshing the price feed. Leverage opens in a moment."
+          : paused
           ? "New leveraged positions are paused while the pool is checked over. Open positions are unaffected."
           : offBand
             ? `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}. This market has drifted outside that, so it trades unlevered for now.`

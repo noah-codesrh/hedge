@@ -21,3 +21,5 @@ create index if not exists leverage_orders_user_idx
   on public.leverage_orders (privy_user_id, status, created_at desc);
 
 alter table public.leverage_orders enable row level security;
+
+notify pgrst, 'reload schema';
