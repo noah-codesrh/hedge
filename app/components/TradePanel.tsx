@@ -839,6 +839,7 @@ function TradePanelView({
               setLeverage(n);
             }}
             offered={leverageOffered}
+            spotOk={tradeable}
             offBand={!onBand}
             engine={engineState}
             reserveNeeded={reserveNeeded}
@@ -1276,6 +1277,7 @@ function LeverageSelector({
   max,
   onChange,
   offered,
+  spotOk,
   offBand,
   engine,
   reserveNeeded,
@@ -1286,6 +1288,8 @@ function LeverageSelector({
   max: number;
   onChange: (n: number) => void;
   offered: boolean;
+  /** 1x is a venue buy. It stays open when 2x–4x are off. */
+  spotOk: boolean;
   offBand: boolean;
   engine: EngineState | null;
   /** Vault capital this ticket would tie up, so a full pool is caught early. */
@@ -1297,22 +1301,21 @@ function LeverageSelector({
     engine != null && reserveNeeded > 0 && reserveNeeded > engine.capacity.available;
   const nextTier =
     engine?.nextTier && engine.nextTier.leverage > max ? engine.nextTier : null;
+  const vaultOff = !offered && spotOk;
 
   return (
     <div className="mb-4 rounded-2xl bg-[#252525] p-3 sm:p-4">
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <span className="text-[15px] text-muted">Leverage</span>
         <span className="text-[17px] font-bold text-gold">
-          {offered ? `${value}x` : warming ? "Refreshing" : "Unavailable"}
+          {offered || spotOk ? `${value}x` : warming ? "Refreshing" : "Unavailable"}
         </span>
       </div>
 
       <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
         {LEVERAGE_STEPS.map((step) => {
-          // Steps above this market's cap stay visible rather than hidden, so
-          // the ceiling is legible instead of just absent.
-          const allowed = offered && step <= max;
-          const active = offered && step === value;
+          const allowed = step === 1 ? spotOk : offered && step <= max;
+          const active = allowed && step === value;
           return (
             <button
               key={step}
@@ -1339,12 +1342,12 @@ function LeverageSelector({
       ) : null}
 
       <p className="mt-2.5 text-[11px] leading-snug text-muted">
-        {warming
+        {warming && !spotOk
           ? "Refreshing the price feed. Leverage opens in a moment."
-          : paused
-          ? "New leveraged positions are paused while the pool is checked over. Open positions are unaffected."
+          : paused && vaultOff
+          ? "New leveraged positions are paused while the pool is checked over. 1x still opens on the book."
           : offBand
-            ? `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}. This market has drifted outside that, so it trades unlevered for now.`
+            ? `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}. This market has drifted outside that, so 1x still trades on the book.`
             : value > 1
               ? "Borrowed from the Hedge vault. Your margin is at risk before the vault's."
               : "1x is a normal unlevered buy."}
