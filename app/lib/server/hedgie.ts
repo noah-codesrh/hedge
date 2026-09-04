@@ -34,7 +34,7 @@ export async function buildMarketContext(): Promise<string> {
     const yes = row.market.yes.price;
     const band = yes >= 0.35 && yes <= 0.65 ? "in-band" : "off-band";
     lines.push(
-      `- leverage=yes | eventSlug=${row.event.slug} | marketId=${row.market.id} | marketSlug=${row.config.marketSlug} | ${row.config.title} | Yes ${cents(yes)} (${pct(yes)}) No ${cents(row.market.no.price)} | ${band} | maxLeverage=${row.config.maxLeverage}x | vol24h=${Math.round(row.market.volume24hr)}`,
+      `- leverage=yes | eventSlug=${row.event.slug} | marketId=${row.market.id} | marketSlug=${row.config.marketSlug} | ${row.config.title} | Yes ${cents(yes)} (${pct(yes)}) No ${cents(row.market.no.price)} | ${band} | maxLeverage=${row.config.maxLeverage}x`,
     );
   }
 
@@ -46,7 +46,7 @@ export async function buildMarketContext(): Promise<string> {
     if (!market) continue;
     if (LEVERAGE_MARKETS.some((m) => m.marketId === market.id)) continue;
     lines.push(
-      `- leverage=no | eventSlug=${event.slug} | marketId=${market.id} | marketSlug=${market.slug} | ${event.title} | Yes ${cents(market.yes.price)} No ${cents(market.no.price)} | maxLeverage=1x | vol24h=${Math.round(event.volume24hr)}`,
+      `- leverage=no | eventSlug=${event.slug} | marketId=${market.id} | marketSlug=${market.slug} | ${event.title} | Yes ${cents(market.yes.price)} No ${cents(market.no.price)} | maxLeverage=1x`,
     );
     if (++n >= 12) break;
   }

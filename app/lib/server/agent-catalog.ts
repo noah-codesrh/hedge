@@ -32,7 +32,6 @@ export type AgentMarket = {
   desk: AgentDesk;
   maxLeverage: number;
   openable: boolean;
-  volume24h: number;
   ticketUrl: string;
 };
 
@@ -71,7 +70,6 @@ function toAgentMarket(
     desk,
     maxLeverage: config && leverageIsLive ? config.maxLeverage : 1,
     openable: Boolean(config) && leverageIsLive,
-    volume24h: Math.round(market.volume24hr),
     ticketUrl: ticketUrl(event.slug, market.id),
   };
 }
@@ -127,7 +125,6 @@ export async function resolveAgentMarket(input: {
       desk: "leverage",
       maxLeverage: listed.maxLeverage,
       openable: leverageIsLive,
-      volume24h: 0,
       ticketUrl: ticketUrl(listed.eventSlug, listed.marketId),
     };
   }
