@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import type { LeverageListing } from "../lib/polymarket";
-import { formatEnd, pct, usd } from "../lib/format";
+import { formatEnd, pct } from "../lib/format";
 import { isWithinBand, PRICE_BAND } from "../lib/leverage";
 import { LayersIcon } from "./icons";
 import { RemoteImg } from "./RemoteImg";
@@ -82,10 +82,12 @@ export function LeverageCard({
         </Link>
       </div>
 
-      <div className="relative z-[2] flex items-center justify-between gap-2 border-t border-white/5 pt-2.5 text-[12px] text-muted sm:pt-3 sm:text-[13px]">
-        {openable ? (
-          <span className="truncate">{usd(market.volume24hr)} Vol.</span>
-        ) : (
+      <div
+        className={`relative z-[2] flex items-center gap-2 border-t border-white/5 pt-2.5 text-[12px] text-muted sm:pt-3 sm:text-[13px] ${
+          openable ? "justify-end" : "justify-between"
+        }`}
+      >
+        {openable ? null : (
           <span
             className="truncate text-gold/80"
             title={`Leverage opens between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}`}

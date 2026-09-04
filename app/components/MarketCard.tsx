@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import type { PolymarketEvent } from "../lib/types";
-import { formatEnd, pct, usd } from "../lib/format";
+import { formatEnd, pct } from "../lib/format";
 import { pickLiveMarket } from "../lib/polymarket";
 import { RemoteImg } from "./RemoteImg";
 
@@ -82,8 +82,7 @@ export function MarketCard({
         </Link>
       </div>
 
-      <div className="relative z-[2] flex items-center justify-between gap-2 border-t border-white/5 pt-2.5 text-[12px] text-muted sm:pt-3 sm:text-[13px]">
-        <span className="truncate">{usd(event.volume24hr)} Vol.</span>
+      <div className="relative z-[2] flex items-center justify-end gap-2 border-t border-white/5 pt-2.5 text-[12px] text-muted sm:pt-3 sm:text-[13px]">
         <span className="shrink-0">{formatEnd(event.endDate) ?? "Open"}</span>
       </div>
     </article>

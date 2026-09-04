@@ -13,7 +13,7 @@ import {
   pickLiveMarket,
   type PricePoint,
 } from "../lib/polymarket";
-import { formatEnd, pct, usd } from "../lib/format";
+import { formatEnd, pct } from "../lib/format";
 import type { Market, Side } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { RemoteImg } from "../components/RemoteImg";
@@ -138,12 +138,11 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
             {headline}
           </h1>
           <p className="mt-1.5 text-[13px] text-muted sm:text-sm">
-            {usd(event.volume24hr)} vol
             {market.endDate
-              ? ` · ${formatEnd(market.endDate)}`
+              ? formatEnd(market.endDate)
               : event.endDate
-                ? ` · ${formatEnd(event.endDate)}`
-                : " · Open"}
+                ? formatEnd(event.endDate)
+                : "Open"}
             {!live ? " · Not tradeable" : null}
           </p>
         </div>
