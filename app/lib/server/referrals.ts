@@ -1,14 +1,4 @@
 import {
-  createPublicClient,
-  createWalletClient,
-  defineChain,
-  erc20Abi,
-  fallback,
-  http,
-  type Hex,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import {
   REFERRAL_MIN_CLAIM,
   REFERRAL_SHARE_BPS,
   REFERRAL_TAKE_BPS,
@@ -16,28 +6,9 @@ import {
   randomReferralCode,
   referralShareOfVolume,
 } from "../referral";
-import { RH_CHAIN_ID, RH_RPC, RH_RPC_FALLBACK, USDG } from "../robinhood";
-import { serverSecrets } from "./secrets";
 import { supabaseAdmin } from "./supabase";
 
-const ADDR = /^0x[a-fA-F0-9]{40}$/;
 const UNIQUE_VIOLATION = "23505";
-
-const chain = defineChain({
-  id: RH_CHAIN_ID,
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [RH_RPC_FALLBACK, RH_RPC] } },
-});
-
-function payerKey() {
-  const { referralPayerKey, oracleReporterKey } = serverSecrets();
-  return referralPayerKey ?? oracleReporterKey;
-}
-
-export function referralPayoutConfigured() {
-  return Boolean(payerKey());
-}
 
 async function lookupOwner(code: string) {
   const db = supabaseAdmin();
@@ -212,7 +183,7 @@ export async function loadReferralStats(userId: string) {
   if (!db) {
     return {
       tracked: false,
-      payoutReady: referralPayoutConfigured(),
+      payoutReady: false,
       code: null as string | null,
       referred: 0,
       volume: 0,
@@ -253,7 +224,7 @@ export async function loadReferralStats(userId: string) {
     );
     return {
       tracked: false,
-      payoutReady: referralPayoutConfigured(),
+      payoutReady: false,
       code: null,
       referred: 0,
       volume: 0,
@@ -313,7 +284,7 @@ export async function loadReferralStats(userId: string) {
 
   return {
     tracked: true,
-    payoutReady: referralPayoutConfigured(),
+    payoutReady: false,
     code: assigned,
     referred: links.data?.length ?? 0,
     volume,
@@ -331,123 +302,9 @@ export async function loadReferralStats(userId: string) {
   };
 }
 
-function toUsdgRaw(amount: number) {
-  return BigInt(Math.round(amount * 1_000_000));
-}
-
-export async function claimReferral(userId: string, wallet: string) {
-  const db = supabaseAdmin();
-  if (!db) return { error: "Tracking is not connected.", status: 503 as const };
-  if (!ADDR.test(wallet)) {
-    return { error: "Invalid wallet.", status: 400 as const };
-  }
-  const key = payerKey();
-  if (!key) {
-    return { error: "Payouts are not on yet.", status: 503 as const };
-  }
-
-  const pending = await db
-    .from("referral_earnings")
-    .select("id, amount")
-    .eq("referrer_id", userId)
-    .eq("status", "pending");
-  if (pending.error) {
-    console.error("[referral] claim read", pending.error);
-    return { error: "Could not load earnings.", status: 502 as const };
-  }
-  const rows = pending.data ?? [];
-  const micros = rows.reduce(
-    (acc, row) => acc + Math.round(Number(row.amount) * 1_000_000),
-    0,
-  );
-  const amount = micros / 1_000_000;
-  if (amount + 1e-9 < REFERRAL_MIN_CLAIM) {
-    return {
-      error: `Claim at least ${REFERRAL_MIN_CLAIM} USDG.`,
-      status: 400 as const,
-    };
-  }
-
-  const claimId = crypto.randomUUID();
-  const ids = rows.map((row) => row.id);
-  const lock = await db
-    .from("referral_earnings")
-    .update({ status: "claiming", claim_id: claimId })
-    .in("id", ids)
-    .eq("status", "pending")
-    .select("id");
-  if (lock.error || (lock.data?.length ?? 0) === 0) {
-    return { error: "Nothing to claim right now.", status: 409 as const };
-  }
-
-  let hash: string;
-  try {
-    hash = await sendUsdg(key, wallet as Hex, toUsdgRaw(amount));
-  } catch (err) {
-    await db
-      .from("referral_earnings")
-      .update({ status: "pending", claim_id: null })
-      .eq("claim_id", claimId);
-    console.error("[referral] claim send", err);
-    const message = err instanceof Error ? err.message : "Payout failed.";
-    return { error: message, status: 502 as const };
-  }
-
-  // The transfer already left. Never unlock these rows again or a retry
-  // would pay twice.
-  const paid = await db
-    .from("referral_earnings")
-    .update({ status: "paid", tx_hash: hash })
-    .eq("claim_id", claimId);
-  if (paid.error) {
-    console.error("[referral] claim mark paid", paid.error, hash);
-  }
-  const logged = await db.from("referral_claims").insert({
-    id: claimId,
-    privy_user_id: userId,
-    wallet: wallet.toLowerCase(),
-    amount,
-    tx_hash: hash,
-    status: "sent",
-  });
-  if (logged.error) {
-    console.error("[referral] claim log", logged.error, hash);
-  }
-  return { ok: true as const, amount, hash, wallet };
-}
-
-async function sendUsdg(key: string, to: Hex, amount: bigint) {
-  const account = privateKeyToAccount(key as Hex);
-  const transport = fallback([
-    http(RH_RPC_FALLBACK, { retryCount: 2, timeout: 20_000 }),
-    http(RH_RPC, { retryCount: 2, timeout: 20_000 }),
-  ]);
-  const publicClient = createPublicClient({ chain, transport });
-  const wallet = createWalletClient({ account, chain, transport });
-  const [gas, usdg] = await Promise.all([
-    publicClient.getBalance({ address: account.address }),
-    publicClient.readContract({
-      address: USDG as Hex,
-      abi: erc20Abi,
-      functionName: "balanceOf",
-      args: [account.address],
-    }),
-  ]);
-  if (gas === 0n) {
-    throw new Error("The payout wallet needs a little RH ETH for gas.");
-  }
-  if (usdg < amount) {
-    throw new Error("The payout wallet does not have enough USDG right now.");
-  }
-  const hash = await wallet.writeContract({
-    address: USDG as Hex,
-    abi: erc20Abi,
-    functionName: "transfer",
-    args: [to, amount],
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") {
-    throw new Error("The payout transaction reverted.");
-  }
-  return hash;
+export async function claimReferral() {
+  return {
+    error: "Top referrers are paid manually.",
+    status: 503 as const,
+  };
 }

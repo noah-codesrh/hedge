@@ -22,7 +22,7 @@ Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. `GET /api/agent/market
 
 ## Referrals
 
-Users get a random 6-letter code (`/?ref=abcdef`). They can rename it. First login with that cookie binds them. Tracked trades credit 20% of the 1.5% take (0.3% of referred USDG volume). Claim sends USDG from `REFERRAL_PAYER_KEY` (or the reporter key) to their cash wallet. Run `supabase/migrations/0007_referrals.sql`. The payer needs USDG and a little RH ETH.
+Users get a random 6-letter code (`/?ref=abcdef`). They can rename it. First login with that cookie binds them. Tracked trades credit 20% of the 1.5% take (0.3% of referred USDG volume). Top referrers are paid manually. Run `supabase/migrations/0007_referrals.sql`.
 
 ## Run locally
 

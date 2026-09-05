@@ -2,8 +2,8 @@
 --
 -- A user picks a public code (hedgeapp.trade/?ref=name). First login with
 -- that cookie binds the referee forever. Tracked trades credit the referrer
--- a cut of the take. Claims pay USDG from the treasury key to their cash
--- wallet. Run this after 0006_agent_bets.sql.
+-- a cut of the take. Top referrers are paid manually. Run this after
+-- 0006_agent_bets.sql.
 
 create table if not exists public.referral_codes (
   privy_user_id text primary key,

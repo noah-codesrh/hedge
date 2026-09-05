@@ -12,14 +12,8 @@ import {
   XIcon,
 } from "./icons";
 import { fiat } from "../lib/format";
-import {
-  parseReferralCode,
-  referralPath,
-  REFERRAL_MIN_CLAIM,
-} from "../lib/referral";
-import { primaryWalletAddress } from "../lib/wallet";
+import { parseReferralCode, referralPath } from "../lib/referral";
 import { identityName } from "../lib/nickname";
-import { RH_EXPLORER } from "../lib/robinhood";
 
 export type ReferralStats = {
   tracked: boolean;
@@ -97,10 +91,10 @@ export function ReferralTeaser() {
   );
 }
 
-export function ReferralInvite({ wallet }: { wallet?: string | null }) {
+export function ReferralInvite() {
   const privyMounted = usePrivyMounted();
   if (!privyMounted) return <ReferralHero />;
-  return <ReferralAuthed wallet={wallet ?? null} />;
+  return <ReferralAuthed />;
 }
 
 function ReferralHero({
@@ -260,9 +254,8 @@ function ShareLink({
   );
 }
 
-function ReferralAuthed({ wallet }: { wallet: string | null }) {
+function ReferralAuthed() {
   const { authenticated, getAccessToken, user } = usePrivy();
-  const cash = wallet ?? primaryWalletAddress(user);
   const { openModal } = useAuthModal();
   const nameField = useId();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -270,11 +263,9 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hash, setHash] = useState<string | null>(null);
 
   const load = async () => {
     const token = await getAccessToken().catch(() => null);
@@ -298,10 +289,6 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
   const code = stats?.code ?? null;
   const link = code ? `${origin()}${referralPath(code)}` : null;
   const cardName = code || identityName(user) || "Your name";
-  const canClaim =
-    Boolean(cash) &&
-    (stats?.payoutReady ?? false) &&
-    (stats?.claimable ?? 0) + 1e-9 >= (stats?.minClaim ?? REFERRAL_MIN_CLAIM);
 
   const share = async () => {
     if (!authenticated) {
@@ -349,31 +336,6 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
     }
   };
 
-  const claim = async () => {
-    if (!cash) return;
-    setError(null);
-    setHash(null);
-    setClaiming(true);
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Sign in again.");
-      const result = await authed<{ hash: string; amount: number }>(
-        token,
-        "/api/referral/claim",
-        {
-          method: "POST",
-          body: JSON.stringify({ wallet: cash }),
-        },
-      );
-      setHash(result.hash);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Claim failed.");
-    } finally {
-      setClaiming(false);
-    }
-  };
-
   return (
     <>
       <ReferralHero
@@ -389,7 +351,8 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
           <>
             <p className="text-sm leading-relaxed text-muted">
               Sign in to get a code and start earning 20% of the trading fees
-              people generate through your link.
+              people generate through your link. Top referrers are paid
+              manually.
             </p>
             <button
               type="button"
@@ -404,7 +367,7 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
             <h2 className="text-lg font-semibold">Your link</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted">
               You get a random 6-letter code to start. Change it whenever you
-              want. Claim sends USDG to your cash wallet.
+              want. Top referrers are paid by hand.
             </p>
             {stats && !stats.tracked ? (
               <p className="mt-3 text-sm text-gold">
@@ -481,38 +444,30 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
               <Stat label="Volume" value={fiat(stats?.volume ?? 0)} />
               <Stat label="Earned" value={fiat(stats?.earned ?? 0)} />
             </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted">
-                Claimable {fiat(stats?.claimable ?? 0)}
-                {(stats?.minClaim ?? REFERRAL_MIN_CLAIM) > 0
-                  ? ` · min ${fiat(stats?.minClaim ?? REFERRAL_MIN_CLAIM)}`
-                  : ""}
-              </p>
-              <button
-                type="button"
-                onClick={() => void claim()}
-                disabled={!canClaim || claiming}
-                className="rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40"
-              >
-                {claiming ? "Sending" : "Claim USDG"}
-              </button>
-            </div>
-            {!stats?.payoutReady ? (
-              <p className="mt-2 text-[12px] text-muted">
-                Payouts are not on yet. Earnings still accrue.
-              </p>
-            ) : null}
+            <p className="mt-3 text-[12px] text-muted">
+              Earnings accrue. We pay the highest referrers manually.
+            </p>
             {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
-            {hash ? (
-              <a
-                href={`${RH_EXPLORER}/tx/${hash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-block text-[13px] font-semibold text-gold"
-              >
-                View payout
-              </a>
+
+            {(stats?.leaders.length ?? 0) > 0 ? (
+              <div className="mt-6">
+                <h3 className="text-[13px] font-semibold text-muted">
+                  Top referrers
+                </h3>
+                <ul className="mt-2 divide-y divide-white/5">
+                  {stats!.leaders.map((row) => (
+                    <li
+                      key={row.code}
+                      className="flex items-center justify-between gap-3 py-2 text-[13px]"
+                    >
+                      <span className="truncate text-white">@{row.code}</span>
+                      <span className="shrink-0 text-muted">
+                        {row.referred} · {fiat(row.volume)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </>
         )}

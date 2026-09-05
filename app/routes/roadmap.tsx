@@ -84,7 +84,7 @@ export default function Roadmap() {
           Pick a public name. Share hedgeapp.trade/?ref=name. The referrer
           earns a cut of the trading fees that flow through that link, not a
           one-time signup bonus. First login binds. One referrer, for good.
-          This is the next thing to turn on.
+          Top referrers are paid by hand. This is the next thing to turn on.
         </p>
         <h3>Share cards at the trade, not after</h3>
         <p>

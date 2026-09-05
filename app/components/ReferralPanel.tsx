@@ -3,13 +3,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { CheckIcon } from "./icons";
 import { fiat } from "../lib/format";
-import {
-  parseReferralCode,
-  referralPath,
-  REFERRAL_MIN_CLAIM,
-} from "../lib/referral";
-import { primaryWalletAddress } from "../lib/wallet";
-import { RH_EXPLORER } from "../lib/robinhood";
+import { parseReferralCode, referralPath } from "../lib/referral";
 
 export type ReferralStats = {
   tracked: boolean;
@@ -46,10 +40,10 @@ async function authed<T>(
   return data as T;
 }
 
-export function ReferralPanel({ wallet }: { wallet?: string | null }) {
+export function ReferralPanel() {
   const privyMounted = usePrivyMounted();
   if (!privyMounted) return <ReferralCopy />;
-  return <ReferralAuthed wallet={wallet ?? null} />;
+  return <ReferralAuthed />;
 }
 
 function ReferralCopy() {
@@ -58,23 +52,20 @@ function ReferralCopy() {
       <h2 className="text-lg font-semibold">Referrals</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted">
         Share your link. You earn 20% of the trading fees people generate
-        through it. Claim pays USDG to your cash wallet.
+        through it. Top referrers are paid manually.
       </p>
     </section>
   );
 }
 
-function ReferralAuthed({ wallet }: { wallet: string | null }) {
-  const { authenticated, getAccessToken, user } = usePrivy();
-  const cash = wallet ?? primaryWalletAddress(user);
+function ReferralAuthed() {
+  const { authenticated, getAccessToken } = usePrivy();
   const { openModal } = useAuthModal();
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hash, setHash] = useState<string | null>(null);
 
   const load = async () => {
     const token = await getAccessToken().catch(() => null);
@@ -98,7 +89,7 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
         <h2 className="text-lg font-semibold">Referrals</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           Share your link. You earn 20% of the trading fees people generate
-          through it. Claim pays USDG to your cash wallet.
+          through it. Top referrers are paid manually.
         </p>
         <button
           type="button"
@@ -115,10 +106,6 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
     typeof window !== "undefined" ? window.location.origin : "https://hedgeapp.trade";
   const code = stats?.code ?? parseReferralCode(name);
   const link = code ? `${origin}${referralPath(code)}` : null;
-  const canClaim =
-    Boolean(cash) &&
-    (stats?.payoutReady ?? false) &&
-    (stats?.claimable ?? 0) + 1e-9 >= (stats?.minClaim ?? REFERRAL_MIN_CLAIM);
 
   const save = async () => {
     setError(null);
@@ -151,37 +138,12 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
-  const claim = async () => {
-    if (!cash) return;
-    setError(null);
-    setHash(null);
-    setClaiming(true);
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Sign in again.");
-      const result = await authed<{ hash: string; amount: number }>(
-        token,
-        "/api/referral/claim",
-        {
-          method: "POST",
-          body: JSON.stringify({ wallet: cash }),
-        },
-      );
-      setHash(result.hash);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Claim failed.");
-    } finally {
-      setClaiming(false);
-    }
-  };
-
   return (
     <section className="overflow-hidden rounded-3xl bg-card p-5 ring-1 ring-white/5 sm:p-6">
       <h2 className="text-lg font-semibold">Referrals</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted">
         Pick a name. Share the link. You earn 20% of the trading fees from
-        people who use it. Claim sends USDG to your cash wallet.
+        people who use it. Top referrers are paid by hand.
       </p>
       {stats && !stats.tracked ? (
         <p className="mt-3 text-sm text-gold">
@@ -239,39 +201,10 @@ function ReferralAuthed({ wallet }: { wallet: string | null }) {
         <Stat label="Volume" value={fiat(stats?.volume ?? 0)} />
         <Stat label="Earned" value={fiat(stats?.earned ?? 0)} />
       </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted">
-          Claimable {fiat(stats?.claimable ?? 0)}
-          {(stats?.minClaim ?? REFERRAL_MIN_CLAIM) > 0
-            ? ` · min ${fiat(stats?.minClaim ?? REFERRAL_MIN_CLAIM)}`
-            : ""}
-        </p>
-        <button
-          type="button"
-          onClick={() => void claim()}
-          disabled={!canClaim || claiming}
-          className="rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40"
-        >
-          {claiming ? "Sending" : "Claim USDG"}
-        </button>
-      </div>
-      {!stats?.payoutReady ? (
-        <p className="mt-2 text-[12px] text-muted">
-          Payouts are not on yet. Earnings still accrue.
-        </p>
-      ) : null}
+      <p className="mt-3 text-[12px] text-muted">
+        Earnings accrue. We pay the highest referrers manually.
+      </p>
       {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
-      {hash ? (
-        <a
-          href={`${RH_EXPLORER}/tx/${hash}`}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 inline-block text-[13px] font-semibold text-gold"
-        >
-          View payout
-        </a>
-      ) : null}
 
       {(stats?.leaders.length ?? 0) > 0 ? (
         <div className="mt-6">

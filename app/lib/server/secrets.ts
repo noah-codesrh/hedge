@@ -31,12 +31,6 @@ export function serverSecrets() {
       required("ORACLE_REPORTER_KEY") ?? required("RELAYER_PRIVATE_KEY"),
     oracleAddress:
       required("ORACLE_ADDRESS") ?? required("VITE_HEDGE_ORACLE_ADDRESS"),
-    // USDG treasury that pays referral claims. Falls back to the reporter key
-    // if unset. Never prefix with VITE_.
-    referralPayerKey:
-      required("REFERRAL_PAYER_KEY") ??
-      required("ORACLE_REPORTER_KEY") ??
-      required("RELAYER_PRIVATE_KEY"),
     supabaseUrl: required("SUPABASE_URL"),
     // sb_secret_..., or the legacy service_role JWT. Either bypasses row level
     // security, so this must never be sent to the browser.
