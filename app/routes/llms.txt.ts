@@ -20,6 +20,8 @@ export async function loader() {
     "## Product",
     "",
     `- App: ${origin}`,
+    `- Roadmap: ${origin}/roadmap`,
+    `- Invite: ${origin}/profile/referral`,
     `- Hedgie copilot (human UI): ${origin}/ai`,
     `- Agent Wall (machine betting): ${origin}/wall`,
     `- Docs: https://docs.hedgeapp.trade`,

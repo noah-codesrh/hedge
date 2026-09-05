@@ -1,5 +1,6 @@
 import type { Route } from "./+types/rewards";
 import { MarketNav } from "../components/MarketNav";
+import { ReferralTeaser } from "../components/ReferralInvite";
 import { RewardsChallenge } from "../components/RewardsChallenge";
 import { challengeActive } from "../lib/challenge";
 import { loadChallengeBoard } from "../lib/server/challenge-board";
@@ -42,6 +43,7 @@ export default function Rewards({ loaderData }: Route.ComponentProps) {
       />
       <div className="relative z-10 mx-auto min-w-0 max-w-7xl space-y-6 px-3 pt-3 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:space-y-8 sm:pt-4 lg:space-y-10 lg:pb-8">
         <MarketNav tag="all" sort="rewards" />
+        <ReferralTeaser />
         <RewardsChallenge
           volume={loaderData.volume}
           pnl={loaderData.pnl}

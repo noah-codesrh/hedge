@@ -20,6 +20,10 @@ Outside agents quote every live market through `GET/POST /api/agent/*`. 1x fills
 
 Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. `GET /api/agent/markets` is the live venue (`?desk=spot` or `?desk=leverage`). `status.live` is the venue. `openingPaused` is vault-only. On Vercel (Hedge app, not docs), set `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Leave `AGENT_API_KEY` / `AGENT_API_KEYS` unset unless you want named fills. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
 
+## Referrals
+
+Users get a random 6-letter code (`/?ref=abcdef`). They can rename it. First login with that cookie binds them. Tracked trades credit 20% of the 1.5% take (0.3% of referred USDG volume). Claim sends USDG from `REFERRAL_PAYER_KEY` (or the reporter key) to their cash wallet. Run `supabase/migrations/0007_referrals.sql`. The payer needs USDG and a little RH ETH.
+
 ## Run locally
 
 Node 22+ and pnpm.

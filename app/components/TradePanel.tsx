@@ -545,12 +545,13 @@ function TradePanelView({
           signAuthorization,
         };
 
+        let openHash: string | undefined;
         if (usingLimit) {
           if (!(limitPrice > 0 && limitPrice < 1)) {
             throw new Error("Set a limit between 1¢ and 99¢.");
           }
           const { placeOpenLimit } = await import("../lib/leverage-actions");
-          await placeOpenLimit(
+          const placed = await placeOpenLimit(
             ctx,
             {
               marketSlug: leverageConfig.marketSlug,
@@ -562,6 +563,7 @@ function TradePanelView({
             },
             setLeverStage,
           );
+          if (typeof placed === "string") openHash = placed;
         } else if (collateral) {
           await openWithStock(
             ctx,
@@ -578,7 +580,7 @@ function TradePanelView({
           );
         } else {
           const { openLeveragePosition } = await import("../lib/leverage-actions");
-          await openLeveragePosition(
+          openHash = await openLeveragePosition(
             ctx,
             {
               marketSlug: leverageConfig.marketSlug,
@@ -598,6 +600,25 @@ function TradePanelView({
           (side === "yes"
             ? market.yes.price <= limitPrice
             : market.yes.price >= limitPrice);
+        // Fee is 1.5% of notional, so referral volume is size, not margin.
+        // Resting limits and stock tickets are not credited until they fill
+        // as USDG.
+        if (!collateral && opened.size > 0 && (!usingLimit || through) && openHash) {
+          trackTrade(accessToken, {
+            wallet: signerCash.address,
+            direction: "buy",
+            outcome: side,
+            outcomeLabel: side === "yes" ? "Yes" : "No",
+            eventSlug: event.slug,
+            marketSlug: leverageConfig.marketSlug,
+            title: market.groupItemTitle || market.question || event.title,
+            usdg: opened.size,
+            shares: leverageQuote?.shares ?? 0,
+            price: market.yes.price,
+            orderId: openHash,
+            tags: event.tags,
+          });
+        }
         setDone({
           title:
             usingLimit && !through

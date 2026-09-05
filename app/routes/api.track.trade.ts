@@ -1,6 +1,7 @@
 import type { Route } from "./+types/api.track.trade";
 import { CHALLENGE_LEAGUE, isEplTrade } from "../lib/challenge";
 import { requirePrivyUser, userHasWallet } from "../lib/server/privy-auth";
+import { creditReferralTrade } from "../lib/server/referrals";
 import { supabaseAdmin } from "../lib/server/supabase";
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
@@ -99,10 +100,10 @@ export async function action({ request }: Route.ActionArgs) {
     league,
   };
 
-  let { error } = await db.from("trades").insert(row);
+  let { data, error } = await db.from("trades").insert(row).select("id").maybeSingle();
   if (error?.message?.includes("league")) {
     delete row.league;
-    ({ error } = await db.from("trades").insert(row));
+    ({ data, error } = await db.from("trades").insert(row).select("id").maybeSingle());
   }
 
   if (error) {
@@ -112,6 +113,13 @@ export async function action({ request }: Route.ActionArgs) {
     console.error("[track-trade]", error);
     return Response.json({ error: "Could not record the trade." }, { status: 502 });
   }
+
+  const tradeId = typeof data?.id === "string" ? data.id : null;
+  await creditReferralTrade({
+    refereeId: userId,
+    tradeId,
+    volume: usdg,
+  }).catch((err) => console.error("[track-trade] referral", err));
 
   return Response.json({ ok: true, recorded: true });
 }

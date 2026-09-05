@@ -10,6 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
+import { ReferralCapture } from "./components/ReferralCapture";
 import { publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
@@ -59,6 +60,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Providers>
+      <ReferralCapture />
       <Outlet />
     </Providers>
   );

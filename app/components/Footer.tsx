@@ -42,6 +42,13 @@ export function Footer() {
             Wall
           </Link>
           <Link
+            to="/roadmap"
+            prefetch="intent"
+            className="text-[13px] font-medium text-muted transition hover:text-white"
+          >
+            Roadmap
+          </Link>
+          <Link
             to="/terms"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"

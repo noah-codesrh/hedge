@@ -3,6 +3,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { Form, Link, useLocation, useSearchParams } from "react-router";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DepositButton, useBook } from "./Book";
+import { ReferralBind } from "./ReferralCapture";
 import { FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
 import { MobileMenu } from "./MobileMenu";
 import { fiat } from "../lib/format";
@@ -212,12 +213,15 @@ function PrivyHeader() {
   const { openModal } = useAuthModal();
 
   return (
-    <HeaderShell
-      authenticated={authenticated}
-      onGetStarted={openModal}
-      onLogout={logout}
-      book
-    />
+    <>
+      <ReferralBind />
+      <HeaderShell
+        authenticated={authenticated}
+        onGetStarted={openModal}
+        onLogout={logout}
+        book
+      />
+    </>
   );
 }
 

@@ -18,7 +18,7 @@ import {
   PencilIcon,
   WalletIcon,
 } from "../components/icons";
-import { gradientFor, readNickname, writeNickname } from "../lib/nickname";
+import { gradientFor, identityName, writeNickname } from "../lib/nickname";
 import { trackNickname } from "../lib/track";
 import { sponsoredTokenSend } from "../lib/sponsored-send";
 import {
@@ -52,6 +52,7 @@ import { useCloseFlow } from "../components/CloseFlow";
 import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
 import { watchBalanceReloads } from "../lib/positions";
 import { originFromMatches, siteMeta } from "../lib/seo";
+import { ReferralTeaser } from "../components/ReferralInvite";
 
 export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({ title: "Profile - Hedge", origin: originFromMatches(matches) });
@@ -84,24 +85,7 @@ function displayName(
   userId: string,
   wallet?: string | null,
 ) {
-  const stored = readNickname(userId);
-  const meta = (user?.customMetadata as { nickname?: string } | undefined)
-    ?.nickname;
-  const twitter = user?.twitter?.username;
-  const discord = user?.discord?.username;
-  const google =
-    user?.google?.name || user?.google?.email?.split("@")[0];
-  const email = user?.email?.address?.split("@")[0];
-  return (
-    stored ||
-    meta ||
-    twitter ||
-    discord ||
-    google ||
-    email ||
-    shorten(wallet) ||
-    "Anonymous"
-  );
+  return identityName(user ?? { id: userId }) || shorten(wallet) || "Anonymous";
 }
 
 export default function Profile() {
@@ -322,6 +306,8 @@ function ProfileInner() {
           </div>
         </div>
       </section>
+
+      <ReferralTeaser />
 
       <section className="space-y-2.5">
         <div className="inline-flex items-center gap-1 rounded-full bg-[#141414] p-1 ring-1 ring-white/5">

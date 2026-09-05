@@ -136,6 +136,27 @@ export function CopyIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+export function ShareIcon({ size = 15 }: { size?: number }) {
+  return stroke(
+    size,
+    <>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.6 13.5 6.8 4" />
+      <path d="m15.4 6.5-6.8 4" />
+    </>,
+  );
+}
+
+export function WhatsAppIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.5 2 2 6.4 2 11.9c0 1.8.5 3.5 1.4 5L2 22l5.3-1.4c1.4.8 3 1.2 4.7 1.2 5.5 0 10-4.4 10-9.9S17.5 2 12 2Zm5.8 14.1c-.2.7-1.2 1.2-1.9 1.4-.5.1-1.2.2-3.5-.7-2.8-1.2-4.6-4.1-4.7-4.3-.2-.2-1.3-1.7-1.3-3.3 0-1.5.8-2.3 1.1-2.6.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.4.5c-.1.2-.3.3-.1.6.1.3.6 1 1.3 1.6.9.8 1.6 1 1.9 1.1.3.1.4.1.6-.1l.5-.6c.2-.2.4-.2.6-.1l2.1.9c.5.2.5.4.5.6-.1.2-.1.8-.3 1.3Z" />
+    </svg>
+  );
+}
+
 export function CheckIcon({ size = 15 }: { size?: number }) {
   return stroke(size, <path d="M20 6 9 17l-5-5" />);
 }
