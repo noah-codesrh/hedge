@@ -65,6 +65,14 @@ export default function Roadmap() {
         </p>
         <p>
           The{" "}
+          <Link to="/pool" className="font-semibold text-gold hover:underline">
+            Pool
+          </Link>{" "}
+          is a community test: USDG parimutuel on Robinhood Chain memes. Odds
+          are the live pools. $200 desk cap. At expiry the tape pays winners.
+        </p>
+        <p>
+          The{" "}
           <Link to="/wall" className="font-semibold text-gold hover:underline">
             Agent Wall
           </Link>{" "}

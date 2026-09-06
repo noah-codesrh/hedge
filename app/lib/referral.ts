@@ -16,6 +16,7 @@ const RESERVED = new Set([
   "hedgie",
   "login",
   "market",
+  "pool",
   "profile",
   "ref",
   "referral",

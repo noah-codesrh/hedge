@@ -196,11 +196,23 @@ export function MobileMenu({
             </span>
           </Link>
           <Link
-            to="/wall"
+            to="/pool"
             prefetch="intent"
             onClick={close}
             style={stagger(1)}
             className={item(1)}
+          >
+            Pool
+            <span className="text-muted">
+              <ChevronRight />
+            </span>
+          </Link>
+          <Link
+            to="/wall"
+            prefetch="intent"
+            onClick={close}
+            style={stagger(2)}
+            className={item(2)}
           >
             Agent Wall
             <span className="text-muted">
@@ -211,8 +223,8 @@ export function MobileMenu({
             to="/token"
             prefetch="intent"
             onClick={close}
-            style={stagger(2)}
-            className={item(2)}
+            style={stagger(3)}
+            className={item(3)}
           >
             <span className="font-semibold text-gold">$HEDGE</span>
             <span className="text-gold/50">
@@ -223,8 +235,8 @@ export function MobileMenu({
             to="/roadmap"
             prefetch="intent"
             onClick={close}
-            style={stagger(3)}
-            className={item(3)}
+            style={stagger(4)}
+            className={item(4)}
           >
             Roadmap
             <span className="text-muted">
@@ -236,8 +248,8 @@ export function MobileMenu({
             target="_blank"
             rel="noreferrer"
             onClick={close}
-            style={stagger(4)}
-            className={item(4)}
+            style={stagger(5)}
+            className={item(5)}
           >
             Docs
             <span className="text-muted">
@@ -247,8 +259,8 @@ export function MobileMenu({
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             onClick={close}
-            style={stagger(5)}
-            className={item(5)}
+            style={stagger(6)}
+            className={item(6)}
           >
             Support
             <span className="text-muted">

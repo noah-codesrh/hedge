@@ -304,6 +304,23 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         section={section}
       />
 
+      {!leverageTab && !q ? (
+        <Link
+          to="/pool"
+          prefetch="intent"
+          className="flex flex-col gap-2 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="text-sm text-white">
+            <span className="font-semibold text-gold">Pool is open.</span>{" "}
+            USDG parimutuel on Robinhood memes. $200 desk cap. Live tape odds.
+            Pools pay.
+          </p>
+          <span className="shrink-0 rounded-full bg-gold px-3.5 py-2 text-center text-sm font-semibold text-black">
+            View pool
+          </span>
+        </Link>
+      ) : null}
+
       {tag === CHALLENGE_TAG && !leverageTab ? (
         <div className="flex flex-col gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-white">

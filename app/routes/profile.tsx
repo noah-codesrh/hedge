@@ -10,6 +10,7 @@ import type { Route } from "./+types/profile";
 import type { loader as assetsLoader } from "./api.assets";
 import type { loader as portfolioLoader } from "./api.pm.portfolio";
 import { HoneycombMarquee } from "../components/HoneycombMarquee";
+import { NativeTickets } from "../components/NativeTickets";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
 import {
   ArrowDownTrayIcon,
@@ -391,6 +392,7 @@ function ProfileInner() {
 
         {tab === "positions" && (
           <div className="mt-5">
+            <NativeTickets compact />
             {/* Levered positions live on the engine, not on Polymarket, so
                 they are fetched separately and sit above the spot list. */}
             {posFilter === "open" ? <LeveragePositions compact /> : null}

@@ -35,6 +35,13 @@ export function Footer() {
             Docs
           </a>
           <Link
+            to="/pool"
+            prefetch="intent"
+            className="text-[13px] font-medium text-muted transition hover:text-white"
+          >
+            Pool
+          </Link>
+          <Link
             to="/wall"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"

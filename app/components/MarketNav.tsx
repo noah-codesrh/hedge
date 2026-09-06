@@ -24,6 +24,7 @@ import { RemoteImg } from "./RemoteImg";
 
 const TABS = [
   { id: "trending", label: "Trending", icon: FlameIcon },
+  { id: "pool", label: "Pool", icon: LayersIcon, href: "/pool" },
   { id: "rewards", label: "Rewards", icon: DiamondIcon },
   { id: "new", label: "New", icon: SparkleIcon },
   { id: "leverage", label: "Leverage", icon: LayersIcon },
@@ -92,7 +93,9 @@ export function MarketNav({
               <Link
                 key={tab.id}
                 to={
-                  tab.id === "rewards"
+                  "href" in tab && tab.href
+                    ? tab.href
+                    : tab.id === "rewards"
                     ? rewardsHref()
                     : browseHref({ tag, sort: tab.id, q, section })
                 }

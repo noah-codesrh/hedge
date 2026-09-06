@@ -24,6 +24,12 @@ Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. `GET /api/agent/market
 
 Users get a random 6-letter code (`/?ref=abcdef`). They can rename it. First login with that cookie binds them. Tracked trades credit 20% of the 1.5% take (0.3% of referred USDG volume). Top referrers are paid manually. Run `supabase/migrations/0007_referrals.sql`.
 
+## Native pool
+
+Parimutuel USDG on Robinhood Chain memes. `/pool`. Odds are the pools. Community test: $1k seed each side, $25 cap, one ticket, lock before expiry. Allowlist in `app/lib/native-tokens.ts`. Run `supabase/migrations/0008_native_markets.sql`. Settle with `POST /api/native/settle` and `NATIVE_SETTLE_KEY`. Winners are paid by hand.
+
+Discovery: `GET /api/native`. Stake: `POST /api/native/stake`.
+
 ## Run locally
 
 Node 22+ and pnpm.
