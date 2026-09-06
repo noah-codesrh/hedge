@@ -436,7 +436,7 @@ async function payMarket(
   outcome: NativeSide | "void",
 ) {
   if (!nativePayoutConfigured()) {
-    return { paid: 0, error: "Set NATIVE_ESCROW_KEY to pay winners." };
+    return { paid: 0, error: "Pool is under maintenance." };
   }
   let paid = 0;
   if (outcome === "void") {
@@ -589,7 +589,7 @@ export async function stakeNative(input: {
   const db = supabaseAdmin();
   if (!db) return { error: "Pool tracking is not connected.", status: 503 as const };
   if (!nativeEscrowAddress()) {
-    return { error: "Pool payout wallet is not configured.", status: 503 as const };
+    return { error: "Pool is under maintenance.", status: 503 as const };
   }
   if (!input.slug.trim()) return { error: "Market not found.", status: 404 as const };
   const side = parseSide(input.side);

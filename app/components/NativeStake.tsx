@@ -254,7 +254,7 @@ function NativeStakeInner({
     setSaving(true);
     try {
       if (!escrowWallet) {
-        throw new Error("Pool payout wallet is not configured.");
+        throw new Error("Pool is under maintenance.");
       }
       const token = await getAccessToken();
       if (!token) throw new Error("Sign in again.");
@@ -310,10 +310,7 @@ function NativeStakeInner({
         automatically.
       </p>
       {!escrowWallet || !payoutLive ? (
-        <p className="mt-3 text-sm text-gold">
-          Set NATIVE_ESCROW_WALLET and NATIVE_ESCROW_KEY, and put 200 USDG plus
-          a little RH ETH in that wallet.
-        </p>
+        <p className="mt-3 text-sm text-gold">Pool is under maintenance.</p>
       ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-2">

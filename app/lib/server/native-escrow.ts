@@ -62,7 +62,7 @@ export async function verifyNativeStakeTx(input: {
 }) {
   const escrow = nativeEscrowAddress();
   if (!escrow) {
-    return { error: "Pool payout wallet is not configured.", status: 503 as const };
+    return { error: "Pool is under maintenance.", status: 503 as const };
   }
   if (!HASH.test(input.hash)) {
     return { error: "Missing stake transaction.", status: 400 as const };
@@ -113,7 +113,7 @@ export async function payUsdg(to: string, amount: number) {
   const escrow = nativeEscrowAddress();
   const key = nativeEscrowKey();
   if (!escrow || !key) {
-    return { error: "Pool payout wallet is not configured.", status: 503 as const };
+    return { error: "Pool is under maintenance.", status: 503 as const };
   }
   if (!ADDR.test(to)) {
     return { error: "Winning ticket has no wallet to pay.", status: 400 as const };
@@ -123,7 +123,7 @@ export async function payUsdg(to: string, amount: number) {
   const account = privateKeyToAccount(key);
   if (account.address.toLowerCase() !== escrow) {
     return {
-      error: "NATIVE_ESCROW_KEY does not match NATIVE_ESCROW_WALLET.",
+      error: "Pool is under maintenance.",
       status: 503 as const,
     };
   }

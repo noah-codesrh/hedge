@@ -89,9 +89,9 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         <h2 className="text-xl font-semibold text-white">
           {kind === "pvp" ? "Meme PvP" : "Strike"}
         </h2>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-1 max-w-2xl text-sm text-muted">
           {kind === "pvp"
-            ? "Token vs token. Which prints more from the open snapshot."
+            ? "Robinhood memes only fight in the timeline. Hedge puts USDG on which name actually prints from the open snapshot. Losers pay winners."
             : "Will this name sit above a market-cap strike."}
         </p>
         {shown.length === 0 ? (
