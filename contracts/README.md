@@ -140,6 +140,18 @@ is safe to re-run as you add more.
 
 Finally, seed the first-loss buffer: `vault.depositJunior(100e6)`.
 
+## Native pool
+
+`HedgePool` holds USDG tickets for `/pool`. It is a separate deploy from the vault stack.
+
+```bash
+REPORTER=$NATIVE_ESCROW_WALLET \
+forge script script/DeployPool.s.sol:DeployPool \
+  --rpc-url $RPC --account hedge-admin --sender $ADMIN --broadcast
+```
+
+Set `VITE_HEDGE_POOL_ADDRESS` (and `HEDGE_POOL_ADDRESS`) to the printed address. `REPORTER` should be the same wallet as `NATIVE_ESCROW_KEY` / `NATIVE_POOL_KEY`, which lists weekly cards and pushes `resolve`. Traders `stake` and `claim` themselves. `$1–$25`, one ticket, lock, and the $200 desk cap are contract rules, not app checks.
+
 ## Keys
 
 Three separate roles. Do not collapse them into one key.

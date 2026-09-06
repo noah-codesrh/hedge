@@ -8,6 +8,7 @@ import {
   multipleIfWin,
   nativePhase,
   parseSide,
+  remainingWindow,
   sideLabel,
   tapeImpliedP,
   tapeLine,
@@ -63,21 +64,26 @@ export default function PoolMarket({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto min-w-0 max-w-3xl px-4 pb-24 pt-8 sm:px-6">
       <Link
-        to={market.kind === "pvp" ? "/pool?kind=pvp" : "/pool"}
+        to={
+          market.kind === "pvp"
+            ? `/pool?kind=pvp&tf=${market.timeframe ?? "1h"}`
+            : `/pool?tf=${market.timeframe ?? "1h"}`
+        }
         prefetch="intent"
         className="text-[13px] font-semibold text-muted hover:text-white"
       >
         ← Pool
       </Link>
       <p className="mt-5 text-[12px] font-semibold uppercase tracking-[0.16em] text-gold">
-        {market.kind === "pvp" ? "Meme PvP" : "Strike"} · {phase}
+        {market.kind === "pvp" ? "Meme PvP" : "Strike"}
+        {market.timeframe ? ` · ${market.timeframe}` : ""} · {phase}
       </p>
       <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
         {market.title}
       </h1>
       <p className="mt-3 text-sm text-muted">
-        {tapeLine(market)}. Lock {ends(market.lock_at)}. Expiry{" "}
-        {ends(market.expiry_at)}. {market.tickets} tickets.
+        {tapeLine(market)}. {remainingWindow(market.expiry_at)}. Lock{" "}
+        {ends(market.lock_at)}. {market.tickets} tickets.
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-2">

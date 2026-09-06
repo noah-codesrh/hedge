@@ -5,7 +5,7 @@ import { NativeCard } from "../components/NativeCard";
 import { NativeTickets } from "../components/NativeTickets";
 import { RemoteImg } from "../components/RemoteImg";
 import { listNativeMarkets } from "../lib/server/native-markets";
-import { formatMcap } from "../lib/native";
+import { formatMcap, parseNativeTimeframe, NATIVE_TIMEFRAMES } from "../lib/native";
 import { useNativeDesk } from "../lib/native-live";
 import { dexscreenerTokenUrl } from "../lib/native-tokens";
 import { originFromMatches, siteMeta } from "../lib/seo";
@@ -22,14 +22,15 @@ export function meta({ matches }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const kind =
-    new URL(request.url).searchParams.get("kind") === "pvp" ? "pvp" : "strike";
+  const url = new URL(request.url);
+  const kind = url.searchParams.get("kind") === "pvp" ? "pvp" : "strike";
+  const timeframe = parseNativeTimeframe(url.searchParams.get("tf"));
   const data = await listNativeMarkets();
-  return { ...data, kind };
+  return { ...data, kind, timeframe };
 }
 
 export default function Pool({ loaderData }: Route.ComponentProps) {
-  const { tracked, kind } = loaderData;
+  const { tracked, kind, timeframe } = loaderData;
   const desk = useNativeDesk({
     markets: loaderData.markets,
     quotes: loaderData.quotes,
@@ -39,9 +40,18 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
   const markets = desk.markets ?? loaderData.markets;
   const quotes = desk.quotes ?? loaderData.quotes;
   const shown = useMemo(
-    () => markets.filter((market) => market.kind === kind),
-    [markets, kind],
+    () =>
+      markets.filter((market) => {
+        if (market.kind !== kind) return false;
+        if (market.timeframe) return market.timeframe === timeframe;
+        return timeframe === "24h";
+      }),
+    [markets, kind, timeframe],
   );
+  const kindHref = (tf: string) =>
+    kind === "pvp" ? `/pool?kind=pvp&tf=${tf}` : `/pool?tf=${tf}`;
+  const tfHref = (next: "strike" | "pvp") =>
+    next === "pvp" ? `/pool?kind=pvp&tf=${timeframe}` : `/pool?tf=${timeframe}`;
 
   return (
     <main className="mx-auto min-w-0 max-w-5xl px-4 pb-24 pt-10 sm:px-6">
@@ -62,7 +72,7 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
 
       <div className="mt-8 inline-flex rounded-full border border-white/10 bg-[#1e1e1e] p-1">
         <Link
-          to="/pool"
+          to={tfHref("strike")}
           prefetch="intent"
           className={`rounded-full px-4 py-2 text-[13px] font-semibold sm:px-5 sm:text-sm ${
             kind === "strike"
@@ -73,7 +83,7 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
           Strike
         </Link>
         <Link
-          to="/pool?kind=pvp"
+          to={tfHref("pvp")}
           prefetch="intent"
           className={`rounded-full px-4 py-2 text-[13px] font-semibold sm:px-5 sm:text-sm ${
             kind === "pvp"
@@ -85,14 +95,31 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         </Link>
       </div>
 
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {NATIVE_TIMEFRAMES.map((row) => (
+          <Link
+            key={row.id}
+            to={kindHref(row.id)}
+            prefetch="intent"
+            className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
+              timeframe === row.id
+                ? "bg-gold text-black"
+                : "border border-white/10 text-[#b8b8b8] hover:text-white"
+            }`}
+          >
+            {row.label}
+          </Link>
+        ))}
+      </div>
+
       <section className="mt-6">
         <h2 className="text-xl font-semibold text-white">
           {kind === "pvp" ? "Meme PvP" : "Strike"}
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           {kind === "pvp"
-            ? "Robinhood memes only fight in the timeline. Hedge puts USDG on which name actually prints from the open snapshot. Losers pay winners."
-            : "Will this name sit above a market-cap strike."}
+            ? `Robinhood memes only fight in the ${timeframe} window. Hedge puts USDG on which name actually prints from the open snapshot. Losers pay winners.`
+            : `Will this name sit above a market-cap strike when the ${timeframe} window ends.`}
         </p>
         {shown.length === 0 ? (
           <p className="mt-4 text-sm text-muted">No cards in this window.</p>
@@ -154,8 +181,7 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
       </section>
 
       <p className="mt-10 text-[13px] text-muted">
-        Settlement is Dexscreener on <code>robinhood</code>, CoinGecko if that
-        print is missing. At expiry the pools pay winners automatically.{" "}
+        At expiry the pools pay winners automatically.{" "}
         <Link to="/roadmap" className="font-semibold text-gold hover:underline">
           Roadmap
         </Link>

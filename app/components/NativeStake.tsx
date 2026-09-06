@@ -15,6 +15,7 @@ import {
   NATIVE_USER_CAP,
   multipleIfWin,
   nativePhase,
+  parseStake,
   payoutIfWin,
   sideLabel,
   tapeImpliedP,
@@ -23,6 +24,8 @@ import {
 } from "../lib/native";
 import { fiat, pct } from "../lib/format";
 import { waitForTx, toUsdgRaw } from "../lib/leverage-chain";
+import { poolIsLive } from "../lib/hedge-pool";
+import { claimPool, stakeOnPool } from "../lib/pool-actions";
 import { RH_EXPLORER, USDG, encodeErc20Transfer } from "../lib/robinhood";
 import { sponsoredTokenSend } from "../lib/sponsored-send";
 import {
@@ -335,33 +338,56 @@ function NativeStakeInner({
             `That swap left ${fiat(swapped.usdg)} USDG. Tickets are ${fiat(NATIVE_MIN_STAKE)}–${fiat(NATIVE_MAX_STAKE)}.`,
           );
         }
+      } else {
+        const parsed = parseStake(qty);
+        if (!parsed) {
+          throw new Error(
+            `Tickets are ${fiat(NATIVE_MIN_STAKE)}–${fiat(NATIVE_MAX_STAKE)}.`,
+          );
+        }
+        qty = parsed;
       }
       const raw = toUsdgRaw(qty);
       if (raw <= 0n) throw new Error("Enter a stake.");
-      const data = encodeErc20Transfer(escrowWallet, raw);
-      const wallet = signer;
+      const signAuthorization = async (
+        payload: Parameters<typeof generateAuthorizationSignature>[0],
+      ) => {
+        const { signature } = await generateAuthorizationSignature(payload);
+        if (!signature) throw new Error("Could not authorize this wallet.");
+        return signature;
+      };
       let hash: string | null = null;
-      if (wallet && !isEmbeddedWallet(wallet.walletClientType)) {
-        const provider = await robinhoodProvider(wallet);
-        hash = (await provider.request({
-          method: "eth_sendTransaction",
-          params: [{ from, to: USDG, data }],
-        })) as string;
-      } else {
-        hash = await sponsoredTokenSend({
-          accessToken: token,
-          from,
-          token: USDG,
-          data,
-          signAuthorization: async (payload) => {
-            const { signature } = await generateAuthorizationSignature(payload);
-            if (!signature) throw new Error("Could not authorize this wallet.");
-            return signature;
+      if (poolIsLive) {
+        hash = await stakeOnPool(
+          {
+            accessToken: token,
+            from,
+            wallet: signer,
+            signAuthorization,
           },
-        });
+          { slug: market.slug, side, amount: qty },
+        );
+      } else {
+        const data = encodeErc20Transfer(escrowWallet, raw);
+        const wallet = signer;
+        if (wallet && !isEmbeddedWallet(wallet.walletClientType)) {
+          const provider = await robinhoodProvider(wallet);
+          hash = (await provider.request({
+            method: "eth_sendTransaction",
+            params: [{ from, to: USDG, data }],
+          })) as string;
+        } else {
+          hash = await sponsoredTokenSend({
+            accessToken: token,
+            from,
+            token: USDG,
+            data,
+            signAuthorization,
+          });
+        }
+        if (hash) await waitForTx(hash);
       }
       if (!hash) throw new Error("Stake transaction did not return a hash.");
-      await waitForTx(hash);
       const saved: Pending = { hash, side, amount: qty, wallet: from };
       writePending(market.slug, saved);
       setPending(saved);
@@ -382,8 +408,8 @@ function NativeStakeInner({
         USDG in, USDG out. You can sell NVDA, SPCX, AAPL, GME, or TSLA into
         the ticket. Odds are the live Dexscreener tape. The pools still pay.
         Desk cap {fiat(NATIVE_USER_CAP)}. Ticket cap {fiat(NATIVE_MAX_STAKE)}.
-        One ticket per wallet. At expiry the tape settles and winners are paid
-        USDG.
+        One ticket per wallet. At expiry the tape settles and winners claim
+        USDG from the pool.
       </p>
       {!escrowWallet || !payoutLive ? (
         <p className="mt-3 text-sm text-gold">Pool is under maintenance.</p>
@@ -431,26 +457,77 @@ function NativeStakeInner({
       </div>
 
       {mine ? (
-        <p className="mt-4 rounded-2xl bg-[#0f0f0f] px-4 py-3 text-sm">
-          You are on{" "}
-          <span className="font-semibold">
-            {sideLabel(market.kind, mine.side, market.token_a, market.token_b)}
-          </span>{" "}
-          for {fiat(mine.amount)}. If this side hits, about {fiat(mine.payout)}.
-          {mine.txHash ? (
-            <>
-              {" "}
-              <a
-                href={`${RH_EXPLORER}/tx/${mine.txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-gold hover:underline"
-              >
-                View tx
-              </a>
-            </>
+        <div className="mt-4 rounded-2xl bg-[#0f0f0f] px-4 py-3 text-sm">
+          <p>
+            You are on{" "}
+            <span className="font-semibold">
+              {sideLabel(market.kind, mine.side, market.token_a, market.token_b)}
+            </span>{" "}
+            for {fiat(mine.amount)}. If this side hits, about {fiat(mine.payout)}.
+            {mine.txHash ? (
+              <>
+                {" "}
+                <a
+                  href={`${RH_EXPLORER}/tx/${mine.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-gold hover:underline"
+                >
+                  View tx
+                </a>
+              </>
+            ) : null}
+          </p>
+          {poolIsLive &&
+          !mine.payoutTx &&
+          (market.resolved_side === "void" ||
+            market.resolved_side === mine.side) ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setError(null);
+                setSaving(true);
+                void (async () => {
+                  const token = await getAccessToken();
+                  if (!token) throw new Error("Sign in again.");
+                  const signer = (await ensureCashWallet()) ?? cashWallet;
+                  const from =
+                    signer?.address ?? primaryWalletAddress(user, wallets);
+                  if (!from || !signer) {
+                    throw new Error("Connect the wallet that holds this ticket.");
+                  }
+                  await claimPool(
+                    {
+                      accessToken: token,
+                      from,
+                      wallet: signer,
+                      signAuthorization: async (payload) => {
+                        const { signature } =
+                          await generateAuthorizationSignature(payload);
+                        if (!signature) {
+                          throw new Error("Could not authorize this wallet.");
+                        }
+                        return signature;
+                      },
+                    },
+                    market.slug,
+                  );
+                  setMine({ ...mine, payoutTx: "claimed" });
+                })()
+                  .catch((err) =>
+                    setError(
+                      err instanceof Error ? err.message : "Could not claim.",
+                    ),
+                  )
+                  .finally(() => setSaving(false));
+              }}
+              className="mt-3 w-full rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40"
+            >
+              {saving ? "Claiming" : "Claim USDG"}
+            </button>
           ) : null}
-        </p>
+        </div>
       ) : (
         <>
           <CollateralPicker
@@ -522,14 +599,18 @@ function NativeStakeInner({
                 phase !== "open" ||
                 !tracked ||
                 !escrowWallet ||
-                (usingStock && (qty <= 0 || stockAvail < qty))
+                (usingStock
+                  ? qty <= 0 || stockAvail < qty
+                  : parseStake(qty) == null)
               }
               className="mt-4 w-full rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40"
             >
               {saving
                 ? usingStock
                   ? `Selling ${collateral.symbol}`
-                  : "Sending USDG"
+                  : poolIsLive
+                    ? "Staking on chain"
+                    : "Sending USDG"
                 : usingStock
                   ? `Stake ${side === "a" ? a : b} with ${collateral.symbol}`
                   : `Stake ${side === "a" ? a : b}`}

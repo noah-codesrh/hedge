@@ -8,7 +8,96 @@ export const NATIVE_MIN_STAKE = 1;
 export const NATIVE_USER_CAP = 200;
 /** House seed. Zero so a $200 float cannot owe more than the desk cap. */
 export const NATIVE_SEED = 0;
-export const NATIVE_LOCK_MS = 60 * 60 * 1000;
+
+export type NativeTimeframe = "15m" | "1h" | "4h" | "6h" | "12h" | "24h";
+
+/** Rolling windows. Lock is a slice of the window, not a flat hour. */
+export const NATIVE_TIMEFRAMES: {
+  id: NativeTimeframe;
+  label: string;
+  ms: number;
+  lockMs: number;
+}[] = [
+  { id: "15m", label: "15m", ms: 15 * 60 * 1000, lockMs: 60 * 1000 },
+  { id: "1h", label: "1h", ms: 60 * 60 * 1000, lockMs: 5 * 60 * 1000 },
+  { id: "4h", label: "4h", ms: 4 * 60 * 60 * 1000, lockMs: 15 * 60 * 1000 },
+  { id: "6h", label: "6h", ms: 6 * 60 * 60 * 1000, lockMs: 20 * 60 * 1000 },
+  { id: "12h", label: "12h", ms: 12 * 60 * 60 * 1000, lockMs: 30 * 60 * 1000 },
+  { id: "24h", label: "24h", ms: 24 * 60 * 60 * 1000, lockMs: 60 * 60 * 1000 },
+];
+
+export function parseNativeTimeframe(raw: unknown): NativeTimeframe {
+  const id = String(raw ?? "").trim();
+  return NATIVE_TIMEFRAMES.some((row) => row.id === id)
+    ? (id as NativeTimeframe)
+    : "1h";
+}
+
+export function timeframeFromSlug(slug: string): NativeTimeframe | null {
+  const match = slug.match(/-(15m|1h|4h|6h|12h|24h)-\d+$/);
+  return match ? (match[1] as NativeTimeframe) : null;
+}
+
+export function nativeWindowSlug(
+  base: string,
+  timeframe: NativeTimeframe,
+  expiryMs: number,
+) {
+  return `${base}-${timeframe}-${Math.floor(expiryMs / 1000)}`;
+}
+
+export function nativeWindowsFor(
+  timeframe: NativeTimeframe,
+  now = Date.now(),
+) {
+  const spec = NATIVE_TIMEFRAMES.find((row) => row.id === timeframe);
+  if (!spec) return [];
+  const start = Math.floor(now / spec.ms) * spec.ms;
+  const current = {
+    openAt: start,
+    expiryAt: start + spec.ms,
+    lockAt: start + spec.ms - spec.lockMs,
+  };
+  if (now < current.lockAt) return [current];
+  return [
+    current,
+    {
+      openAt: start + spec.ms,
+      expiryAt: start + 2 * spec.ms,
+      lockAt: start + 2 * spec.ms - spec.lockMs,
+    },
+  ];
+}
+
+export type RollingNativeSpec = {
+  spec: NativeMarketSpec;
+  timeframe: NativeTimeframe;
+  slug: string;
+  openAt: Date;
+  lockAt: Date;
+  expiryAt: Date;
+};
+
+/** Current (and next, if this window is locking) card per name × timeframe. */
+export function rollingNativeSpecs(now = Date.now()): RollingNativeSpec[] {
+  const bases = nativeDefaultSpecs();
+  const rows: RollingNativeSpec[] = [];
+  for (const tf of NATIVE_TIMEFRAMES) {
+    for (const window of nativeWindowsFor(tf.id, now)) {
+      for (const spec of bases) {
+        rows.push({
+          spec,
+          timeframe: tf.id,
+          slug: nativeWindowSlug(spec.slug, tf.id, window.expiryAt),
+          openAt: new Date(window.openAt),
+          lockAt: new Date(window.lockAt),
+          expiryAt: new Date(window.expiryAt),
+        });
+      }
+    }
+  }
+  return rows;
+}
 
 export type NativeKind = "strike" | "pvp";
 export type NativeSide = "a" | "b";
@@ -266,6 +355,17 @@ export function formatMcap(n: number) {
   return `$${n.toFixed(2)}`;
 }
 
+export function remainingWindow(iso: string, now = Date.now()) {
+  const ms = Date.parse(iso) - now;
+  if (!(ms > 0)) return "ended";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "<1m left";
+  if (minutes < 60) return `${minutes}m left`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
+}
+
 export function strikeQuestion(symbol: string, strike: number, metric: NativeMetric) {
   const level = metric === "marketCap" ? formatMcap(strike) : `$${strike.toFixed(4)}`;
   const noun = metric === "marketCap" ? "market cap" : "price";
@@ -295,6 +395,7 @@ export type NativeMarketView = {
   token_b: string | null;
   metric: NativeMetric | null;
   strike: number | null;
+  timeframe: NativeTimeframe | null;
   open_at: string;
   lock_at: string;
   expiry_at: string;

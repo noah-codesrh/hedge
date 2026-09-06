@@ -1,23 +1,23 @@
 import {
-  NATIVE_LOCK_MS,
   NATIVE_MAX_STAKE,
   NATIVE_MIN_STAKE,
   NATIVE_SEED,
   NATIVE_USER_CAP,
-  nativeDefaultSpecs,
+  rollingNativeSpecs,
   nativePhase,
-  nextSundayUtc,
   niceStrike,
   parseSide,
   parseStake,
   payoutIfWin,
   pvpQuestion,
   strikeQuestion,
+  timeframeFromSlug,
   resolveNativeOutcome,
   type NativeKind,
   type NativeMarketSpec,
   type NativeMetric,
   type NativeSide,
+  type NativeTimeframe,
   type NativeTicketView,
 } from "../native";
 import { fetchNativeQuotes, type NativeQuote } from "./native-quotes";
@@ -27,6 +27,14 @@ import {
   payUsdg,
   verifyNativeStakeTx,
 } from "./native-escrow";
+import {
+  ensurePoolListed,
+  nativePoolAddress,
+  nativePoolConfigured,
+  poolTicket,
+  resolvePool,
+  verifyPoolStakeTx,
+} from "./native-pool";
 import { supabaseAdmin } from "./supabase";
 import { toUsd, toUsdgRaw } from "../leverage-chain";
 
@@ -104,6 +112,7 @@ function asMarket(row: Record<string, unknown>): NativeMarketRow {
 }
 
 export type NativePublicMarket = NativeMarketRow & {
+  timeframe: NativeTimeframe | null;
   phase: ReturnType<typeof nativePhase>;
   poolA: number;
   poolB: number;
@@ -130,6 +139,7 @@ function view(
     .reduce((acc, s) => acc + s.amount, 0);
   return {
     ...market,
+    timeframe: timeframeFromSlug(market.slug),
     phase: nativePhase(market),
     poolA: market.seed_a + userA,
     poolB: market.seed_b + userB,
@@ -235,6 +245,10 @@ export async function listMyNativeTickets(userId: string) {
     if (!market) continue;
     const side = row.side === "b" ? ("b" as const) : ("a" as const);
     const amount = n(row.amount);
+    const onchain = row.wallet
+      ? await poolTicket(market.slug, String(row.wallet))
+      : null;
+    const claimed = Boolean(row.payout_tx) || Boolean(onchain?.claimed);
     tickets.push({
       id: String(row.id),
       slug: market.slug,
@@ -250,7 +264,7 @@ export async function listMyNativeTickets(userId: string) {
         amount,
         row.payout_amount != null ? n(row.payout_amount) : null,
       ),
-      payoutTx: row.payout_tx ? String(row.payout_tx) : null,
+      payoutTx: claimed ? String(row.payout_tx ?? "claimed") : null,
       txHash: row.tx_hash ? String(row.tx_hash) : null,
       phase: market.phase,
       resolved_side: market.resolved_side,
@@ -258,12 +272,6 @@ export async function listMyNativeTickets(userId: string) {
     });
   }
   return { tickets };
-}
-
-function windowFor() {
-  const expiry = nextSundayUtc();
-  const lock = new Date(expiry.getTime() - NATIVE_LOCK_MS);
-  return { lock, expiry };
 }
 
 async function insertMarket(row: Record<string, unknown>) {
@@ -287,6 +295,8 @@ function marketPayload(
   quotes: NativeQuote[],
   lock: Date,
   expiry: Date,
+  openAt: Date,
+  slug: string,
 ) {
   const qA = quoteFor(quotes, spec.tokenA);
   const qB = quoteFor(quotes, spec.tokenB);
@@ -299,13 +309,14 @@ function marketPayload(
       ? pvpQuestion(spec.tokenA, spec.tokenB)
       : strikeQuestion(spec.tokenA, strike ?? 0, spec.metric ?? "marketCap");
   return {
-    slug: spec.slug,
+    slug,
     kind: spec.kind,
     title,
     token_a: spec.tokenA,
     token_b: spec.tokenB,
     metric: spec.metric,
     strike,
+    open_at: openAt.toISOString(),
     lock_at: lock.toISOString(),
     expiry_at: expiry.toISOString(),
     seed_a: NATIVE_SEED,
@@ -322,12 +333,20 @@ export async function ensureDefaultMarkets() {
   if (!db) return;
   const existing = await db.from("native_markets").select("slug");
   const slugs = new Set((existing.data ?? []).map((row) => String(row.slug)));
-  const specs = nativeDefaultSpecs().filter((spec) => !slugs.has(spec.slug));
-  if (specs.length > 0) {
+  const needed = rollingNativeSpecs().filter((row) => !slugs.has(row.slug));
+  if (needed.length > 0) {
     const quotes = await fetchNativeQuotes();
-    const { lock, expiry } = windowFor();
-    for (const spec of specs) {
-      await insertMarket(marketPayload(spec, quotes, lock, expiry));
+    for (const row of needed) {
+      await insertMarket(
+        marketPayload(
+          row.spec,
+          quotes,
+          row.lockAt,
+          row.expiryAt,
+          row.openAt,
+          row.slug,
+        ),
+      );
     }
   }
   await db
@@ -337,20 +356,26 @@ export async function ensureDefaultMarkets() {
 }
 
 function fallbackMarkets(quotes: NativeQuote[]): NativePublicMarket[] {
-  const { lock, expiry } = windowFor();
-  const openAt = new Date().toISOString();
-  return nativeDefaultSpecs().map((spec) => {
-    const payload = marketPayload(spec, quotes, lock, expiry);
+  return rollingNativeSpecs().map((row) => {
+    const payload = marketPayload(
+      row.spec,
+      quotes,
+      row.lockAt,
+      row.expiryAt,
+      row.openAt,
+      row.slug,
+    );
     return {
-      id: spec.slug,
-      slug: spec.slug,
-      kind: spec.kind,
+      id: row.slug,
+      slug: row.slug,
+      kind: row.spec.kind,
       title: payload.title,
       token_a: payload.token_a,
       token_b: payload.token_b,
       metric: payload.metric,
       strike: payload.strike,
-      open_at: openAt,
+      timeframe: row.timeframe,
+      open_at: payload.open_at,
       lock_at: payload.lock_at,
       expiry_at: payload.expiry_at,
       seed_a: payload.seed_a,
@@ -361,12 +386,15 @@ function fallbackMarkets(quotes: NativeQuote[]): NativePublicMarket[] {
       open_price_b: payload.open_price_b,
       resolved_side: null,
       resolved_at: null,
-      phase: "open" as const,
+      phase: nativePhase({
+        lock_at: payload.lock_at,
+        expiry_at: payload.expiry_at,
+      }),
       poolA: NATIVE_SEED,
       poolB: NATIVE_SEED,
       tickets: 0,
-      quoteA: quoteFor(quotes, spec.tokenA),
-      quoteB: quoteFor(quotes, spec.tokenB),
+      quoteA: quoteFor(quotes, row.spec.tokenA),
+      quoteB: quoteFor(quotes, row.spec.tokenB),
     };
   });
 }
@@ -431,18 +459,26 @@ async function markStakePaid(
     .eq("id", id);
 }
 
+async function onChainStake(slug: string, wallet: string | null) {
+  if (!wallet || !nativePoolConfigured()) return false;
+  const ticket = await poolTicket(slug, wallet);
+  return Boolean(ticket && ticket.amount > 0);
+}
+
 async function payMarket(
+  slug: string,
   stakes: NativeStakeRow[],
   outcome: NativeSide | "void",
 ) {
-  if (!nativePayoutConfigured()) {
-    return { paid: 0, error: "Pool is under maintenance." };
-  }
   let paid = 0;
   if (outcome === "void") {
     for (const stake of stakes) {
       if (stake.payout_tx) continue;
       if (!stake.wallet) continue;
+      if (await onChainStake(slug, stake.wallet)) continue;
+      if (!nativePayoutConfigured()) {
+        return { paid, error: "Pool is under maintenance." };
+      }
       const result = await payUsdg(stake.wallet, stake.amount);
       if ("error" in result) return { paid, error: result.error };
       await markStakePaid(stake.id, result.hash, stake.amount);
@@ -454,6 +490,10 @@ async function payMarket(
   for (const row of payouts) {
     if (row.stake.payout_tx) continue;
     if (!row.stake.wallet) continue;
+    if (await onChainStake(slug, row.stake.wallet)) continue;
+    if (!nativePayoutConfigured()) {
+      return { paid, error: "Pool is under maintenance." };
+    }
     const result = await payUsdg(row.stake.wallet, row.amount);
     if ("error" in result) return { paid, error: result.error };
     await markStakePaid(row.stake.id, result.hash, row.amount);
@@ -500,6 +540,7 @@ export async function listNativeMarkets() {
   const { data, error } = await db
     .from("native_markets")
     .select("*")
+    .is("resolved_side", null)
     .order("expiry_at", { ascending: true });
   if (error) {
     console.error("[native] list", error);
@@ -520,21 +561,30 @@ export async function listNativeMarkets() {
     byMarket.set(stake.market_id, list);
   }
   const deskUsed = await openDeskVolume();
+  const pool = nativePoolAddress();
   return {
     tracked: true,
     quotes,
     markets: rows.map((row) => view(row, byMarket.get(row.id) ?? [], quotes)),
     deskUsed,
     deskCap: NATIVE_USER_CAP,
-    escrowWallet: nativeEscrowAddress(),
-    payoutLive: nativePayoutConfigured(),
+    escrowWallet: pool ?? nativeEscrowAddress(),
+    payoutLive: nativePoolConfigured() || nativePayoutConfigured(),
   };
 }
 
 export async function getNativeMarket(slug: string, userId?: string | null) {
   const listed = await listNativeMarkets();
   const { tracked, markets, quotes, escrowWallet, payoutLive } = listed;
-  const market = markets.find((row) => row.slug === slug || row.id === slug);
+  let market = markets.find((row) => row.slug === slug || row.id === slug) ?? null;
+  if (!market) {
+    const { row } = await readMarketRow(slug);
+    if (row) {
+      const stored = asMarket(row);
+      const stakes = await loadStakes([stored.id]);
+      market = view(stored, stakes, quotes);
+    }
+  }
   if (!market) {
     return {
       tracked,
@@ -560,21 +610,28 @@ export async function getNativeMarket(slug: string, userId?: string | null) {
     .eq("market_id", market.id)
     .eq("privy_user_id", userId)
     .maybeSingle();
-  const mine = data
-    ? {
-        id: String(data.id),
-        side: data.side === "b" ? ("b" as const) : ("a" as const),
-        amount: n(data.amount),
-        payout: ticketPayout(
-          market,
-          data.side === "b" ? "b" : "a",
-          n(data.amount),
-          data.payout_amount != null ? n(data.payout_amount) : null,
-        ),
-        payoutTx: data.payout_tx ? String(data.payout_tx) : null,
-        txHash: data.tx_hash ? String(data.tx_hash) : null,
-      }
+  if (!data) {
+    return { tracked, market, mine: null, quotes, escrowWallet, payoutLive };
+  }
+  const onchain = data.wallet
+    ? await poolTicket(market.slug, String(data.wallet))
     : null;
+  const claimed = Boolean(data.payout_tx) || Boolean(onchain?.claimed);
+  const mine = {
+    id: String(data.id),
+    side: data.side === "b" ? ("b" as const) : ("a" as const),
+    amount: n(data.amount),
+    payout: ticketPayout(
+      market,
+      data.side === "b" ? "b" : "a",
+      n(data.amount),
+      data.payout_amount != null ? n(data.payout_amount) : null,
+    ),
+    payoutTx: claimed
+      ? String(data.payout_tx ?? "claimed")
+      : null,
+    txHash: data.tx_hash ? String(data.tx_hash) : null,
+  };
   return { tracked, market, mine, quotes, escrowWallet, payoutLive };
 }
 
@@ -588,7 +645,7 @@ export async function stakeNative(input: {
 }) {
   const db = supabaseAdmin();
   if (!db) return { error: "Pool tracking is not connected.", status: 503 as const };
-  if (!nativeEscrowAddress()) {
+  if (!nativePoolConfigured() && !nativeEscrowAddress()) {
     return { error: "Pool is under maintenance.", status: 503 as const };
   }
   if (!input.slug.trim()) return { error: "Market not found.", status: 404 as const };
@@ -632,11 +689,28 @@ export async function stakeNative(input: {
       status: 409 as const,
     };
   }
-  const verified = await verifyNativeStakeTx({
-    hash: String(input.txHash ?? ""),
-    from: wallet,
-    amount,
-  });
+  if (nativePoolConfigured()) {
+    const listed = await ensurePoolListed({
+      slug: market.slug,
+      lockAt: market.lock_at,
+      expiryAt: market.expiry_at,
+    });
+    if ("error" in listed) {
+      return { error: listed.error, status: listed.status };
+    }
+  }
+  const verified = nativePoolConfigured()
+    ? await verifyPoolStakeTx({
+        hash: String(input.txHash ?? ""),
+        from: wallet,
+        amount,
+        slug: market.slug,
+      })
+    : await verifyNativeStakeTx({
+        hash: String(input.txHash ?? ""),
+        from: wallet,
+        amount,
+      });
   if ("error" in verified) {
     return { error: verified.error, status: verified.status };
   }
@@ -666,7 +740,7 @@ export async function settleNative(slug: string, rawSide: unknown) {
   const market = asMarket(row as Record<string, unknown>);
   if (market.resolved_side) {
     const stakes = await loadStakes([market.id]);
-    const paid = await payMarket(stakes, market.resolved_side);
+    const paid = await payMarket(market.slug, stakes, market.resolved_side);
     return { ok: true as const, side: market.resolved_side, ...paid };
   }
   let side: NativeSide | "void" | null = parseSide(rawSide);
@@ -692,8 +766,14 @@ export async function settleNative(slug: string, rawSide: unknown) {
     console.error("[native] settle", error);
     return { error: "Could not settle.", status: 502 as const };
   }
+  if (nativePoolConfigured()) {
+    const resolved = await resolvePool(market.slug, side);
+    if ("error" in resolved) {
+      return { error: resolved.error, status: resolved.status };
+    }
+  }
   const stakes = await loadStakes([market.id]);
-  const paid = await payMarket(stakes, side);
+  const paid = await payMarket(market.slug, stakes, side);
   return { ok: true as const, side, ...paid };
 }
 

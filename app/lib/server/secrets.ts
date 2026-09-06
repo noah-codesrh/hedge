@@ -25,6 +25,8 @@ export function serverSecrets() {
     hedgeStockCollateral:
       required("HEDGE_STOCK_COLLATERAL") ??
       required("VITE_HEDGE_STOCK_COLLATERAL"),
+    hedgePoolAddress:
+      required("HEDGE_POOL_ADDRESS") ?? required("VITE_HEDGE_POOL_ADDRESS"),
     // Reporter key for on-demand oracle pushes. Same key the Railway keeper
     // used. Never prefix with VITE_.
     oracleReporterKey:

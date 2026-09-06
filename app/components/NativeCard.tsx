@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import {
   nativePhase,
+  remainingWindow,
   sideLabel,
   tapeImpliedP,
   tapeLine,
@@ -8,17 +9,6 @@ import {
 } from "../lib/native";
 import { fiat, pct } from "../lib/format";
 import { RemoteImg } from "./RemoteImg";
-
-function ends(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-    timeZoneName: "short",
-  });
-}
 
 export function NativeCard({
   market,
@@ -56,7 +46,8 @@ export function NativeCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gold">
-            {market.kind === "pvp" ? "Meme PvP" : "Strike"} · {phase}
+            {market.kind === "pvp" ? "Meme PvP" : "Strike"}
+            {market.timeframe ? ` · ${market.timeframe}` : ""} · {phase}
           </p>
           <p className="mt-0.5 line-clamp-2 text-[14px] leading-snug text-[#d8d8d8]">
             {market.title}
@@ -90,7 +81,7 @@ export function NativeCard({
         </Link>
       </div>
       <p className="relative z-[2] text-[11px] text-muted">
-        {tapeLine(market)} · lock {ends(market.lock_at)}
+        {tapeLine(market)} · {remainingWindow(market.expiry_at)}
       </p>
     </article>
   );

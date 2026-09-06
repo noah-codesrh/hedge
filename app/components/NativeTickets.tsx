@@ -66,7 +66,7 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
     <section id="tickets" className={compact ? "mt-5" : "mt-8"}>
       <h2 className="text-xl font-semibold text-white">Your tickets</h2>
       <p className="mt-1 text-sm text-muted">
-        Pool positions. Winners are paid at expiry from escrow.
+        Pool positions. Winners claim USDG after expiry.
       </p>
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
         {tickets.map((ticket) => {

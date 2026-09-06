@@ -19,6 +19,7 @@ import {
 import { RELAY_NATIVE, RELAY_ROUTER, USDG, WETH } from "../app/lib/robinhood";
 import { engineAbi, vaultAbi } from "../app/lib/leverage-abi";
 import { STOCK_TOKENS } from "../app/lib/stock-tokens";
+import { poolAbi } from "../app/lib/hedge-pool";
 
 const stockAbi = [
   {
@@ -67,6 +68,7 @@ const ENGINE = "0x1111111111111111111111111111111111111111";
 const VAULT = "0x2222222222222222222222222222222222222222";
 const STRANGER = "0x3333333333333333333333333333333333333333";
 const STOCK = "0x4444444444444444444444444444444444444444";
+const POOL = "0x5555555555555555555555555555555555555555";
 const NVDA = STOCK_TOKENS[0]!.address;
 /** Some token a trader holds that Hedge has never heard of. */
 const MEMECOIN = "0x8f86a15ec17cb3369d8b3e666dadbc11daa82b79";
@@ -75,6 +77,11 @@ const WITH_STOCK: HedgeContracts = {
   engine: ENGINE,
   vault: VAULT,
   stockCollateral: STOCK,
+};
+const WITH_POOL: HedgeContracts = {
+  engine: ENGINE,
+  vault: VAULT,
+  pool: POOL,
 };
 const UNDEPLOYED: HedgeContracts = { engine: null, vault: null };
 
@@ -311,6 +318,49 @@ refuses(
   NVDA,
   approve(STRANGER),
   WITH_STOCK,
+);
+
+allows(
+  "approving the pool to pull USDG",
+  USDG,
+  approve(POOL),
+  WITH_POOL,
+);
+allows(
+  "staking on the pool",
+  POOL,
+  encodeFunctionData({
+    abi: poolAbi,
+    functionName: "stake",
+    args: [`0x${"11".repeat(32)}`, 1, 25_000_000n],
+  }),
+  WITH_POOL,
+);
+allows(
+  "claiming from the pool",
+  POOL,
+  encodeFunctionData({
+    abi: poolAbi,
+    functionName: "claim",
+    args: [`0x${"11".repeat(32)}`],
+  }),
+  WITH_POOL,
+);
+refuses(
+  "pool calls before it is addressed",
+  POOL,
+  encodeFunctionData({
+    abi: poolAbi,
+    functionName: "claim",
+    args: [`0x${"11".repeat(32)}`],
+  }),
+  DEPLOYED,
+);
+refuses(
+  "approving the pool before it is addressed",
+  USDG,
+  approve(POOL),
+  DEPLOYED,
 );
 
 console.log(

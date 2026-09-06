@@ -36,6 +36,7 @@ const STOCK_METHODS = new Set([
   "openWithStock",
   "closeTicket",
 ]);
+const POOL_METHODS = new Set(["stake", "claim"]);
 const STOCK_ADDRESSES = new Set(
   STOCK_TOKENS.map((t) => t.address.toLowerCase()),
 );
@@ -131,6 +132,24 @@ const hedgeAbi = [
     inputs: [{ name: "ticketId", type: "uint256" }],
     outputs: [],
   },
+  {
+    type: "function",
+    name: "stake",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "id", type: "bytes32" },
+      { name: "side", type: "uint8" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "bytes32" }],
+    outputs: [],
+  },
 ] as const;
 
 export type HedgeContracts = {
@@ -140,6 +159,8 @@ export type HedgeContracts = {
   vault: string | null;
   /** HedgeStockCollateral, or null before it is deployed. */
   stockCollateral?: string | null;
+  /** HedgePool, or null before it is deployed. */
+  pool?: string | null;
 };
 
 /**
@@ -177,6 +198,7 @@ export function refuseSponsoredCall(
   const engine = contracts.engine?.toLowerCase() || null;
   const vault = contracts.vault?.toLowerCase() || null;
   const stock = contracts.stockCollateral?.toLowerCase() || null;
+  const pool = contracts.pool?.toLowerCase() || null;
   const router = RELAY_ROUTER.toLowerCase();
 
   // Selling a token for cash is the one flow where the trader picks the
@@ -209,14 +231,16 @@ export function refuseSponsoredCall(
       const spender = String(decoded.args?.[0] ?? "").toLowerCase();
       if (spender === router) return null;
       if (to !== USDG.toLowerCase()) return "That approval is not sponsored.";
-      if (spender && (spender === engine || spender === vault)) return null;
+      if (spender && (spender === engine || spender === vault || spender === pool)) {
+        return null;
+      }
       return "That approval is not sponsored.";
     }
     return "Invalid sponsored send.";
   }
 
-  if (!engine && !vault && !stock) return "That contract is not sponsored.";
-  if (to !== engine && to !== vault && to !== stock) {
+  if (!engine && !vault && !stock && !pool) return "That contract is not sponsored.";
+  if (to !== engine && to !== vault && to !== stock && to !== pool) {
     return "That contract is not sponsored.";
   }
 
@@ -232,6 +256,8 @@ export function refuseSponsoredCall(
       ? ENGINE_METHODS
       : to === vault
         ? VAULT_METHODS
-        : STOCK_METHODS;
+        : to === stock
+          ? STOCK_METHODS
+          : POOL_METHODS;
   return allowed.has(decoded.functionName) ? null : "That call is not sponsored.";
 }
