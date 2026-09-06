@@ -19,6 +19,7 @@ import {
   type StockToken,
 } from "../lib/stock-tokens";
 import { useEnsureCashWallet } from "../lib/wallet";
+import { TokenLogo } from "./CollateralPicker";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DiamondIcon } from "./icons";
 
@@ -356,12 +357,13 @@ function TokenRow({
             type="button"
             onClick={() => onSelect?.(token)}
             disabled={!onSelect}
-            className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition disabled:cursor-default ${
+            className={`inline-flex items-center gap-1.5 rounded-full py-1.5 pl-1.5 pr-3 text-[13px] font-semibold transition disabled:cursor-default ${
               active
                 ? "bg-gold text-black"
                 : "bg-[#1b1b1b] text-[#cfcfcf] hover:bg-[#2c2c2c] hover:text-white"
             }`}
           >
+            <TokenLogo src={token.logoUrl} symbol={token.symbol} />
             {token.symbol}
             {qty != null && qty > 0 ? (
               <span className="ml-1 font-medium opacity-70">

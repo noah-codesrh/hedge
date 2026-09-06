@@ -35,7 +35,7 @@ import {
   type SignPrivyAuthorization,
 } from "../sponsored-send";
 
-export type ConvertStep = "setup" | "debit" | "convert" | "fill";
+export type ConvertStep = "swap" | "setup" | "debit" | "convert" | "fill";
 
 export type LiveTradeInput = {
   amountUsdg: number;

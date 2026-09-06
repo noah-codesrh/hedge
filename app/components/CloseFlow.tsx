@@ -205,7 +205,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
           body={
             confirm.kind === "close"
               ? closeBody(confirm.position)
-              : fiat(confirm.pusd)
+              : `${fiat(confirm.pusd)} in USDG`
           }
           confirmLabel={
             confirm.kind === "close"
@@ -240,7 +240,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
                 : "Resolved"
               : "Cashed out"
           }
-          amount={fiat(done.usdg)}
+          amount={`${fiat(done.usdg)} USDG`}
           onClose={() => setDone(null)}
         />
       ) : null}
@@ -267,7 +267,7 @@ function closeBody(position: LivePosition) {
   if (isSettledPosition(position) && position.currentPrice <= 0.01) {
     return "This outcome paid $0.";
   }
-  return fiat(Math.max(0, position.currentValue));
+  return `${fiat(Math.max(0, position.currentValue))} in USDG`;
 }
 
 function closeLabel(position: LivePosition) {

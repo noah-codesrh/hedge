@@ -35,8 +35,22 @@ export async function loader({ request }: Route.LoaderArgs) {
     return { assets: [], error: "Missing wallet address" };
   }
   try {
-    const rows = await Promise.all(addresses.map((a) => listRobinhoodAssets(a)));
-    return { assets: mergeAssets(rows), error: null as string | null };
+    const rows = await Promise.all(
+      addresses.map((a) =>
+        listRobinhoodAssets(a).catch((err) => {
+          console.warn("[hedge] assets read failed", a, err);
+          return [] as Awaited<ReturnType<typeof listRobinhoodAssets>>;
+        }),
+      ),
+    );
+    const assets = mergeAssets(rows);
+    if (assets.length === 0) {
+      return {
+        assets: [],
+        error: "Could not read Robinhood Chain. Try again in a moment.",
+      };
+    }
+    return { assets, error: null as string | null };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load assets";
     return {

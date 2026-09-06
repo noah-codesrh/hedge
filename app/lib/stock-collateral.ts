@@ -404,6 +404,18 @@ export async function readStockHoldings(
   return rows;
 }
 
+export async function readWalletStock(user: string, token: string) {
+  if (!user || !token) return 0n;
+  return client
+    .readContract({
+      address: token as Hex,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [user as Hex],
+    })
+    .catch(() => 0n);
+}
+
 export async function readDeposited(user: string, token: string) {
   if (!STOCK_COLLATERAL_ADDRESS) return 0n;
   return client.readContract({

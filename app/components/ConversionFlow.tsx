@@ -9,6 +9,7 @@ export type { ConvertStep };
 export type FlowMode = "buy" | "close" | "cashout";
 
 const STEP_PCT: Record<string, number> = {
+  swap: 22,
   setup: 12,
   debit: 36,
   sell: 18,

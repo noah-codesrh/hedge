@@ -104,6 +104,17 @@ export function toHexQuantity(n: bigint) {
 
 const RH_RPCS = [RH_RPC_FALLBACK, RH_RPC];
 
+/**
+ * Cloudflare 403s Node's default fetch User-Agent (`node` / empty). The same
+ * RPCs answer a browser. Cash, ETH and WETH reads all go through here, so a
+ * blocked hop looks like a $0 wallet rather than an error.
+ */
+const CHAIN_FETCH_HEADERS = {
+  Accept: "application/json",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+};
+
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
   let last: Error | null = null;
@@ -111,10 +122,13 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...CHAIN_FETCH_HEADERS },
         body,
       });
       const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`rpc ${res.status}`);
+      }
       if (text.trimStart().startsWith("<")) {
         throw new Error("rpc returned html");
       }
@@ -131,6 +145,23 @@ async function rpc<T>(method: string, params: unknown[]): Promise<T> {
 
 function encodeBalanceOf(owner: string) {
   return `0x70a08231${owner.replace(/^0x/, "").toLowerCase().padStart(64, "0")}`;
+}
+
+async function explorerTokenRaw(owner: string, token: string) {
+  const res = await fetch(
+    `${RH_EXPLORER}/api/v2/addresses/${owner}/token-balances`,
+    { headers: CHAIN_FETCH_HEADERS },
+  );
+  if (!res.ok) throw new Error(`explorer ${res.status}`);
+  const rows = (await res.json()) as {
+    value?: string;
+    token?: { address_hash?: string };
+  }[];
+  if (!Array.isArray(rows)) throw new Error("explorer shape");
+  const want = token.toLowerCase();
+  const row = rows.find((r) => r.token?.address_hash?.toLowerCase() === want);
+  if (!row?.value) return "0x0";
+  return `0x${BigInt(row.value).toString(16)}`;
 }
 
 let ethPriceCache: { at: number; usd: number } | null = null;
@@ -247,7 +278,7 @@ export async function listOwnedTokens(owner: string): Promise<OwnedToken[]> {
   const erc20s = async (): Promise<OwnedToken[]> => {
     const res = await fetch(
       `${RH_EXPLORER}/api/v2/addresses/${owner}/token-balances`,
-      { headers: { Accept: "application/json" } },
+      { headers: CHAIN_FETCH_HEADERS },
     );
     if (!res.ok) throw new Error(`explorer ${res.status}`);
     const rows = (await res.json()) as BlockscoutBalance[];
@@ -314,12 +345,17 @@ export async function listOwnedTokens(owner: string): Promise<OwnedToken[]> {
 
 export async function listRobinhoodAssets(owner: string): Promise<ChainAsset[]> {
   const data = encodeBalanceOf(owner);
-  const [ethHex, usdgHex, wethHex, ethUsd] = await Promise.all([
-    rpc<string>("eth_getBalance", [owner, "latest"]),
-    rpc<string>("eth_call", [{ to: USDG, data }, "latest"]),
-    rpc<string>("eth_call", [{ to: WETH, data }, "latest"]),
+  const [ethHex, usdgRpc, wethHex, ethUsd] = await Promise.all([
+    rpc<string>("eth_getBalance", [owner, "latest"]).catch(() => "0x0"),
+    rpc<string>("eth_call", [{ to: USDG, data }, "latest"]).catch(
+      () => null as string | null,
+    ),
+    rpc<string>("eth_call", [{ to: WETH, data }, "latest"]).catch(() => "0x0"),
     ethUsdPrice(),
   ]);
+  const usdgHex =
+    usdgRpc ??
+    (await explorerTokenRaw(owner, USDG).catch(() => "0x0"));
 
   const ethRaw = BigInt(ethHex || "0x0").toString();
   const usdgRaw = BigInt(usdgHex || "0x0").toString();

@@ -570,6 +570,10 @@ export function LeveragePositionCard({
           {busy ? STAGE_LABEL[stage ?? "submitting"] : "Close"}
         </button>
       </div>
+      <p className="pt-2 text-center text-[11px] leading-snug text-muted">
+        Closes to USDG
+        {position.stock ? ". Leftover stock unlocks." : "."}
+      </p>
 
       {shareOpen ? (
         <PnlShareModal

@@ -277,25 +277,29 @@ function ProfileInner() {
           <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
             {assetsLoading && !usdg ? "…" : fiat(total)}
           </p>
-          <p className="mt-1 text-[13px] text-muted">
-            {fiat(cash)} cash
-            {portfolioLoading
-              ? " · …"
-              : ` · ${fiat(positionsValue)} in positions`}
-            {!portfolioLoading && positionsPnl != null ? (
-              <span
-                className={`ml-1.5 font-semibold tabular-nums ${
-                  pnlTone(positionsPnl) === "up"
-                    ? "text-up"
-                    : pnlTone(positionsPnl) === "down"
-                      ? "text-down"
-                      : ""
-                }`}
-              >
-                · {pnlLabel(positionsPnl)} {signedFiat(positionsPnl)}
-              </span>
-            ) : null}
-          </p>
+          {assetsError ? (
+            <p className="mt-1 text-[13px] text-down">{assetsError}</p>
+          ) : (
+            <p className="mt-1 text-[13px] text-muted">
+              {fiat(cash)} cash
+              {portfolioLoading
+                ? " · …"
+                : ` · ${fiat(positionsValue)} in positions`}
+              {!portfolioLoading && positionsPnl != null ? (
+                <span
+                  className={`ml-1.5 font-semibold tabular-nums ${
+                    pnlTone(positionsPnl) === "up"
+                      ? "text-up"
+                      : pnlTone(positionsPnl) === "down"
+                        ? "text-down"
+                        : ""
+                  }`}
+                >
+                  · {pnlLabel(positionsPnl)} {signedFiat(positionsPnl)}
+                </span>
+              ) : null}
+            </p>
+          )}
           <BalanceSpark points={spark} pnl={positionsPnl ?? 0} />
           <div className="mt-auto grid grid-cols-3 gap-2 border-t border-white/5 pt-4">
             <Stat label="Cash" value={fiat(cash)} />

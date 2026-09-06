@@ -47,16 +47,18 @@ import {
   readDeskState,
   readStockHoldings,
   stockToNumber,
+  toStockRaw,
   type DeskState,
   type StockHolding,
 } from "../lib/stock-collateral";
 import {
-  STOCK_TOKENS,
   stockCollateralIsLive,
   type StockToken,
 } from "../lib/stock-tokens";
+import { quoteSwapToCash } from "../lib/trade/swap";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { useBook } from "./Book";
+import { CollateralPicker } from "./CollateralPicker";
 import { useCloseFlow } from "./CloseFlow";
 import { ConversionFlow, FlowSuccess, type ConvertStep } from "./ConversionFlow";
 import {
@@ -187,6 +189,7 @@ function TradePanelView({
     pusd: number;
     shares: number;
     side: Side;
+    stockLabel?: string;
   } | null>(null);
   const [done, setDone] = useState<{
     title?: string;
@@ -285,7 +288,7 @@ function TradePanelView({
   const [desk, setDesk] = useState<DeskState | null>(null);
 
   useEffect(() => {
-    if (!leverageConfig || !cashAddress) return;
+    if (!cashAddress) return;
     let alive = true;
     const load = () => {
       void Promise.all([
@@ -299,11 +302,14 @@ function TradePanelView({
     };
     load();
     const timer = setInterval(load, 30_000);
+    const onPos = () => load();
+    window.addEventListener("hedge:positions", onPos);
     return () => {
       alive = false;
       clearInterval(timer);
+      window.removeEventListener("hedge:positions", onPos);
     };
-  }, [leverageConfig, cashAddress]);
+  }, [cashAddress]);
 
   const stockRow = collateral
     ? holdings.find(
@@ -329,19 +335,77 @@ function TradePanelView({
   const [leverStage, setLeverStage] = useState<TradeStage | null>(null);
 
   // Falling out of the band or switching to a plain market must not strand a
-  // leverage setting the trader can no longer act on.
+  // leverage setting the trader can no longer act on. Listed stock still
+  // pays for a 1x buy — it converts to USDG first.
   useEffect(() => {
-    if (!leverageOffered) {
-      setLeverage(1);
-      setCollateral(null);
-    }
+    if (!leverageOffered) setLeverage(1);
   }, [leverageOffered]);
 
   const stockMargin =
-    usingStock && amount > 0 && stockRow
+    usingStock && levered && amount > 0 && stockRow
       ? quoteStockMarginLocal(amount, stockRow.markUsd6, haircutBps)
       : null;
-  const marginUsd = usingStock ? (stockMargin ?? 0) : amount;
+  const [swapPreview, setSwapPreview] = useState<number | null>(null);
+  useEffect(() => {
+    if (
+      !usingStock ||
+      levered ||
+      amount <= 0 ||
+      !collateral ||
+      !cashAddress ||
+      !getAccessToken
+    ) {
+      setSwapPreview(null);
+      return;
+    }
+    const raw = toStockRaw(amount, collateral.decimals);
+    if (raw <= 0n) {
+      setSwapPreview(null);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await getAccessToken();
+          if (!token || !alive) return;
+          const quote = await quoteSwapToCash({
+            accessToken: token,
+            address: cashAddress,
+            token: {
+              address: collateral.address,
+              symbol: collateral.symbol,
+              decimals: collateral.decimals,
+            },
+            amountRaw: raw,
+          });
+          if (alive) setSwapPreview(quote.usdgOut);
+        } catch {
+          if (alive) setSwapPreview(null);
+        }
+      })();
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [
+    usingStock,
+    levered,
+    amount,
+    collateral,
+    cashAddress,
+    getAccessToken,
+  ]);
+  const stockUsdEst =
+    usingStock && amount > 0
+      ? (swapPreview ?? (stockMark > 0 ? amount * stockMark : 0))
+      : 0;
+  const marginUsd = usingStock
+    ? levered
+      ? (stockMargin ?? 0)
+      : stockUsdEst
+    : amount;
 
   const leverageQuote = levered
     ? quoteLeverage(marginUsd, effectiveLeverage, market.yes.price, side === "yes")
@@ -480,9 +544,10 @@ function TradePanelView({
   const books = useOrderBooks([market.yes.tokenId, market.no.tokenId]);
   const tokenId = side === "yes" ? market.yes.tokenId : market.no.tokenId;
   const book = tokenId ? books[tokenId] : undefined;
-  const fill = book && amount > 0 ? fillBuy(book.asks, amount) : null;
+  const bookSpend = usingStock && !levered ? stockUsdEst : amount;
+  const fill = book && bookSpend > 0 && !levered ? fillBuy(book.asks, bookSpend) : null;
   const quoted = fill && fill.shares > 0 ? fill : null;
-  const shares = quoted ? quoted.shares : price > 0 ? amount / price : 0;
+  const shares = quoted ? quoted.shares : price > 0 ? bookSpend / price : 0;
   const avgPrice = quoted ? quoted.avgPrice : price;
   // What closing straight back into the bids would return: the round-trip cost
   // of the spread, which is there even when the market has not moved.
@@ -502,9 +567,6 @@ function TradePanelView({
     setCollateral(next);
     setAmount(0);
     if (next) setTicketKind("market");
-    if (next && leverage < 2) {
-      setLeverage(Math.min(2, maxLeverage));
-    }
   };
 
   // Also catches stepping up the multiple with an amount already typed, which
@@ -580,7 +642,7 @@ function TradePanelView({
           );
         } else {
           const { openLeveragePosition } = await import("../lib/leverage-actions");
-          openHash = await openLeveragePosition(
+          openHash = (await openLeveragePosition(
             ctx,
             {
               marketSlug: leverageConfig.marketSlug,
@@ -589,7 +651,7 @@ function TradePanelView({
               leverage: effectiveLeverage,
             },
             setLeverStage,
-          );
+          )) ?? undefined;
         }
 
         setAmount(0);
@@ -654,21 +716,23 @@ function TradePanelView({
     // Never let a levered ticket fall through to the unlevered Polymarket
     // path: the trader would be filled at 1x on an order that says otherwise.
     if (levered && !leverageIsLive) return;
-    if (usingStock && !levered) return;
     if (levered) return openLevered();
-    const quote = quoteConversion(amount);
     const ticket = {
       amount,
-      pusd: quote.pusd,
+      pusd: 0,
       shares,
       side,
       entryPrice: price,
+      stockLabel: collateral
+        ? `${formatStockQty(amount)} ${collateral.symbol}`
+        : undefined,
     };
     setBusy(true);
     setConvertError(null);
     setPending(ticket);
-    setConvertStep("setup");
+    setConvertStep(collateral ? "swap" : "setup");
     void (async () => {
+      let cashed = 0;
       try {
         const tokenId =
           ticket.side === "yes" ? market.yes.tokenId : market.no.tokenId;
@@ -687,10 +751,48 @@ function TradePanelView({
         if (!signerWallet || !isEmbeddedWallet(signerWallet.walletClientType)) {
           throw new Error("Could not create a trading wallet.");
         }
+
+        let amountUsdg = ticket.amount;
+        if (collateral) {
+          const { convertStockToCash } = await import("../lib/stock-to-cash");
+          const swapped = await convertStockToCash({
+            accessToken,
+            wallet: signerCash,
+            address: signerCash.address,
+            token: collateral,
+            amount: ticket.amount,
+            holding: stockRow,
+            signAuthorization,
+            onStep: () => setConvertStep("swap"),
+          });
+          amountUsdg = swapped.usdg;
+          cashed = amountUsdg;
+          if (!(amountUsdg > 0.01)) {
+            throw new Error(
+              "That swap returned too little USDG to buy with. Try a larger size.",
+            );
+          }
+          const quote = quoteConversion(amountUsdg);
+          setPending((p) =>
+            p
+              ? {
+                  ...p,
+                  amount: amountUsdg,
+                  pusd: quote.pusd,
+                  stockLabel: undefined,
+                }
+              : p,
+          );
+          setConvertStep("setup");
+        } else {
+          const quote = quoteConversion(amountUsdg);
+          setPending((p) => (p ? { ...p, pusd: quote.pusd } : p));
+        }
+
         const { runLiveTrade } = await import("../lib/trade/live");
         const result = await runLiveTrade(
           {
-            amountUsdg: ticket.amount,
+            amountUsdg,
             tokenId,
             side: ticket.side,
             marketPrice: ticket.entryPrice,
@@ -754,8 +856,12 @@ function TradePanelView({
       } catch (e) {
         notifyBalancesChanged();
         refresh();
+        const base =
+          e instanceof Error ? e.message : "Conversion failed.";
         setConvertError(
-          e instanceof Error ? e.message : "Conversion failed.",
+          cashed > 0.01
+            ? `${base} ${fiat(cashed)} USDG is in your wallet.`
+            : base,
         );
       } finally {
         setBusy(false);
@@ -856,7 +962,6 @@ function TradePanelView({
             value={effectiveLeverage}
             max={maxLeverage}
             onChange={(n) => {
-              if (n === 1) pickCollateral(null);
               setLeverage(n);
             }}
             offered={leverageOffered}
@@ -869,13 +974,12 @@ function TradePanelView({
           />
         ) : null}
 
-        {leverageConfig ? (
-          <CollateralPicker
-            selected={collateral}
-            holdings={holdings}
-            onSelect={pickCollateral}
-          />
-        ) : null}
+        <CollateralPicker
+          selected={collateral}
+          holdings={holdings}
+          onSelect={pickCollateral}
+          levered={levered}
+        />
 
         <div className="rounded-2xl bg-[#252525] p-3 sm:p-4">
           <div className="flex items-center justify-between gap-3">
@@ -901,9 +1005,11 @@ function TradePanelView({
             {usingStock
               ? stockAvail <= 0
                 ? `No ${collateral.symbol}`
-                : stockMargin != null
+                : levered && stockMargin != null
                   ? `${formatStockQty(stockAvail)} ${collateral.symbol} · ${fiat(stockMargin)} margin`
-                  : `${formatStockQty(stockAvail)} ${collateral.symbol}`
+                  : stockUsdEst > 0
+                    ? `${formatStockQty(stockAvail)} ${collateral.symbol} · ~${fiat(stockUsdEst)} USDG`
+                    : `${formatStockQty(stockAvail)} ${collateral.symbol}`
               : cashMax <= 0
                 ? "No USDG · use NVDA, SPCX, AAPL, GME, or TSLA"
                 : marginCeiling < cashMax
@@ -964,7 +1070,7 @@ function TradePanelView({
 
         {/* The conversion overlay carries errors for the Polymarket path, but
             a levered open never opens one, so it reports inline. */}
-        {levered && convertError && !convertStep ? (
+        {convertError && !convertStep ? (
           <p className="mt-3 rounded-2xl bg-down/10 px-3 py-2.5 text-[13px] leading-snug text-down">
             {convertError}
           </p>
@@ -999,7 +1105,7 @@ function TradePanelView({
             : levered && !leverageIsLive
               ? "Leverage isn’t live yet"
             : usingStock && stockAvail <= 0
-              ? `Deposit ${collateral.symbol} on Earn`
+              ? `Add ${collateral.symbol} to this wallet`
             : !usingStock && cashMax <= 0
               ? hasStock
                 ? "Pick a stock or deposit USDG"
@@ -1007,12 +1113,16 @@ function TradePanelView({
               : busy
                 ? levered
                   ? STAGE_LABEL[leverStage ?? "submitting"]
-                  : "Buying…"
+                  : usingStock
+                    ? `Selling ${collateral.symbol}…`
+                    : "Buying…"
                 : usingLimit
                   ? `Rest ${effectiveLeverage}x ${side === "yes" ? market.yes.label : market.no.label} at ${cents(limitPrice || market.yes.price)}`
                   : levered
                   ? `${effectiveLeverage}x ${side === "yes" ? market.yes.label : market.no.label}`
-                  : `Buy ${side === "yes" ? market.yes.label : market.no.label}`}
+                  : usingStock
+                    ? `Buy ${side === "yes" ? market.yes.label : market.no.label} with ${collateral.symbol}`
+                    : `Buy ${side === "yes" ? market.yes.label : market.no.label}`}
         </button>
 
         {leveredOrders.length > 0 && onCancelOrder ? (
@@ -1118,6 +1228,12 @@ function TradePanelView({
                 Only {fiat(quoted.spent)} of this fits the book right now.
               </p>
             ) : null}
+            {usingStock ? (
+              <p className="pt-0.5 text-[12px] leading-snug">
+                Sells {formatStockQty(amount)} {collateral.symbol} into USDG
+                first. Close pays USDG.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1125,7 +1241,7 @@ function TradePanelView({
       {convertStep && pending ? (
         <ConversionFlow
           mode="buy"
-          amount={fiat(pending.amount)}
+          amount={pending.stockLabel ?? fiat(pending.amount)}
           step={convertStep}
           error={convertError}
           onDismiss={() => {
@@ -1219,80 +1335,6 @@ const STAGE_LABEL: Record<TradeStage, string> = {
   submitting: "Opening…",
 };
 
-function CollateralPicker({
-  selected,
-  holdings,
-  onSelect,
-}: {
-  selected: StockToken | null;
-  holdings: StockHolding[];
-  onSelect: (token: StockToken | null) => void;
-}) {
-  return (
-    <div className="mb-4">
-      <p className="mb-2 text-[13px] text-muted">Margin</p>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => onSelect(null)}
-          className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-            selected == null
-              ? "bg-gold text-black"
-              : "bg-[#1b1b1b] text-[#cfcfcf] hover:bg-[#2c2c2c] hover:text-white"
-          }`}
-        >
-          USDG
-        </button>
-        {STOCK_TOKENS.map((token) => {
-          const row = holdings.find(
-            (h) => h.token.address.toLowerCase() === token.address.toLowerCase(),
-          );
-          const qty = row
-            ? stockToNumber(row.wallet + row.free, token.decimals)
-            : 0;
-          const active =
-            selected?.address.toLowerCase() === token.address.toLowerCase();
-          return (
-            <button
-              key={token.address}
-              type="button"
-              onClick={() => onSelect(token)}
-              className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition ${
-                active
-                  ? "bg-gold text-black"
-                  : "bg-[#1b1b1b] text-[#cfcfcf] hover:bg-[#2c2c2c] hover:text-white"
-              }`}
-            >
-              {token.symbol}
-              {qty > 0 ? (
-                <span className="ml-1 font-medium opacity-70">
-                  {formatStockQty(qty, 2)}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-      {selected && !stockCollateralIsLive ? (
-        <p className="mt-2 text-[11px] leading-snug text-gold">
-          The stock desk is not live yet. You can size a ticket; opening waits
-          on the contract.
-        </p>
-      ) : selected ? (
-        <p className="mt-2 text-[11px] leading-snug text-muted">
-          Locks {selected.symbol} and posts USDG from the desk. Same shares
-          come back on a win; a loss seizes stock at the mark.
-        </p>
-      ) : (
-        <p className="mt-2 text-[11px] leading-snug text-muted">
-          1x is USDG on the book. 2x to 4x can lock listed stock instead of
-          cash.
-        </p>
-      )}
-    </div>
-  );
-}
-
 function LeverageSelector({
   value,
   max,
@@ -1371,7 +1413,7 @@ function LeverageSelector({
             ? `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}. This market has drifted outside that, so 1x still trades on the book.`
             : value > 1
               ? "Borrowed from the Hedge vault. Your margin is at risk before the vault's."
-              : "1x is a normal unlevered buy."}
+              : "1x is a normal unlevered buy. Listed stock sells into USDG first."}
       </p>
 
       {nextTier && !paused ? (

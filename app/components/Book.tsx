@@ -134,7 +134,10 @@ function BookInner({ children }: { children: React.ReactNode }) {
         if (text.trimStart().startsWith("<")) {
           throw new Error("assets html");
         }
-        return JSON.parse(text) as { assets?: { symbol: string; balance: number }[] };
+        return JSON.parse(text) as {
+          assets?: { symbol: string; balance: number }[];
+          error?: string | null;
+        };
       }),
       owners.length
         ? fetch(
@@ -156,11 +159,18 @@ function BookInner({ children }: { children: React.ReactNode }) {
           data,
           portfolio,
         ]: [
-          { assets?: { symbol: string; balance: number }[] },
+          {
+            assets?: { symbol: string; balance: number }[];
+            error?: string | null;
+          },
           { positionsValue?: number; open?: LivePosition[] },
         ]) => {
           const usdg = data.assets?.find((a) => a.symbol === "USDG");
-          setCash(usdg?.balance ?? 0);
+          if (usdg) {
+            setCash(usdg.balance);
+          } else if (!data.error) {
+            setCash(0);
+          }
           setPositionsValue(
             typeof portfolio.positionsValue === "number"
               ? portfolio.positionsValue

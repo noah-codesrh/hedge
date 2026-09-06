@@ -8,8 +8,10 @@ import {
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { CheckIcon } from "./icons";
 import { ModalShell } from "./ModalShell";
+import { CollateralPicker } from "./CollateralPicker";
 import {
   NATIVE_MAX_STAKE,
+  NATIVE_MIN_STAKE,
   NATIVE_USER_CAP,
   multipleIfWin,
   nativePhase,
@@ -28,7 +30,15 @@ import {
   isEmbeddedWallet,
   primaryWalletAddress,
   robinhoodProvider,
+  useEnsureCashWallet,
 } from "../lib/wallet";
+import {
+  formatStockQty,
+  readStockHoldings,
+  stockToNumber,
+  type StockHolding,
+} from "../lib/stock-collateral";
+import type { StockToken } from "../lib/stock-tokens";
 
 type Mine = {
   side: NativeSide;
@@ -138,8 +148,8 @@ function StakeCopy({
         {phase === "open" ? "Place a ticket" : phase}
       </p>
       <p className="mt-2 text-sm text-muted">
-        $1–${NATIVE_MAX_STAKE} USDG. One ticket. Live tape {a} {pct(pA)} · {b}{" "}
-        {pct(1 - pA)}. Pools pay.
+        $1–${NATIVE_MAX_STAKE} USDG, or listed stock sold into USDG. One ticket.
+        Live tape {a} {pct(pA)} · {b} {pct(1 - pA)}. Pools pay USDG.
       </p>
       {mine ? (
         <p className="mt-3 text-sm text-white">
@@ -170,8 +180,12 @@ function NativeStakeInner({
   const { wallets } = useWallets();
   const { generateAuthorizationSignature } = useAuthorizationSignature();
   const { openModal } = useAuthModal();
+  const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
+  const cashWallet = findWallet(wallets, cashAddress);
   const [side, setSide] = useState<NativeSide>(initialSide);
   const [amount, setAmount] = useState(String(NATIVE_MAX_STAKE));
+  const [collateral, setCollateral] = useState<StockToken | null>(null);
+  const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mine, setMine] = useState(initialMine);
@@ -179,6 +193,43 @@ function NativeStakeInner({
   const [receipt, setReceipt] = useState<Mine>(null);
   const [recoverHash, setRecoverHash] = useState("");
   const phase = nativePhase(market);
+
+  useEffect(() => {
+    if (!cashAddress) return;
+    let alive = true;
+    const load = () => {
+      void readStockHoldings(cashAddress).then((next) => {
+        if (alive) setHoldings(next);
+      });
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    window.addEventListener("hedge:positions", load);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("hedge:positions", load);
+    };
+  }, [cashAddress]);
+
+  const stockRow = collateral
+    ? holdings.find(
+        (h) =>
+          h.token.address.toLowerCase() === collateral.address.toLowerCase(),
+      )
+    : null;
+  const stockAvail = stockRow
+    ? stockToNumber(stockRow.wallet + stockRow.free, stockRow.token.decimals)
+    : 0;
+  const stockMark = stockRow ? Number(stockRow.markUsd6) / 1e6 : 0;
+  const usingStock = collateral != null;
+  const qty = Number(amount) || 0;
+  const stakePreview = usingStock
+    ? Math.min(
+        NATIVE_MAX_STAKE,
+        Math.max(0, stockMark > 0 ? qty * stockMark : 0),
+      )
+    : qty;
 
   useEffect(() => {
     setPending(readPending(market.slug));
@@ -204,9 +255,9 @@ function NativeStakeInner({
   const b = sideLabel(market.kind, "b", market.token_a, market.token_b);
   const pA = tapeImpliedP(market);
   const preview = payoutIfWin(
-    Number(amount) || 0,
-    side === "a" ? market.poolA + (Number(amount) || 0) : market.poolA,
-    side === "b" ? market.poolB + (Number(amount) || 0) : market.poolB,
+    stakePreview,
+    side === "a" ? market.poolA + stakePreview : market.poolA,
+    side === "b" ? market.poolB + stakePreview : market.poolB,
   );
 
   const booked = (
@@ -258,13 +309,37 @@ function NativeStakeInner({
       }
       const token = await getAccessToken();
       if (!token) throw new Error("Sign in again.");
-      const from = primaryWalletAddress(user, wallets);
-      if (!from) throw new Error("Connect a wallet that holds USDG.");
-      const qty = Number(amount);
+      const signer = (await ensureCashWallet()) ?? cashWallet;
+      const from = signer?.address ?? primaryWalletAddress(user, wallets);
+      if (!from || !signer) throw new Error("Connect a wallet that holds USDG.");
+      let qty = Number(amount);
+      if (collateral) {
+        if (qty <= 0) throw new Error("Enter an amount first.");
+        const { convertStockToCash } = await import("../lib/stock-to-cash");
+        const swapped = await convertStockToCash({
+          accessToken: token,
+          wallet: signer,
+          address: from,
+          token: collateral,
+          amount: qty,
+          holding: stockRow,
+          signAuthorization: async (payload) => {
+            const { signature } = await generateAuthorizationSignature(payload);
+            if (!signature) throw new Error("Could not authorize this wallet.");
+            return signature;
+          },
+        });
+        qty = Math.min(NATIVE_MAX_STAKE, swapped.usdg);
+        if (qty < NATIVE_MIN_STAKE) {
+          throw new Error(
+            `That swap left ${fiat(swapped.usdg)} USDG. Tickets are ${fiat(NATIVE_MIN_STAKE)}–${fiat(NATIVE_MAX_STAKE)}.`,
+          );
+        }
+      }
       const raw = toUsdgRaw(qty);
       if (raw <= 0n) throw new Error("Enter a stake.");
       const data = encodeErc20Transfer(escrowWallet, raw);
-      const wallet = findWallet(wallets, from);
+      const wallet = signer;
       let hash: string | null = null;
       if (wallet && !isEmbeddedWallet(wallet.walletClientType)) {
         const provider = await robinhoodProvider(wallet);
@@ -304,10 +379,11 @@ function NativeStakeInner({
         {phase === "open" ? "Place a ticket" : phase}
       </p>
       <p className="mt-2 text-sm leading-relaxed text-muted">
-        USDG in, USDG out. Odds are the live Dexscreener tape. The pools still
-        pay. Desk cap {fiat(NATIVE_USER_CAP)}. Ticket cap {fiat(NATIVE_MAX_STAKE)}.
+        USDG in, USDG out. You can sell NVDA, SPCX, AAPL, GME, or TSLA into
+        the ticket. Odds are the live Dexscreener tape. The pools still pay.
+        Desk cap {fiat(NATIVE_USER_CAP)}. Ticket cap {fiat(NATIVE_MAX_STAKE)}.
         One ticket per wallet. At expiry the tape settles and winners are paid
-        automatically.
+        USDG.
       </p>
       {!escrowWallet || !payoutLive ? (
         <p className="mt-3 text-sm text-gold">Pool is under maintenance.</p>
@@ -377,8 +453,17 @@ function NativeStakeInner({
         </p>
       ) : (
         <>
+          <CollateralPicker
+            selected={collateral}
+            holdings={holdings}
+            onSelect={(next) => {
+              setCollateral(next);
+              setAmount(next ? "" : String(NATIVE_MAX_STAKE));
+            }}
+            kind="pool"
+          />
           <label className="mt-4 block text-[12px] font-medium text-muted">
-            Stake (USDG)
+            {usingStock ? `Stake (${collateral.symbol})` : "Stake (USDG)"}
           </label>
           <input
             value={amount}
@@ -387,7 +472,17 @@ function NativeStakeInner({
             className="mt-1.5 w-full rounded-2xl border border-white/10 bg-[#0f0f0f] px-4 py-3 outline-none focus:border-gold/60"
           />
           <p className="mt-2 text-[12px] text-muted">
+            {usingStock
+              ? stockAvail <= 0
+                ? `No ${collateral.symbol} in this wallet.`
+                : `Up to ${formatStockQty(stockAvail)} ${collateral.symbol}${
+                    stakePreview > 0
+                      ? ` · ~${fiat(stakePreview)} USDG ticket`
+                      : ""
+                  }. `
+              : ""}
             If {side === "a" ? a : b} hits, this ticket pays about {fiat(preview)}.
+            Winnings pay USDG.
           </p>
           {pending ? (
             <button
@@ -426,11 +521,18 @@ function NativeStakeInner({
                 saving ||
                 phase !== "open" ||
                 !tracked ||
-                !escrowWallet
+                !escrowWallet ||
+                (usingStock && (qty <= 0 || stockAvail < qty))
               }
               className="mt-4 w-full rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-black disabled:opacity-40"
             >
-              {saving ? "Sending USDG" : `Stake ${side === "a" ? a : b}`}
+              {saving
+                ? usingStock
+                  ? `Selling ${collateral.symbol}`
+                  : "Sending USDG"
+                : usingStock
+                  ? `Stake ${side === "a" ? a : b} with ${collateral.symbol}`
+                  : `Stake ${side === "a" ? a : b}`}
             </button>
           )}
         </>
@@ -454,6 +556,10 @@ function NativeStakeInner({
               const from = primaryWalletAddress(user, wallets);
               const hash = recoverHash.trim();
               const qty = Number(amount);
+              if (collateral) {
+                setError("Switch to USDG to record a cash ticket.");
+                return;
+              }
               if (!from || !hash) {
                 setError("Paste the stake transaction hash.");
                 return;
