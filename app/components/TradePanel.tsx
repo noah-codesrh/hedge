@@ -219,49 +219,46 @@ function TradePanelView({
   // own as LPs deposit. A trader gets whichever is lower.
   const [engineState, setEngineState] = useState<EngineState | null>(null);
   const [openingWarm, setOpeningWarm] = useState(false);
+  // Unpause on open and on each poll. A later read that still sees the old
+  // pause (or a failed RPC that used to write `null`) was snapping 2x–4x off
+  // after ~30s. Keep the last good snapshot. Skip the position sweep on load.
   useEffect(() => {
     if (!leverageConfig || !leverageIsLive) return;
     let alive = true;
-    const load = () => {
-      void readEngineState().then((s) => {
-        if (alive) setEngineState(s);
-      });
-    };
-    load();
-    const timer = setInterval(load, openingWarm ? 2_000 : 30_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [leverageConfig, openingWarm]);
+    let first = true;
 
-  // Unpause first so the selector is usable. Push this market's price after.
-  // Skip the position sweep on load; that walk is what made the panel sit on
-  // Unavailable for a minute.
-  useEffect(() => {
-    if (!leverageConfig || !leverageIsLive) return;
-    if (!getAccessToken) return;
-    let alive = true;
-    setOpeningWarm(true);
-    void (async () => {
-      try {
-        const token = await getAccessToken();
-        if (!token || !alive) return;
-        await ensureOpeningLive(token);
-        if (!alive) return;
-        const next = await readEngineState();
-        if (alive && next) setEngineState(next);
+    const load = async (refreshPrice: boolean) => {
+      let token: string | null = null;
+      if (getAccessToken) {
+        try {
+          token = await getAccessToken();
+          if (token && alive) await ensureOpeningLive(token);
+        } catch {
+          /* stay paused if the reporter cannot sign */
+        }
+      }
+      const next = await readEngineState();
+      if (!alive) return;
+      if (next) setEngineState(next);
+      if (refreshPrice && token && leverageConfig) {
         void ensureOracleFresh(token, [leverageConfig.marketSlug], {
           sweep: false,
         }).catch(() => {});
-      } catch {
-        /* stay paused if the reporter cannot sign */
-      } finally {
-        if (alive) setOpeningWarm(false);
       }
-    })();
+    };
+
+    setOpeningWarm(true);
+    void load(true).finally(() => {
+      if (!alive) return;
+      first = false;
+      setOpeningWarm(false);
+    });
+    const timer = setInterval(() => {
+      if (!first) void load(false);
+    }, 30_000);
     return () => {
       alive = false;
+      clearInterval(timer);
     };
   }, [getAccessToken, leverageConfig]);
 
@@ -270,15 +267,15 @@ function TradePanelView({
     void limitOrdersLive().then(setLimitsOn);
   }, [leverageConfig]);
 
-  const leverageOffered =
-    Boolean(leverageConfig) &&
-    tradeable &&
-    onBand &&
-    !(engineState?.openingPaused ?? false);
+  const listedMax = leverageConfig?.maxLeverage ?? 1;
+  const chainMax = engineState?.maxLeverage ?? 0;
   const maxLeverage = Math.min(
-    leverageConfig?.maxLeverage ?? 1,
-    engineState?.maxLeverage ?? leverageConfig?.maxLeverage ?? 1,
+    listedMax,
+    chainMax >= 1 ? chainMax : listedMax,
   );
+  const vaultPaused = Boolean(engineState?.openingPaused) && !openingWarm;
+  const leverageOffered =
+    Boolean(leverageConfig) && tradeable && onBand && !vaultPaused;
   const [ticketKind, setTicketKind] = useState<"market" | "limit">("market");
   const [limitPrice, setLimitPrice] = useState(0);
   const [limitsOn, setLimitsOn] = useState(leverageIsLive);
@@ -335,11 +332,11 @@ function TradePanelView({
   const [leverStage, setLeverStage] = useState<TradeStage | null>(null);
 
   // Falling out of the band or switching to a plain market must not strand a
-  // leverage setting the trader can no longer act on. Listed stock still
-  // pays for a 1x buy — it converts to USDG first.
+  // leverage setting the trader can no longer act on. A pause poll must not
+  // snap a 2x ticket back to 1x. Listed stock still pays for a 1x buy.
   useEffect(() => {
-    if (!leverageOffered) setLeverage(1);
-  }, [leverageOffered]);
+    if (!leverageConfig || !tradeable || !onBand) setLeverage(1);
+  }, [leverageConfig, tradeable, onBand]);
 
   const stockMargin =
     usingStock && levered && amount > 0 && stockRow
@@ -969,7 +966,7 @@ function TradePanelView({
             offBand={!onBand}
             engine={engineState}
             reserveNeeded={reserveNeeded}
-            paused={engineState?.openingPaused ?? false}
+            paused={vaultPaused}
             warming={openingWarm}
           />
         ) : null}
