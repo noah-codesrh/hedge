@@ -243,13 +243,25 @@ export function MobileMenu({
               <ChevronRight />
             </span>
           </Link>
+          <Link
+            to="/app"
+            prefetch="intent"
+            onClick={close}
+            style={stagger(5)}
+            className={item(5)}
+          >
+            <span className="font-semibold text-gold">App waitlist</span>
+            <span className="text-gold/50">
+              <ChevronRight />
+            </span>
+          </Link>
           <a
             href={DOCS_URL}
             target="_blank"
             rel="noreferrer"
             onClick={close}
-            style={stagger(5)}
-            className={item(5)}
+            style={stagger(6)}
+            className={item(6)}
           >
             Docs
             <span className="text-muted">
@@ -259,8 +271,8 @@ export function MobileMenu({
           <a
             href={`mailto:${SUPPORT_EMAIL}`}
             onClick={close}
-            style={stagger(6)}
-            className={item(6)}
+            style={stagger(7)}
+            className={item(7)}
           >
             Support
             <span className="text-muted">
@@ -271,8 +283,8 @@ export function MobileMenu({
             to="/terms"
             prefetch="intent"
             onClick={close}
-            style={stagger(6)}
-            className={item(6)}
+            style={stagger(8)}
+            className={item(8)}
           >
             Terms and Conditions
             <span className="text-muted">
@@ -289,7 +301,7 @@ export function MobileMenu({
                 close();
                 onLogout();
               }}
-                style={stagger(7)}
+                style={stagger(9)}
                 className={`w-full rounded-full border border-white/15 bg-white/5 px-5 py-4 text-base font-semibold text-[#cfcfcf] transition active:scale-[0.98] hover:bg-white/10 hover:text-white ${
                 shown ? "animate-menu-item" : ""
               }`}
@@ -303,7 +315,7 @@ export function MobileMenu({
                 close();
                 onGetStarted();
               }}
-              style={stagger(7)}
+              style={stagger(9)}
               className={`w-full rounded-full bg-gold px-5 py-4 text-base font-semibold text-black transition active:scale-[0.98] hover:brightness-105 ${
                 shown ? "animate-menu-item" : ""
               }`}
@@ -313,7 +325,7 @@ export function MobileMenu({
           )}
 
           <div
-            style={stagger(7)}
+            style={stagger(9)}
             className={shown ? "animate-menu-item" : undefined}
           >
             <p className="mt-5 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#5f5f5f]">

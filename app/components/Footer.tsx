@@ -56,6 +56,13 @@ export function Footer() {
             Roadmap
           </Link>
           <Link
+            to="/app"
+            prefetch="intent"
+            className="text-[13px] font-medium text-muted transition hover:text-white"
+          >
+            App
+          </Link>
+          <Link
             to="/terms"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"

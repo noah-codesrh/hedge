@@ -10,6 +10,7 @@ const RESERVED = new Set([
   "admin",
   "ai",
   "api",
+  "app",
   "claim",
   "earn",
   "hedge",
@@ -24,6 +25,7 @@ const RESERVED = new Set([
   "roademap",
   "roadmap",
   "token",
+  "waitlist",
   "wall",
 ]);
 

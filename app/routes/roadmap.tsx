@@ -160,7 +160,12 @@ export default function Roadmap() {
         <p>
           The site should feel like a trading app on a phone first. A store
           listing comes after the web loop is the one we want people opening
-          every day: fund, trade, share, come back.
+          every day: fund, trade, share, come back. If you want a note when iOS
+          and Android land,{" "}
+          <Link to="/app" className="font-semibold text-gold hover:underline">
+            join the waitlist
+          </Link>
+          .
         </p>
       </Section>
 

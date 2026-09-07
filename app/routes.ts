@@ -34,6 +34,7 @@ export default [
   route("api/native/:slug", "routes/api.native.$slug.ts"),
   route("api/challenge/leaderboard", "routes/api.challenge.leaderboard.ts"),
   route("api/venue/chat", "routes/api.venue.chat.ts"),
+  route("api/waitlist", "routes/api.waitlist.ts"),
   route("api/token", "routes/api.token.ts"),
   route("api/vault", "routes/api.vault.ts"),
   route("api/leverage/orders", "routes/api.leverage.orders.ts"),
@@ -46,6 +47,10 @@ export default [
   route("api/agent/positions", "routes/api.agent.positions.ts"),
   route("llms.txt", "routes/llms.txt.ts"),
   route("ai", "routes/ai.tsx"),
+  layout("routes/waitlist-shell.tsx", [
+    route("app", "routes/app.tsx"),
+    route("waitlist", "routes/waitlist.tsx"),
+  ]),
   layout("routes/shell.tsx", [
     index("routes/home.tsx"),
     route("market/:id", "routes/market.$id.tsx"),

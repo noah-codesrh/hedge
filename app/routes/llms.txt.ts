@@ -20,6 +20,7 @@ export async function loader() {
     "## Product",
     "",
     `- App: ${origin}`,
+    `- App waitlist: ${origin}/app`,
     `- Roadmap: ${origin}/roadmap`,
     `- Invite: ${origin}/profile/referral`,
     `- Pool (native memes): ${origin}/pool`,
