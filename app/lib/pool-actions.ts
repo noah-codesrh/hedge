@@ -15,7 +15,7 @@ import {
   poolIsLive,
   poolMarketId,
 } from "./hedge-pool";
-import type { NativeSide } from "./native";
+import { NATIVE_POOL_OPEN, type NativeSide } from "./native";
 import { readAllowance, toUsdgRaw, waitForTx } from "./leverage-chain";
 import { USDG } from "./robinhood";
 import { sponsoredTokenSend, type SignPrivyAuthorization } from "./sponsored-send";
@@ -142,7 +142,7 @@ export async function stakeOnPool(
   ctx: PoolSendContext,
   input: { slug: string; side: NativeSide; amount: number },
 ) {
-  if (!poolIsLive) throw new Error("Pool is under maintenance.");
+  if (!NATIVE_POOL_OPEN || !poolIsLive) throw new Error("Pool is under maintenance.");
   const amount = toUsdgRaw(input.amount);
   const args = [poolMarketId(input.slug), sideCode(input.side), amount] as const;
   await ensureAllowance(ctx, amount);

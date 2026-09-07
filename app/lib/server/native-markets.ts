@@ -1,6 +1,7 @@
 import {
   NATIVE_MAX_STAKE,
   NATIVE_MIN_STAKE,
+  NATIVE_POOL_OPEN,
   NATIVE_SEED,
   NATIVE_USER_CAP,
   rollingNativeSpecs,
@@ -645,7 +646,7 @@ export async function stakeNative(input: {
 }) {
   const db = supabaseAdmin();
   if (!db) return { error: "Pool tracking is not connected.", status: 503 as const };
-  if (!nativePoolConfigured() && !nativeEscrowAddress()) {
+  if (!NATIVE_POOL_OPEN || (!nativePoolConfigured() && !nativeEscrowAddress())) {
     return { error: "Pool is under maintenance.", status: 503 as const };
   }
   if (!input.slug.trim()) return { error: "Market not found.", status: 404 as const };

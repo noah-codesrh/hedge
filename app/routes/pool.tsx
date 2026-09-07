@@ -5,7 +5,12 @@ import { NativeCard } from "../components/NativeCard";
 import { NativeTickets } from "../components/NativeTickets";
 import { RemoteImg } from "../components/RemoteImg";
 import { listNativeMarkets } from "../lib/server/native-markets";
-import { formatMcap, parseNativeTimeframe, NATIVE_TIMEFRAMES } from "../lib/native";
+import {
+  formatMcap,
+  parseNativeTimeframe,
+  NATIVE_POOL_OPEN,
+  NATIVE_TIMEFRAMES,
+} from "../lib/native";
 import { useNativeDesk } from "../lib/native-live";
 import { dexscreenerTokenUrl } from "../lib/native-tokens";
 import { originFromMatches, siteMeta } from "../lib/seo";
@@ -61,6 +66,9 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
       <h1 className="mt-2 text-4xl font-bold tracking-tight text-white sm:text-5xl">
         Pool
       </h1>
+      {!NATIVE_POOL_OPEN ? (
+        <p className="mt-4 text-sm text-gold">Pool is under maintenance.</p>
+      ) : null}
       {!tracked ? (
         <p className="mt-4 text-sm text-gold">
           Tracking is not connected. Live Dexscreener still drives the tape.

@@ -12,6 +12,7 @@ import { CollateralPicker } from "./CollateralPicker";
 import {
   NATIVE_MAX_STAKE,
   NATIVE_MIN_STAKE,
+  NATIVE_POOL_OPEN,
   NATIVE_USER_CAP,
   multipleIfWin,
   nativePhase,
@@ -307,7 +308,7 @@ function NativeStakeInner({
     setError(null);
     setSaving(true);
     try {
-      if (!escrowWallet) {
+      if (!NATIVE_POOL_OPEN || !escrowWallet) {
         throw new Error("Pool is under maintenance.");
       }
       const token = await getAccessToken();
@@ -411,7 +412,7 @@ function NativeStakeInner({
         One ticket per wallet. At expiry the tape settles and winners claim
         USDG from the pool.
       </p>
-      {!escrowWallet || !payoutLive ? (
+      {!NATIVE_POOL_OPEN || !escrowWallet || !payoutLive ? (
         <p className="mt-3 text-sm text-gold">Pool is under maintenance.</p>
       ) : null}
 
@@ -596,6 +597,7 @@ function NativeStakeInner({
               onClick={() => void place()}
               disabled={
                 saving ||
+                !NATIVE_POOL_OPEN ||
                 phase !== "open" ||
                 !tracked ||
                 !escrowWallet ||
@@ -660,7 +662,7 @@ function NativeStakeInner({
                 )
                 .finally(() => setSaving(false));
             }}
-            disabled={saving || !recoverHash.trim()}
+            disabled={saving || !NATIVE_POOL_OPEN || !recoverHash.trim()}
             className="mt-2 w-full rounded-full border border-white/15 px-4 py-2 text-[13px] font-semibold disabled:opacity-40"
           >
             Record existing tx

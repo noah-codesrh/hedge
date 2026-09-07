@@ -7,6 +7,7 @@ import { Hero } from "../components/Hero";
 import { LeverageCard } from "../components/LeverageCard";
 import { LeverageWipNotice } from "../components/LeverageWipNotice";
 import { leverageEnabled } from "../lib/leverage";
+import { NATIVE_POOL_OPEN } from "../lib/native";
 import { MarketCard } from "../components/MarketCard";
 import { CategoryBar, MarketNav } from "../components/MarketNav";
 import { OutrightCard } from "../components/OutrightCard";
@@ -311,9 +312,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           className="flex flex-col gap-2 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <p className="text-sm text-white">
-            <span className="font-semibold text-gold">Pool is open.</span>{" "}
-            USDG parimutuel on Robinhood memes. $200 desk cap. Live tape odds.
-            Pools pay.
+            <span className="font-semibold text-gold">
+              {NATIVE_POOL_OPEN
+                ? "Pool is open."
+                : "Pool is under maintenance."}
+            </span>{" "}
+            {NATIVE_POOL_OPEN
+              ? "USDG parimutuel on Robinhood memes. $200 desk cap. Live tape odds. Pools pay."
+              : "USDG parimutuel on Robinhood memes. Tape is still live. New tickets are paused."}
           </p>
           <span className="shrink-0 rounded-full bg-gold px-3.5 py-2 text-center text-sm font-semibold text-black">
             View pool

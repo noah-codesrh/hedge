@@ -8,6 +8,8 @@ export const NATIVE_MIN_STAKE = 1;
 export const NATIVE_USER_CAP = 200;
 /** House seed. Zero so a $200 float cannot owe more than the desk cap. */
 export const NATIVE_SEED = 0;
+/** Desk takes new tickets. Flip off to park /pool without undeploying. */
+export const NATIVE_POOL_OPEN = false;
 
 export type NativeTimeframe = "15m" | "1h" | "4h" | "6h" | "12h" | "24h";
 
