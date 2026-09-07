@@ -133,7 +133,7 @@ export function PolymarketAccounts({
               key={row.signer}
               pusd={pusd}
               loading={fetcher.state !== "idle" && fetcher.data == null}
-              onCashOut={onCashOut && pusd >= 1 ? () => onCashOut(pusd) : undefined}
+              onCashOut={onCashOut ? () => onCashOut(pusd) : undefined}
             />
           );
         })}
@@ -151,28 +151,41 @@ function CompactRow({
   loading: boolean;
   onCashOut?: () => void;
 }) {
+  const canCashOut = Boolean(onCashOut) && !loading && pusd >= 1;
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-card px-3.5 py-3 ring-1 ring-white/5">
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-muted">On Polymarket</p>
-        <p className="text-[13px] leading-snug text-[#8a8a8a]">
-          Trading balance — deposit USDG from Receive, not here.
-        </p>
-      </div>
-      <div className="text-right">
-        <p className="text-[13px] text-muted">pUSD</p>
-        <p className="text-[15px] font-semibold tabular-nums">
-          {loading ? "…" : fiat(pusd)}
-        </p>
+    <div className="rounded-2xl bg-card px-3.5 py-3 ring-1 ring-white/5">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] text-muted">On Polymarket</p>
+          <p className="text-[13px] leading-snug text-[#8a8a8a]">
+            Trading balance. Deposit USDG from Receive, not here.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-[13px] text-muted">pUSD</p>
+          <p className="text-[15px] font-semibold tabular-nums">
+            {loading ? "…" : fiat(pusd)}
+          </p>
+        </div>
       </div>
       {onCashOut ? (
-        <button
-          type="button"
-          onClick={onCashOut}
-          className="shrink-0 rounded-full bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-[#cfcfcf] transition hover:text-white"
-        >
-          Cash out
-        </button>
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={!canCashOut}
+            onClick={onCashOut}
+            className="w-full rounded-full bg-gold py-2.5 text-[13px] font-semibold text-black transition hover:brightness-105 disabled:bg-white/5 disabled:text-[#7a7a7a] disabled:hover:brightness-100"
+          >
+            Cash out
+          </button>
+          {!canCashOut && !loading ? (
+            <p className="mt-1.5 text-center text-[12px] text-muted">
+              {pusd >= 0.01
+                ? "Cash out from $1.00. This leftover spends on the next buy."
+                : "Cash out from $1.00."}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

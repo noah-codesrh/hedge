@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Form, Link, useLocation, useSearchParams } from "react-router";
+import { readSessionHint, writeSessionHint } from "../lib/session-hint";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DepositButton, useBook } from "./Book";
 import { ReferralBind } from "./ReferralCapture";
@@ -219,13 +220,18 @@ function PrivyHeader() {
   const { authenticated, logout } = usePrivy();
   const { openModal } = useAuthModal();
 
+  const onLogout = () => {
+    writeSessionHint(false);
+    void logout();
+  };
+
   return (
     <>
       <ReferralBind />
       <HeaderShell
         authenticated={authenticated}
         onGetStarted={openModal}
-        onLogout={logout}
+        onLogout={onLogout}
         book
       />
     </>
@@ -301,13 +307,18 @@ function MobileTabBar() {
 export function Header() {
   const { openModal } = useAuthModal();
   const privyMounted = usePrivyMounted();
+  const [hinted, setHinted] = useState(false);
+  useLayoutEffect(() => {
+    setHinted(readSessionHint());
+  }, []);
+
   return (
     <>
       {privyMounted ? (
         <PrivyHeader />
       ) : (
         <HeaderShell
-          authenticated={false}
+          authenticated={hinted}
           onGetStarted={openModal}
           onLogout={() => {}}
         />

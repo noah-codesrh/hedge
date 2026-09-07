@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
 import { ENV } from "../lib/env";
@@ -13,6 +14,10 @@ import { LoginModal, PrivyLoginMethods } from "./LoginModal";
 import { BookProvider } from "./Book";
 
 const PrivyRoot = lazy(() => import("./PrivyRoot"));
+
+if (typeof window !== "undefined") {
+  void import("./PrivyRoot");
+}
 
 export { useAuthModal } from "./auth-modal";
 
@@ -85,7 +90,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [wantPrivy, setWantPrivy] = useState(false);
   const [privyReady, setPrivyReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (ENV.privyAppId) setWantPrivy(true);
   }, []);
 

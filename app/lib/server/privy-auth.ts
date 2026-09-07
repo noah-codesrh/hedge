@@ -1,5 +1,4 @@
 import { PrivyClient } from "@privy-io/node";
-import { getAddress } from "viem";
 import { serverSecrets } from "./secrets";
 
 let client: PrivyClient | null = null;
@@ -56,19 +55,39 @@ type LinkedAccounts = {
     connector_type?: string;
     wallet_client_type?: string;
   }>;
+  linkedAccounts?: Array<{
+    type?: string;
+    id?: string | null;
+    address?: string;
+    connector_type?: string;
+    wallet_client_type?: string;
+  }>;
+  wallet?: { address?: string };
 };
+
+function accountsOf(user: LinkedAccounts) {
+  return user.linked_accounts ?? user.linkedAccounts ?? [];
+}
+
+function isPrivyEmbedded(account: {
+  type?: string;
+  connector_type?: string;
+  wallet_client_type?: string;
+}) {
+  if (account.type !== "wallet") return false;
+  return (
+    account.connector_type === "embedded" ||
+    account.wallet_client_type === "privy" ||
+    account.wallet_client_type === "privy-v2"
+  );
+}
 
 function linkedEmbeddedWalletId(user: LinkedAccounts, address: string) {
   const target = address.toLowerCase();
-  for (const account of user.linked_accounts ?? []) {
-    if (account.type !== "wallet") continue;
+  for (const account of accountsOf(user)) {
+    if (!isPrivyEmbedded(account)) continue;
     if (account.address?.toLowerCase() !== target) continue;
-    const embedded =
-      account.connector_type === "embedded" ||
-      account.wallet_client_type === "privy";
-    if (embedded && typeof account.id === "string" && account.id) {
-      return account.id;
-    }
+    if (typeof account.id === "string" && account.id) return account.id;
   }
   return null;
 }
@@ -88,11 +107,9 @@ export async function embeddedWalletId(
   if (linked) return linked;
 
   const target = address.toLowerCase();
-  for await (const wallet of privyAdmin().wallets().list({
-    user_id: userId,
-    address: getAddress(address),
-    chain_type: "ethereum",
-  })) {
+  // Match by user, then by address. Combining user_id + address + chain_type
+  // on the list call has dropped privy-v2 wallets that the user clearly owns.
+  for await (const wallet of privyAdmin().wallets().list({ user_id: userId })) {
     if (wallet.address.toLowerCase() === target) return wallet.id;
   }
   return null;
@@ -101,13 +118,14 @@ export async function embeddedWalletId(
 export function userHasWallet(
   user: {
     linked_accounts?: Array<{ type?: string; address?: string }>;
+    linkedAccounts?: Array<{ type?: string; address?: string }>;
     wallet?: { address?: string };
   },
   address: string,
 ) {
   const target = address.toLowerCase();
   if (user.wallet?.address?.toLowerCase() === target) return true;
-  return (user.linked_accounts ?? []).some(
+  return accountsOf(user).some(
     (account) =>
       typeof account.address === "string" &&
       account.address.toLowerCase() === target,

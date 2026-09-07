@@ -1,6 +1,17 @@
-import { PrivyProvider } from "@privy-io/react-auth";
+import { useEffect } from "react";
+import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
 import { base, polygon, robinhoodChain } from "../lib/chains";
 import { ENV } from "../lib/env";
+import { writeSessionHint } from "../lib/session-hint";
+
+function SessionHintSync() {
+  const { authenticated, ready } = usePrivy();
+  useEffect(() => {
+    if (!ready) return;
+    writeSessionHint(authenticated);
+  }, [authenticated, ready]);
+  return null;
+}
 
 export default function PrivyRoot({ children }: { children: React.ReactNode }) {
   return (
@@ -40,6 +51,7 @@ export default function PrivyRoot({ children }: { children: React.ReactNode }) {
         },
       }}
     >
+      <SessionHintSync />
       {children}
     </PrivyProvider>
   );

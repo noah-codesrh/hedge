@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { CheckIcon } from "../components/icons";
-import { ArtDeposit, ArtLeverage, ArtYesNo } from "../components/WaitlistArt";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { parseWaitlistEmail } from "../lib/waitlist";
 import type { Route } from "./+types/app";
@@ -18,11 +17,8 @@ export function meta({ matches }: Route.MetaArgs) {
 
 export function links() {
   return [
-    {
-      rel: "preload",
-      href: "/assets/app/home-screen.png",
-      as: "image",
-    },
+    { rel: "preload", href: "/assets/app/phone.png", as: "image" },
+    { rel: "preload", href: "/assets/app/bg-honeycomb.png", as: "image" },
   ];
 }
 
@@ -30,55 +26,59 @@ const COMING = [
   {
     title: "Yes / No in USDG",
     body: "Same desk as the web. Cash stays on Robinhood Chain.",
-    art: <ArtYesNo />,
+    icon: "/assets/app/icon-yes-no.png",
   },
   {
     title: "1x, then 2x to 4x",
     body: "Spot fills the venue book. Listed markets can use the vault.",
-    art: <ArtLeverage />,
+    icon: "/assets/app/icon-leverage.png",
   },
   {
     title: "Deposit from any listed chain",
     body: "Onramp or bridge in. You trade in USDG either way.",
-    art: <ArtDeposit />,
+    icon: "/assets/app/icon-deposit.png",
   },
 ];
 
 export default function AppWaitlist() {
   return (
-    <main className="relative overflow-x-clip bg-bg">
-      <div className="relative z-10 mx-auto grid min-w-0 max-w-6xl items-center gap-10 px-4 pt-14 pb-16 sm:gap-12 sm:pt-16 lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:gap-y-8 lg:pt-20 lg:pb-20">
+    <main className="relative overflow-x-clip">
+      <div className="relative z-10 mx-auto grid w-full min-w-0 max-w-[1144px] items-start gap-8 px-6 pt-10 pb-16 sm:px-10 sm:pt-12 lg:grid-cols-[minmax(0,33.75rem)_minmax(0,1fr)] lg:gap-x-10 lg:gap-y-0 lg:pt-14 lg:pb-20">
         <section className="w-full min-w-0">
-          <div className="flex flex-col items-start text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
-              App waitlist
-            </p>
-            <h1 className="mt-3 text-[2rem] font-bold leading-[1.1] tracking-tight sm:text-4xl">
-              Hedge on your home screen
-            </h1>
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
+            App waitlist
+          </p>
+          <h1 className="mt-3 text-[2rem] font-bold leading-[1.1] tracking-tight sm:text-[2.5rem]">
+            Hedge on your home screen
+          </h1>
         </section>
 
-        <section className="relative -mx-4 min-w-0 sm:-mx-8 lg:col-start-2 lg:row-span-2 lg:mx-0 lg:-mr-16 lg:self-center">
+        <section className="relative min-w-0 w-full lg:col-start-2 lg:row-span-4 lg:row-start-1 lg:justify-self-end">
           <img
-            src="/assets/app/home-screen.png"
-            alt="Hedge app icon on a phone home screen"
-            width={1024}
-            height={917}
-            className="relative z-10 mx-auto w-[min(160%,48rem)] origin-center scale-125 [mask-image:radial-gradient(ellipse_52%_62%_at_50%_42%,#000_38%,transparent_72%)] drop-shadow-[0_30px_80px_rgba(0,0,0,0.65)] sm:w-[min(140%,56rem)] sm:scale-150 lg:w-[56rem] lg:max-w-none lg:scale-125"
+            src="/assets/app/phone.png"
+            alt="Hedge app icon on an iPhone home screen"
+            width={565}
+            height={775}
+            className="relative z-10 mx-auto h-auto w-full max-w-[18rem] object-contain object-top drop-shadow-[0_30px_80px_rgba(0,0,0,0.45)] sm:max-w-[24rem] lg:max-w-[35.3125rem]"
           />
         </section>
 
-        <section className="flex w-full min-w-0 flex-col gap-10 sm:gap-12">
+        <section className="flex w-full min-w-0 flex-col gap-8 sm:gap-10 lg:col-start-1">
           <WaitlistForm />
 
-          <ul className="space-y-5">
+          <ul className="space-y-4">
             {COMING.map((item) => (
               <li
                 key={item.title}
-                className="flex items-center gap-4 rounded-[22px] bg-white/[0.04] p-3 pr-4 text-left ring-1 ring-white/10 sm:gap-5 sm:p-4"
+                className="flex min-h-32 items-center gap-4 rounded-[22px] bg-white/[0.04] p-4 text-left ring-1 ring-white/10 sm:gap-5"
               >
-                {item.art}
+                <img
+                  src={item.icon}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="h-24 w-24 shrink-0 rounded-2xl"
+                />
                 <div className="min-w-0">
                   <p className="text-[15px] font-semibold text-white">
                     {item.title}
