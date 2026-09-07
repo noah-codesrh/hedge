@@ -162,7 +162,7 @@ function CompactRow({
           </p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-[13px] text-muted">pUSD</p>
+          <p className="text-[13px] text-muted">Balance</p>
           <p className="text-[15px] font-semibold tabular-nums">
             {loading ? "…" : fiat(pusd)}
           </p>

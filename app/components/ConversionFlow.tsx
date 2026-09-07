@@ -63,7 +63,7 @@ function shortError(error: string) {
     return "Cancelled.";
   }
   if (/sign in|session expired/.test(e)) return "Sign in again.";
-  if (/proxy wallet|pUSD is still|pUSD is in|tap Buy again/i.test(error)) {
+  if (/proxy wallet|pUSD is still|pUSD is in|tap Buy again|trading balance is still|trading balance is on Polymarket|trading balance is already/i.test(error)) {
     const trimmed = error.replace(/\s+/g, " ").trim();
     return trimmed.length <= 220 ? trimmed : `${trimmed.slice(0, 217)}…`;
   }

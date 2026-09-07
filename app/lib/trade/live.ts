@@ -140,14 +140,17 @@ async function usdgLeft(address: string, before: bigint, amount: bigint) {
 function spendableCents(wanted: number, available: bigint) {
   const wantedUnits = BigInt(Math.max(0, Math.floor(wanted * 1e6)));
   const capped = wantedUnits < available ? wantedUnits : available;
-  let cents = capped / 10_000n;
-  // Hold a nickel when the order would spend the CLOB's cached balance dry.
-  // Maker-amount rounding, builder fees inside maxSpend, and a cache that
-  // still trails the last refresh all land in that range. Sizing off chain
-  // pUSD after a cash-out is what made "tap Buy again" loop: the cache was
-  // still ~0 while the proxy already held the new conversion.
-  if (cents > 5n && cents * 10_000n + 40_000n >= available) cents -= 5n;
-  else if (cents > 0n && cents * 10_000n >= available) cents -= 1n;
+  // Sports/EPL fees are a function of shares and (price * (1 - price)), not a
+  // flat few percent of notional. The SDK's maxSpend shrink uses fee metadata
+  // that is often stale or zero, so a $39.27 buy against $39.71 still loses.
+  // Keep 15% of cover (25-cent floor) so the signed maker amount plus fees
+  // still fit what the CLOB will check.
+  const feeHold = (capped * 15n) / 100n;
+  const floor = 250_000n;
+  const hold = feeHold > floor ? feeHold : floor;
+  const spend = capped > hold ? capped - hold : 0n;
+  let cents = spend / 10_000n;
+  if (cents > 0n && cents * 10_000n >= spend) cents -= 1n;
   return Number(cents) / 100;
 }
 
@@ -234,14 +237,17 @@ async function readClobCollateral(trading: TradingClient, refresh: boolean) {
 async function waitForClobCollateral(
   trading: TradingClient,
   chainRaw: bigint,
-  timeoutMs = 20_000,
+  timeoutMs = 45_000,
 ) {
-  const slack = 50_000n;
-  const target = chainRaw > slack ? chainRaw - slack : chainRaw;
+  // Size against what the CLOB will actually accept, not chain balanceOf.
+  // After a cash-out the cache is ~0 while the proxy already holds pUSD;
+  // treating that as "use chain" is how $5.36 in the wallet still fails a
+  // $5.20 buy. Wait until the cache is close, then size from the cache.
+  const target = chainRaw > 100_000n ? (chainRaw * 90n) / 100n : chainRaw;
   const deadline = Date.now() + timeoutMs;
   let latest = 0n;
   for (let i = 0; Date.now() < deadline; i++) {
-    const raw = await readClobCollateral(trading, i % 4 === 0);
+    const raw = await readClobCollateral(trading, i % 3 === 0);
     if (raw != null) latest = raw;
     if (latest >= target && (target === 0n || latest > 0n)) return latest;
     await sleep(1_200);
@@ -250,8 +256,16 @@ async function waitForClobCollateral(
 }
 
 function coverable(chainRaw: bigint, clobRaw: bigint | null) {
-  if (clobRaw == null || clobRaw <= 0n) return chainRaw;
+  if (clobRaw == null || clobRaw <= 0n) return 0n;
   return clobRaw < chainRaw ? clobRaw : chainRaw;
+}
+
+async function parkOnRobinhood(wallet: ConnectedWallet) {
+  try {
+    await robinhoodProvider(wallet);
+  } catch (err) {
+    console.warn("[hedge] could not return wallet to Robinhood Chain", err);
+  }
 }
 
 /**
@@ -278,7 +292,7 @@ function isBalanceShortfall(err: unknown) {
     return false;
   }
   if (
-    /allowance|not enough balance|insufficient (?:balance|collateral)|underfunded/i.test(
+    /allowance|not[_ ]?enough[_ ]?balance|insufficient (?:balance|collateral)|underfunded/i.test(
       message,
     )
   ) {
@@ -287,12 +301,18 @@ function isBalanceShortfall(err: unknown) {
   if (
     err &&
     typeof err === "object" &&
-    "status" in err &&
-    Number((err as { status: unknown }).status) === 400
+    ((err as { name?: string }).name === "RequestRejectedError" ||
+      Number((err as { status?: unknown }).status) === 400)
   ) {
-    return !/signature|unauthorized|disabled|maintenance/i.test(message);
+    return !/signature|unauthorized|disabled|maintenance|liquidity/i.test(
+      message,
+    );
   }
   return false;
+}
+
+function isAllowanceShortfall(err: unknown) {
+  return /allowance/i.test(errorText(err));
 }
 
 /** Relay turning down a permit signature, as opposed to a transport failure. */
@@ -312,7 +332,7 @@ function friendlyError(err: unknown, fallback: string) {
   // The SDK tops up a missing approval and retries before surfacing this, so a
   // rejection that reaches us is a balance shortfall, not a missing approval.
   if (/allowance|not enough balance|insufficient (?:balance|collateral)/i.test(message)) {
-    return "Polymarket rejected the order because the proxy balance did not cover it. Your pUSD is safe. Tap Buy again.";
+    return "Polymarket rejected the order because the trading balance did not cover it. Your funds are still there. Tap Buy again.";
   }
   if (/USDG|transfer amount exceeds/i.test(message)) {
     return "Not enough USDG to complete this conversion.";
@@ -324,7 +344,7 @@ function friendlyError(err: unknown, fallback: string) {
     return "The wallet signature did not match. Stay on Robinhood Chain in this wallet and try Buy again.";
   }
   if (/trading is disabled|clob.*maintenance/i.test(message)) {
-    return "Polymarket trading is down for maintenance. Your pUSD is already in the proxy wallet — try Buy again in a few minutes. Hedge will use that balance instead of converting more USDG.";
+    return "Polymarket trading is down for maintenance. Your trading balance is already on Polymarket — try Buy again in a few minutes. Hedge will use that balance instead of converting more USDG.";
   }
   return message || fallback;
 }
@@ -468,8 +488,8 @@ export async function runLiveTrade(
     convertAmount = Math.min(convertAmount, Math.floor(maxConvertNum * 100) / 100);
     // Relay keeps a few cents, so a $5 debit often lands 4.96 pUSD. Convert a
     // little extra when the wallet has it so the fill can still spend $5.
-    if (convertAmount >= 1 && maxConvertNum >= convertAmount + 0.05) {
-      convertAmount = Math.round((convertAmount + 0.05) * 100) / 100;
+    if (convertAmount >= 1 && maxConvertNum >= convertAmount + 0.5) {
+      convertAmount = Math.round((convertAmount + 0.5) * 100) / 100;
     }
     if (convertAmount < 1) {
       if (spendable >= 1) {
@@ -636,7 +656,7 @@ export async function runLiveTrade(
       expectedPusd,
       statusPending ? 180_000 : 45_000,
     );
-    pusd = Number(Math.min(arrived.balance, amount).toFixed(6));
+    pusd = Number(arrived.balance.toFixed(6));
     if (pusd < 0.01) {
       throw new LiveTradeError(
         "Your USDG is converting and has not landed yet. Nothing is lost — it goes to your Polymarket wallet, and the next Buy will spend it instead of converting again. Give it a minute.",
@@ -687,24 +707,28 @@ export async function runLiveTrade(
 
     const trading = client;
     await trading.setupTradingApprovals();
+    await readClobCollateral(trading, true);
 
     const live = await readPusdBalance(input.accessToken, depositWallet);
     held = live.pusd;
     const clobRaw = await waitForClobCollateral(trading, live.raw);
-    if (clobRaw <= 0n && live.raw >= 1_000_000n) {
+    if ((clobRaw == null || clobRaw <= 0n) && live.raw >= 1_000_000n) {
       throw new LiveTradeError(
-        `Your ${live.pusd.toFixed(2)} pUSD is already in the Polymarket proxy wallet, but Polymarket has not credited it for trading yet. Tap Buy again in a few seconds. Hedge will spend that balance instead of converting more USDG.`,
+        `Your ${live.pusd.toFixed(2)} trading balance is already on Polymarket, but it has not been credited for trading yet. Tap Buy again in a few seconds. Hedge will spend that balance instead of converting more USDG.`,
         { depositWallet, pusdReceived: live.pusd },
       );
     }
-    const available = coverable(live.raw, clobRaw);
-    pusd = spendableCents(pusd, available);
+    let available = coverable(live.raw, clobRaw);
+    // Bid the ticket (or whatever the proxy can cover), and tell the SDK the
+    // full CLOB cover so fees can sit on top instead of pushing the maker
+    // amount over what the book will take.
+    pusd = spendableCents(Math.min(amount, held), available);
     console.warn(
-      `[hedge] fill cover chain=${live.pusd.toFixed(2)} clob=${(Number(clobRaw) / 1e6).toFixed(2)} spend=${pusd.toFixed(2)}`,
+      `[hedge] fill cover chain=${live.pusd.toFixed(2)} clob=${(Number(clobRaw ?? 0n) / 1e6).toFixed(2)} spend=${pusd.toFixed(2)}`,
     );
     if (pusd < 1) {
       throw new LiveTradeError(
-        `Your Polymarket proxy wallet holds ${live.pusd.toFixed(2)} pUSD. Polymarket needs a little over $1.00 to place an order. Add some more and try Buy again.`,
+        `Your Polymarket wallet holds ${live.pusd.toFixed(2)}. Polymarket needs a little over $1.00 to place an order. Add some more and try Buy again.`,
         { depositWallet, pusdReceived: live.pusd },
       );
     }
@@ -725,19 +749,22 @@ export async function runLiveTrade(
     }
 
     /**
-     * Size against the CLOB cache, then drop a nickel and re-read it if the
-     * book still says the proxy cannot cover the maker amount.
+     * Size against the CLOB cache. Allowance rejections need a fresh approval
+     * sync at the same size; true balance rejections drop 15% of the bid.
      */
+    const coverDollars = (raw: bigint) => Number(raw) / 1e6;
     const sendOrder = async () => {
+      let recoveredAllowance = false;
       for (let attempt = 0; ; attempt++) {
-        const next = Number((pusd - 0.05).toFixed(2));
-        const canRetry = attempt < 6 && next >= 1;
+        const next = Number((pusd * 0.85).toFixed(2));
+        const canRetry = attempt < 8 && next >= 1;
+        const maxSpend = Math.max(pusd, coverDollars(available));
         try {
           const sent = await trading.placeMarketOrder({
             tokenId: input.tokenId,
             side: OrderSide.BUY,
             amount: pusd,
-            maxSpend: pusd,
+            maxSpend,
             maxPrice,
             builderCode: builderCode as Hex,
             orderType: OrderType.FAK,
@@ -745,24 +772,49 @@ export async function runLiveTrade(
           if (sent.ok || !canRetry || !isBalanceShortfall(sent.message)) {
             return sent;
           }
+          if (isAllowanceShortfall(sent.message) && !recoveredAllowance) {
+            recoveredAllowance = true;
+            await trading.setupTradingApprovals();
+            await readClobCollateral(trading, true);
+            console.warn("[hedge] CLOB allowance cache refreshed, retrying same size");
+            continue;
+          }
         } catch (err) {
           if (!canRetry || !isBalanceShortfall(err)) throw err;
+          if (isAllowanceShortfall(err) && !recoveredAllowance) {
+            recoveredAllowance = true;
+            try {
+              await trading.setupTradingApprovals();
+              await readClobCollateral(trading, true);
+            } catch (setupErr) {
+              console.warn("[hedge] allowance refresh failed", setupErr);
+            }
+            console.warn("[hedge] CLOB allowance cache refreshed, retrying same size");
+            continue;
+          }
         }
         console.warn(
-          `[hedge] CLOB refused ${pusd.toFixed(2)} pUSD on balance, retrying at ${next.toFixed(2)}`,
+          `[hedge] CLOB refused ${pusd.toFixed(2)} on balance, retrying at ${next.toFixed(2)}`,
         );
         await sleep(400);
         const again = await readPusdBalance(input.accessToken, depositWallet);
         const againClob = await readClobCollateral(trading, true);
         held = again.pusd;
-        pusd = spendableCents(next, coverable(again.raw, againClob));
+        available = coverable(again.raw, againClob);
+        pusd = spendableCents(next, available);
+        if (pusd < 1) {
+          throw new LiveTradeError(
+            `Your ${held.toFixed(2)} trading balance is still on Polymarket. Polymarket would not accept an order from it. Tap Buy again.`,
+            { depositWallet, pusdReceived: held },
+          );
+        }
       }
     };
     const response = await sendOrder();
 
     if (!response.ok) {
       throw new LiveTradeError(
-        `Your ${held.toFixed(2)} pUSD is in the Polymarket proxy wallet, but the order was rejected: ${friendlyError(response.message, response.message)}`,
+        `Your ${held.toFixed(2)} trading balance is on Polymarket, but the order was rejected: ${friendlyError(response.message, response.message)}`,
         { depositWallet, pusdReceived: held },
       );
     }
@@ -779,7 +831,7 @@ export async function runLiveTrade(
     const making = Number(response.makingAmount);
     if (!Number.isFinite(taking) || taking <= 0) {
       throw new LiveTradeError(
-        `Your ${held.toFixed(2)} pUSD is still in the Polymarket proxy wallet, but this outcome had no fillable liquidity.`,
+        `Your ${held.toFixed(2)} trading balance is still on Polymarket, but this outcome had no fillable liquidity.`,
         { depositWallet, pusdReceived: held },
       );
     }
@@ -802,8 +854,14 @@ export async function runLiveTrade(
     if (err instanceof LiveTradeError) throw err;
     console.error("[hedge] fill failed", err);
     throw new LiveTradeError(
-      `Your ${held.toFixed(2)} pUSD is still in the Polymarket proxy wallet. ${friendlyError(err, "Try Buy again to fill from that balance.")}`,
+      `Your ${held.toFixed(2)} trading balance is still on Polymarket. ${friendlyError(err, "Try Buy again to fill from that balance.")}`,
       { depositWallet, pusdReceived: held },
     );
+  } finally {
+    // Email logins use one embedded wallet for cash and trading. Fill parks
+    // it on Polygon; USDG lives on Robinhood Chain, so leave it there or the
+    // next buy signs the conversion on the wrong chain and the cash readout
+    // looks like it still refers to pUSD.
+    await parkOnRobinhood(input.cashWallet);
   }
 }

@@ -31,6 +31,7 @@ import { LeverageOrders } from "./LeverageOrders";
 import type { TradeStage } from "../lib/leverage-actions";
 import { ensureOpeningLive, ensureOracleFresh } from "../lib/leverage-refresh";
 import type { SignPrivyAuthorization } from "../lib/sponsored-send";
+import { requireAccessToken, sessionLostMessage } from "../lib/privy-session";
 import { trackTrade } from "../lib/track";
 import {
   findWallet,
@@ -84,7 +85,7 @@ function AuthedTradePanel(props: {
   initialSide?: Side;
   initialLeverage?: number;
 }) {
-  const { authenticated, getAccessToken } = usePrivy();
+  const { authenticated, ready, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const { cashAddress, ensureCashWallet } = useEnsureCashWallet();
   const cashWallet = findWallet(wallets, cashAddress);
@@ -105,6 +106,7 @@ function AuthedTradePanel(props: {
       <TradePanelView
         {...props}
         authenticated={authenticated}
+        sessionReady={ready}
         getAccessToken={getAccessToken}
         signAuthorization={signAuthorization}
         cashAddress={cashAddress}
@@ -136,6 +138,7 @@ function TradePanelView({
   initialSide = "yes",
   initialLeverage = 1,
   authenticated,
+  sessionReady = true,
   getAccessToken,
   cashAddress,
   cashWallet,
@@ -157,6 +160,7 @@ function TradePanelView({
   initialSide?: Side;
   initialLeverage?: number;
   authenticated: boolean;
+  sessionReady?: boolean;
   getAccessToken?: () => Promise<string | null>;
   signAuthorization?: SignPrivyAuthorization;
   cashAddress?: string | null;
@@ -592,8 +596,11 @@ function TradePanelView({
         if (!signerCash) {
           throw new Error("Your wallet isn't ready yet. Try again.");
         }
-        const accessToken = await getAccessToken();
-        if (!accessToken) throw new Error("Session expired. Sign in again.");
+        const accessToken = await requireAccessToken(getAccessToken);
+        if (!accessToken) {
+          openModal();
+          return;
+        }
         if (!leverageConfig) throw new Error("Leverage isn't offered here.");
 
         const opened = { size: leverageQuote?.size ?? 0, leverage: effectiveLeverage };
@@ -695,6 +702,10 @@ function TradePanelView({
         refresh();
         void readEngineState().then(setEngineState);
       } catch (e) {
+        if (sessionLostMessage(e)) {
+          openModal();
+          return;
+        }
         setConvertError(
           e instanceof Error ? e.message : "Could not open that position.",
         );
@@ -706,6 +717,7 @@ function TradePanelView({
   };
 
   const onTrade = () => {
+    if (!sessionReady) return;
     if (!authenticated) return openModal();
     if (usingStock && stockAvail <= 0) return;
     if (!usingStock && cashMax <= 0) return openDeposit();
@@ -726,28 +738,32 @@ function TradePanelView({
     };
     setBusy(true);
     setConvertError(null);
-    setPending(ticket);
-    setConvertStep(collateral ? "swap" : "setup");
     void (async () => {
       let cashed = 0;
       try {
-        const tokenId =
-          ticket.side === "yes" ? market.yes.tokenId : market.no.tokenId;
-        if (!tokenId) throw new Error("This outcome is not tradeable yet.");
         if (!getAccessToken) {
           throw new Error("Your wallet isn't ready yet. Try Buy again.");
         }
+        const accessToken = await requireAccessToken(getAccessToken);
+        if (!accessToken) {
+          openModal();
+          return;
+        }
+        const tokenId =
+          ticket.side === "yes" ? market.yes.tokenId : market.no.tokenId;
+        if (!tokenId) throw new Error("This outcome is not tradeable yet.");
         const signerCash = (await ensureCashWallet?.()) ?? cashWallet;
         if (!signerCash) {
           throw new Error("Your wallet isn't ready yet. Try Buy again.");
         }
-        const accessToken = await getAccessToken();
-        if (!accessToken) throw new Error("Session expired. Sign in again.");
         const signerWallet =
           (await ensureTradingWallet?.()) ?? tradingWallet;
         if (!signerWallet || !isEmbeddedWallet(signerWallet.walletClientType)) {
           throw new Error("Could not create a trading wallet.");
         }
+
+        setPending(ticket);
+        setConvertStep(collateral ? "swap" : "setup");
 
         let amountUsdg = ticket.amount;
         if (collateral) {
@@ -853,6 +869,13 @@ function TradePanelView({
       } catch (e) {
         notifyBalancesChanged();
         refresh();
+        if (sessionLostMessage(e)) {
+          setPending(null);
+          setConvertStep(null);
+          setConvertError(null);
+          openModal();
+          return;
+        }
         const base =
           e instanceof Error ? e.message : "Conversion failed.";
         setConvertError(
