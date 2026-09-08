@@ -69,7 +69,8 @@ export default function Roadmap() {
             Pool
           </Link>{" "}
           is a community test: USDG parimutuel on Robinhood Chain memes. Odds
-          are the live pools. $200 desk cap. At expiry the tape pays winners.
+          are the live tape. Community chat stays on Hedge. $1,000 desk cap. At
+          expiry the tape pays winners.
         </p>
         <p>
           The{" "}

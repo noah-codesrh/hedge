@@ -150,7 +150,33 @@ forge script script/DeployPool.s.sol:DeployPool \
   --rpc-url $RPC --account hedge-admin --sender $ADMIN --broadcast
 ```
 
-Set `VITE_HEDGE_POOL_ADDRESS` (and `HEDGE_POOL_ADDRESS`) to the printed address. `REPORTER` should be the same wallet as `NATIVE_ESCROW_KEY` / `NATIVE_POOL_KEY`, which lists weekly cards and pushes `resolve`. Traders `stake` and `claim` themselves. `$1–$25`, one ticket, lock, and the $200 desk cap are contract rules, not app checks.
+Set `VITE_HEDGE_POOL_ADDRESS` (and `HEDGE_POOL_ADDRESS`) to the printed address. `REPORTER` should be the same wallet as `NATIVE_ESCROW_KEY` / `NATIVE_POOL_KEY`, which lists weekly cards and pushes `resolve`. Traders `stake`, `refund` before lock, and `claim` themselves. `$1–$25`, one ticket, lock, and the $1,000 desk cap are contract rules, not app checks.
+
+Live pool with refund: `0x40863A67e096B55C5847FA738086Eae67c18f39f` (deploy `0x1ae88d39f1fd19648e844bd432d6b93b5b6846d74ae86a2d7afdb6ae05b511ca`).
+
+### First live pool (no refund)
+
+Tickets already in this address stay until expiry. A 7d window pays at the end of those 7 days. Then `resolve` (void `3` to return a test stake) and `claim` from the ticket wallet. Admin cannot sweep USDG.
+
+| | |
+|---|---|
+| Pool | `0xf0D392e67904acE892A6024E0501AbfAD67A1c8c` |
+| Admin | `0xd78610499138b019d15DBD0246e1B0A10778390D` |
+| Reporter | `0x4E2822FaD96d625fd5bAa7526CB8Fd42ecB88161` |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| Chain | 4663 |
+
+```bash
+ID=$(cast keccak "$SLUG")
+OLD=0xf0D392e67904acE892A6024E0501AbfAD67A1c8c
+cast send $OLD "resolve(bytes32,uint8)" $ID 3 \
+  --rpc-url $RPC --account hedge-admin --sender $ADMIN --broadcast
+# claim from the wallet that staked, not necessarily admin
+cast send $OLD "claim(bytes32)" $ID \
+  --rpc-url $RPC --account hedge-admin --sender $ADMIN --broadcast
+```
+
+Full path: `/pool/money` on the docs site.
 
 ## Keys
 

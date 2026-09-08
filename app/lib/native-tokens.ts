@@ -1,9 +1,14 @@
-/** Trending Robinhood Chain memes. Hand allowlist, not a live screener. */
+/** Trending Robinhood memes plus Solana race names. */
+
+export type NativeChain = "robinhood" | "solana";
 
 export type NativeToken = {
   symbol: string;
   name: string;
-  address: `0x${string}`;
+  address: string;
+  chain?: NativeChain;
+  /** Preferred Dexscreener pair page when the mint is not on Robinhood. */
+  pairUrl?: string;
   /** CoinGecko id. Used only when Dexscreener has no print. */
   geckoId: string | null;
 };
@@ -66,7 +71,39 @@ export const NATIVE_TOKENS: NativeToken[] = [
     address: "0x0fF9072a1EAD154d92C2d2Fef16AFba6028Ce2B2",
     geckoId: null,
   },
+  {
+    symbol: "MEME",
+    name: "A Meme Coin",
+    address: "0x385F4f8ae47651ce5F58F5265395a669f8281e18",
+    geckoId: null,
+  },
+  {
+    symbol: "ZCAT",
+    name: "Anonymous Cat",
+    address: "HcRLc9VDgjLeK154xDawfb1dmVJ98DoSqcwTHGqiDeJR",
+    chain: "solana",
+    pairUrl:
+      "https://dexscreener.com/solana/btccxxtfi7a9xjte1exkn38jgie35s6gnerxd8dm61rc",
+    geckoId: null,
+  },
+  {
+    symbol: "ANSEM",
+    name: "The Black Bull",
+    address: "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump",
+    chain: "solana",
+    pairUrl:
+      "https://dexscreener.com/solana/fnzky6x7entq1er3d225dqyt7ybfka4pskbmqhb8l3cc",
+    geckoId: null,
+  },
 ];
+
+export function nativeChainOf(token: NativeToken): NativeChain {
+  return token.chain ?? NATIVE_CHAIN;
+}
+
+export function robinhoodTokens() {
+  return NATIVE_TOKENS.filter((token) => nativeChainOf(token) === "robinhood");
+}
 
 const BY_SYMBOL = new Map(
   NATIVE_TOKENS.map((token) => [token.symbol.toLowerCase(), token]),
@@ -81,5 +118,20 @@ export function nativeToken(symbolOrAddress: string) {
 }
 
 export function dexscreenerTokenUrl(address: string) {
-  return `https://dexscreener.com/${NATIVE_CHAIN}/${address.toLowerCase()}`;
+  const token = nativeToken(address);
+  if (token?.pairUrl) return token.pairUrl;
+  const chain = token ? nativeChainOf(token) : NATIVE_CHAIN;
+  const path =
+    chain === "solana" ? token?.address ?? address : address.toLowerCase();
+  return `https://dexscreener.com/${chain}/${path}`;
+}
+
+export function poolTokenPath(symbol: string, query?: Record<string, string>) {
+  const path = `/pool/token/${encodeURIComponent(symbol)}`;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value) params.set(key, value);
+  }
+  const q = params.toString();
+  return q ? `${path}?${q}` : path;
 }

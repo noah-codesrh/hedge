@@ -35,7 +35,6 @@ export function useNativeDesk(initial: DeskPayload) {
         /* next tick */
       }
     };
-    void tick();
     const id = window.setInterval(() => void tick(), TAPE_MS);
     return () => {
       alive = false;
@@ -53,6 +52,7 @@ export function useNativeMarket(slug: string, initial: NativeMarketView) {
   useEffect(() => {
     let alive = true;
     setLive(null);
+    if (!slug) return;
     const tick = async () => {
       try {
         const res = await tapeGet(`/api/native/${encodeURIComponent(slug)}`);
@@ -64,7 +64,6 @@ export function useNativeMarket(slug: string, initial: NativeMarketView) {
         /* next tick */
       }
     };
-    void tick();
     const id = window.setInterval(() => void tick(), TAPE_MS);
     return () => {
       alive = false;

@@ -5,6 +5,8 @@ export type LivePosition = {
   conditionId: string | null;
   eventSlug: string | null;
   marketSlug: string | null;
+  /** When set, the position card links here instead of /market/{slug}. */
+  href?: string | null;
   title: string;
   outcome: string;
   side: "yes" | "no";
@@ -19,7 +21,13 @@ export type LivePosition = {
   pctChange: number;
   status: "open" | "closed";
   redeemable: boolean;
+  /** Pool ticket can pull the stake back before lock. */
+  refundable?: boolean;
   endDate: string | null;
+  /** Pool is 1x. Spot infers Nx from entry. */
+  leverage?: number | null;
+  /** Window the user bought, e.g. 24h / 7d / 3mo. */
+  duration?: string | null;
 };
 
 /**

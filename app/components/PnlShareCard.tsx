@@ -9,8 +9,12 @@ function sharePrice(price: number) {
 }
 
 export function liveHref(position: LivePosition) {
+  if (position.href) return position.href;
   if (position.eventSlug) return `/market/${position.eventSlug}`;
-  if (position.marketSlug) return `/market/${position.marketSlug}`;
+  if (position.marketSlug) {
+    if (position.marketSlug.startsWith("/")) return position.marketSlug;
+    return `/market/${position.marketSlug}`;
+  }
   return "/";
 }
 
@@ -69,10 +73,12 @@ export function PnlShareCard({
         ? "bg-[#482a2a] text-down"
         : "bg-white/10 text-white";
   const leverage =
-    leverageOverride != null && leverageOverride > 1
-      ? leverageOverride % 1 === 0
-        ? leverageOverride
-        : Math.round(leverageOverride * 10) / 10
+    leverageOverride != null && leverageOverride > 0
+      ? leverageOverride <= 1
+        ? 1
+        : leverageOverride % 1 === 0
+          ? leverageOverride
+          : Math.round(leverageOverride * 10) / 10
       : leverageFromEntry(entryPrice);
   const pctText =
     loading && pctChange == null

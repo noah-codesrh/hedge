@@ -11,8 +11,9 @@ import {IERC20} from "./interfaces/IERC20.sol";
  *
  * `stake` pulls USDG and enforces the desk rules the app used to check after
  * the transfer: $1–$25, one ticket per wallet per market, lock before expiry,
- * $200 open float. `resolve` is a reporter push after expiry. `claim` is a
- * pull: winners split the pot, a void refunds the stake.
+ * $1,000 open float. `refund` returns the stake before lock. `resolve` is a
+ * reporter push after expiry. `claim` is a pull: winners split the pot, a
+ * void refunds the stake.
  *
  * Odds stay off-chain (Dexscreener). This contract only holds the money.
  */
@@ -29,7 +30,7 @@ contract HedgePool is Admin, ReentrancyGuard {
 
     uint256 public minStake = 1e6;
     uint256 public maxStake = 25e6;
-    uint256 public deskCap = 200e6;
+    uint256 public deskCap = 1000e6;
     /// @notice USDG in unresolved markets. Counts against `deskCap`.
     uint256 public deskOpen;
     bool public stakingPaused;
@@ -57,6 +58,7 @@ contract HedgePool is Admin, ReentrancyGuard {
     event StakingPausedSet(bool paused);
     event MarketListed(bytes32 indexed id, uint64 lockAt, uint64 expiryAt);
     event Staked(bytes32 indexed id, address indexed user, uint8 side, uint256 amount);
+    event Refunded(bytes32 indexed id, address indexed user, uint256 amount);
     event Resolved(bytes32 indexed id, uint8 outcome, uint256 poolA, uint256 poolB);
     event Claimed(bytes32 indexed id, address indexed user, uint256 paid);
 
@@ -146,6 +148,30 @@ contract HedgePool is Admin, ReentrancyGuard {
         deskOpen += amount;
 
         emit Staked(id, msg.sender, side, amount);
+    }
+
+    /**
+     * @notice Pull the stake back before lock. After lock the ticket stays
+     * until expiry. A refund clears the ticket so the wallet can stake again.
+     */
+    function refund(bytes32 id) external nonReentrant {
+        Market storage m = markets[id];
+        if (!m.listed) revert MarketNotListed();
+        if (m.outcome != 0) revert MarketResolved();
+        if (block.timestamp >= m.lockAt) revert WindowLocked();
+
+        Ticket storage t = tickets[id][msg.sender];
+        uint256 amount = t.amount;
+        if (amount == 0) revert NoTicket();
+
+        uint8 side = t.side;
+        delete tickets[id][msg.sender];
+        if (side == SIDE_A) m.poolA -= uint128(amount);
+        else m.poolB -= uint128(amount);
+        deskOpen -= amount;
+
+        usdg.safeTransfer(msg.sender, amount);
+        emit Refunded(id, msg.sender, amount);
     }
 
     function resolve(bytes32 id, uint8 outcome) external onlyLister nonReentrant {

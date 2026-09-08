@@ -43,12 +43,15 @@ export function VenueChat({
   eventId,
   eventSlug,
   marketId,
+  variant = "polymarket",
 }: {
   eventId: string;
   eventSlug: string;
   marketId?: string | null;
+  variant?: "polymarket" | "pool";
 }) {
   const privyReady = usePrivyMounted();
+  const hedgeOnly = variant === "pool";
   return (
     <section className="min-w-0 overflow-hidden rounded-3xl bg-card ring-1 ring-white/5">
       <div className="flex items-start gap-3 px-4 pt-5 pb-3 sm:px-5">
@@ -56,9 +59,13 @@ export function VenueChat({
           <ChatIcon size={18} />
         </span>
         <div className="min-w-0">
-          <p className="text-[15px] font-semibold">Venue</p>
+          <p className="text-[15px] font-semibold">
+            {hedgeOnly ? "Community chat" : "Venue"}
+          </p>
           <p className="mt-0.5 text-[13px] leading-snug text-muted">
-            Polymarket comments for this event, plus posts that stay on Hedge.
+            {hedgeOnly
+              ? "Talk the tape on this matchup. Posts stay on Hedge."
+              : "Polymarket comments for this event, plus posts that stay on Hedge."}
           </p>
         </div>
       </div>
@@ -67,20 +74,27 @@ export function VenueChat({
           eventId={eventId}
           eventSlug={eventSlug}
           marketId={marketId}
+          hedgeOnly={hedgeOnly}
         />
       ) : (
-        <VenueChatGuest eventId={eventId} />
+        <VenueChatGuest eventId={eventId} hedgeOnly={hedgeOnly} />
       )}
     </section>
   );
 }
 
-function VenueChatGuest({ eventId }: { eventId: string }) {
+function VenueChatGuest({
+  eventId,
+  hedgeOnly,
+}: {
+  eventId: string;
+  hedgeOnly: boolean;
+}) {
   const { openModal } = useAuthModal();
-  const feed = useVenueFeed(eventId);
+  const feed = useVenueFeed(eventId, hedgeOnly);
   return (
     <>
-      <FeedBody feed={feed} />
+      <FeedBody feed={feed} hedgeOnly={hedgeOnly} />
       <div className="border-t border-white/5 px-4 py-4 sm:px-5">
         <p className="text-[13px] text-muted">Sign in to post on Hedge.</p>
         <button
@@ -99,14 +113,16 @@ function VenueChatInner({
   eventId,
   eventSlug,
   marketId,
+  hedgeOnly,
 }: {
   eventId: string;
   eventSlug: string;
   marketId?: string | null;
+  hedgeOnly: boolean;
 }) {
   const { authenticated, getAccessToken, user } = usePrivy();
   const { openModal } = useAuthModal();
-  const feed = useVenueFeed(eventId);
+  const feed = useVenueFeed(eventId, hedgeOnly);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,7 +177,7 @@ function VenueChatInner({
 
   return (
     <>
-      <FeedBody feed={feed} />
+      <FeedBody feed={feed} hedgeOnly={hedgeOnly} />
       <form
         className="border-t border-white/5 px-4 py-4 sm:px-5"
         onSubmit={(e) => {
@@ -176,7 +192,7 @@ function VenueChatInner({
               onChange={(e) => setDraft(e.target.value.slice(0, VENUE_BODY_MAX))}
               rows={2}
               maxLength={VENUE_BODY_MAX}
-              placeholder="Say something about this market"
+              placeholder={hedgeOnly ? "Talk this matchup" : "Say something about this market"}
               className="w-full resize-none rounded-2xl bg-[#1b1b1b] px-3.5 py-3 text-[14px] outline-none ring-1 ring-white/10 placeholder:text-muted focus:ring-white/20"
             />
             <div className="mt-2 flex items-center justify-between gap-3">
@@ -212,14 +228,14 @@ function VenueChatInner({
   );
 }
 
-function useVenueFeed(eventId: string) {
+function useVenueFeed(eventId: string, hedgeOnly = false) {
   const [data, setData] = useState<VenueFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
     try {
-      const next = await loadVenueFeed(eventId);
+      const next = await loadVenueFeed(eventId, { hedgeOnly });
       setData(next);
       setError(null);
     } catch (err) {
@@ -227,7 +243,7 @@ function useVenueFeed(eventId: string) {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, hedgeOnly]);
 
   useEffect(() => {
     setLoading(true);
@@ -249,16 +265,20 @@ function useVenueFeed(eventId: string) {
 
 function FeedBody({
   feed,
+  hedgeOnly = false,
 }: {
   feed: ReturnType<typeof useVenueFeed>;
+  hedgeOnly?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const listRef = useRef<HTMLDivElement>(null);
   const messages = useMemo(() => {
     const rows = feed.data?.messages ?? [];
-    if (filter === "hedge") return rows.filter((row) => row.source === "hedge");
+    if (hedgeOnly || filter === "hedge") {
+      return rows.filter((row) => row.source === "hedge");
+    }
     return rows;
-  }, [feed.data?.messages, filter]);
+  }, [feed.data?.messages, filter, hedgeOnly]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -268,18 +288,20 @@ function FeedBody({
 
   return (
     <div className="border-t border-white/5">
-      <div className="flex gap-1 px-4 pt-3 sm:px-5">
-        <FilterChip
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-          label="All"
-        />
-        <FilterChip
-          active={filter === "hedge"}
-          onClick={() => setFilter("hedge")}
-          label="Hedge"
-        />
-      </div>
+      {hedgeOnly ? null : (
+        <div className="flex gap-1 px-4 pt-3 sm:px-5">
+          <FilterChip
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+            label="All"
+          />
+          <FilterChip
+            active={filter === "hedge"}
+            onClick={() => setFilter("hedge")}
+            label="Hedge"
+          />
+        </div>
+      )}
       <div
         ref={listRef}
         className="max-h-[28rem] divide-y divide-white/5 overflow-y-auto px-4 py-2 sm:px-5"
@@ -290,12 +312,16 @@ function FeedBody({
           <p className="py-8 text-center text-[13px] text-down">{feed.error}</p>
         ) : messages.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-muted">
-            {filter === "hedge"
-              ? "No Hedge posts on this event yet."
-              : "No comments on this event yet."}
+            {hedgeOnly
+              ? "No posts yet. Talk your book."
+              : filter === "hedge"
+                ? "No Hedge posts on this event yet."
+                : "No comments on this event yet."}
           </p>
         ) : (
-          messages.map((row) => <MessageRow key={row.id} message={row} />)
+          messages.map((row) => (
+            <MessageRow key={row.id} message={row} hideSource={hedgeOnly} />
+          ))
         )}
       </div>
     </div>
@@ -326,7 +352,13 @@ function FilterChip({
   );
 }
 
-function MessageRow({ message }: { message: VenueMessage }) {
+function MessageRow({
+  message,
+  hideSource = false,
+}: {
+  message: VenueMessage;
+  hideSource?: boolean;
+}) {
   const src = message.avatarUrl || venueAvatarUrl(message.author);
   return (
     <article className="flex gap-3 py-3">
@@ -340,7 +372,7 @@ function MessageRow({ message }: { message: VenueMessage }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p className="truncate text-[13px] font-semibold">{message.author}</p>
-          <SourcePill source={message.source} />
+          {hideSource ? null : <SourcePill source={message.source} />}
           <p className="text-[11px] text-muted">{ago(message.createdAt)}</p>
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-snug text-white/90">

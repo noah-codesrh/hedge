@@ -52,9 +52,12 @@ function toHedgeMessage(
   };
 }
 
-export async function loadVenueFeed(eventId: string): Promise<VenueFeed> {
+export async function loadVenueFeed(
+  eventId: string,
+  opts?: { hedgeOnly?: boolean },
+): Promise<VenueFeed> {
   const [poly, hedge] = await Promise.all([
-    fetchPolymarketComments(eventId),
+    opts?.hedgeOnly ? Promise.resolve([]) : fetchPolymarketComments(eventId),
     loadHedgeComments(eventId),
   ]);
 

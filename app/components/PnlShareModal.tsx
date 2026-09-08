@@ -30,6 +30,7 @@ export function shareFromLive(position: LivePosition): PnlShareData {
     pnl: position.pnl,
     pctChange: position.pctChange,
     status: position.status,
+    leverage: position.leverage,
   };
 }
 

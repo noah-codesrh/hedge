@@ -6,7 +6,7 @@ import type { CashOutStep, CloseStep } from "../lib/trade/close";
 
 export type { ConvertStep };
 
-export type FlowMode = "buy" | "close" | "cashout";
+export type FlowMode = "buy" | "close" | "cashout" | "stake";
 
 const STEP_PCT: Record<string, number> = {
   swap: 22,
@@ -23,6 +23,7 @@ const TITLES: Record<FlowMode, string> = {
   buy: "Buying",
   close: "Closing",
   cashout: "Cashing out",
+  stake: "Staking",
 };
 
 function useFlowProgress(step: string, failed: boolean) {

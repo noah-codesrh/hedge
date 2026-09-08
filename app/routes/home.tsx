@@ -318,7 +318,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 : "Pool is under maintenance."}
             </span>{" "}
             {NATIVE_POOL_OPEN
-              ? "USDG parimutuel on Robinhood memes. $200 desk cap. Live tape odds. Pools pay."
+              ? "Community matchups on Robinhood memes. Live tape odds. Chat. $1,000 desk cap."
               : "USDG parimutuel on Robinhood memes. Tape is still live. New tickets are paused."}
           </p>
           <span className="shrink-0 rounded-full bg-gold px-3.5 py-2 text-center text-sm font-semibold text-black">

@@ -15,11 +15,13 @@ function text(value: unknown, max: number) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const eventId = new URL(request.url).searchParams.get("eventId")?.trim();
+  const url = new URL(request.url);
+  const eventId = url.searchParams.get("eventId")?.trim();
   if (!eventId) {
     return Response.json({ error: "eventId is required." }, { status: 400 });
   }
-  const feed = await loadVenueFeed(eventId);
+  const hedgeOnly = url.searchParams.get("hedgeOnly") === "1";
+  const feed = await loadVenueFeed(eventId, { hedgeOnly });
   return Response.json(feed, {
     headers: { "Cache-Control": "public, max-age=8" },
   });

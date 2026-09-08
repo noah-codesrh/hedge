@@ -43,15 +43,19 @@ export function PositionPnl({
 export function LivePositionCard({
   position,
   onClose,
+  showClose = false,
 }: {
   position: LivePosition;
   onClose?: () => void;
+  showClose?: boolean;
 }) {
   const [shareOpen, setShareOpen] = useState(false);
   const open = position.status === "open";
-  const canClose = open && Boolean(position.tokenId) && onClose;
+  const canClose =
+    Boolean(onClose) &&
+    (showClose ? open || position.redeemable : open && Boolean(position.tokenId));
   const outcome = outcomeLabel(position);
-  const leverage = leverageFromEntry(position.entryPrice);
+  const leverage = position.leverage ?? leverageFromEntry(position.entryPrice);
   const tone = pnlTone(position.pnl);
   const pctColor =
     tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted";
@@ -74,7 +78,11 @@ export function LivePositionCard({
         ) : null}
       </span>
 
-      <dl className="mt-4 grid grid-cols-3 gap-3 text-[13px]">
+      <dl
+        className={`mt-4 grid gap-3 text-[13px] ${
+          position.duration ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+        }`}
+      >
         <div className="min-w-0">
           <dt className="text-muted">Amount</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">
@@ -98,6 +106,12 @@ export function LivePositionCard({
             </span>
           </dd>
         </div>
+        {position.duration ? (
+          <div className="min-w-0">
+            <dt className="text-muted">Duration</dt>
+            <dd className="mt-0.5 font-semibold">{position.duration}</dd>
+          </div>
+        ) : null}
       </dl>
 
       <div className="mt-auto flex gap-2 pt-4">
@@ -116,9 +130,11 @@ export function LivePositionCard({
           >
             {position.redeemable
               ? "Redeem"
-              : isSettledPosition(position) && position.currentPrice <= 0.01
-                ? "Clear"
-                : "Close"}
+              : position.refundable
+                ? "Refund"
+                : isSettledPosition(position) && position.currentPrice <= 0.01
+                  ? "Clear"
+                  : "Close"}
           </button>
         ) : null}
       </div>

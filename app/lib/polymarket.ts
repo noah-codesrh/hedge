@@ -170,7 +170,10 @@ let sportIconCache: Cache<Map<string, string>> | null = null;
 const CACHE_MS = 10 * 60_000;
 
 function gammaJson(path: string) {
-  return fetch(`${GAMMA}${path}`, { headers: { Accept: "application/json" } });
+  return fetch(`${GAMMA}${path}`, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8_000),
+  });
 }
 
 async function sportIcons(): Promise<Map<string, string>> {
@@ -369,6 +372,7 @@ export async function listEventPage(opts: {
 
   const res = await fetch(`${GAMMA}/events?${params}`, {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8_000),
   });
   if (!res.ok) throw new Error(`Gamma events failed (${res.status})`);
   const { rows, events } = mapRows(await res.json(), true);
@@ -379,34 +383,52 @@ export async function listEventPage(opts: {
   };
 }
 
+const EVENT_FRESH_MS = 30_000;
+const eventListCache = new Map<string, { at: number; value: EventPage }>();
+const eventListInflight = new Map<string, Promise<EventPage>>();
+
 export async function listEvents(opts?: {
   tag?: string;
   sort?: string;
 }): Promise<EventPage> {
   const tag = opts?.tag;
   const sort = opts?.sort;
-  const pages = await Promise.all(
-    Array.from({ length: INITIAL_PAGES }, (_, i) =>
-      listEventPage({ tag, sort, offset: i * EVENT_PAGE_SIZE }),
-    ),
-  );
+  const key = `${tag ?? "all"}:${sort ?? "trending"}`;
+  const hit = eventListCache.get(key);
+  if (hit && Date.now() - hit.at < EVENT_FRESH_MS) return hit.value;
+  const pending = eventListInflight.get(key);
+  if (pending) return pending;
+  const load = (async () => {
+    const pages = await Promise.all(
+      Array.from({ length: INITIAL_PAGES }, (_, i) =>
+        listEventPage({ tag, sort, offset: i * EVENT_PAGE_SIZE }),
+      ),
+    );
 
-  const seen = new Set<string>();
-  const events: PolymarketEvent[] = [];
-  for (const page of pages) {
-    for (const event of page.events) {
-      if (seen.has(event.id)) continue;
-      seen.add(event.id);
-      events.push(event);
+    const seen = new Set<string>();
+    const events: PolymarketEvent[] = [];
+    for (const page of pages) {
+      for (const event of page.events) {
+        if (seen.has(event.id)) continue;
+        seen.add(event.id);
+        events.push(event);
+      }
     }
-  }
 
-  const last = pages[pages.length - 1];
-  return {
-    events,
-    nextOffset: INITIAL_PAGES * EVENT_PAGE_SIZE,
-    hasMore: last?.hasMore ?? false,
-  };
+    const last = pages[pages.length - 1];
+    const value: EventPage = {
+      events,
+      nextOffset: INITIAL_PAGES * EVENT_PAGE_SIZE,
+      hasMore: last?.hasMore ?? false,
+    };
+    eventListCache.set(key, { at: Date.now(), value });
+    return value;
+  })().finally(() => {
+    eventListInflight.delete(key);
+  });
+  eventListInflight.set(key, load);
+  if (hit) return hit.value;
+  return load;
 }
 
 export async function searchEvents(q: string): Promise<EventPage> {
@@ -416,6 +438,7 @@ export async function searchEvents(q: string): Promise<EventPage> {
   });
   const res = await fetch(`${GAMMA}/public-search?${params}`, {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8_000),
   });
   if (!res.ok) throw new Error(`Gamma search failed (${res.status})`);
   const data: unknown = await res.json();

@@ -26,7 +26,7 @@ Users get a random 6-letter code (`/?ref=abcdef`). They can rename it. First log
 
 ## Native pool
 
-Parimutuel USDG on Robinhood Chain memes. `/pool`. Odds are the pools. Tickets live in `HedgePool` once `VITE_HEDGE_POOL_ADDRESS` is set: $1–$25, one ticket, lock before expiry, $200 desk cap. Winners `claim()`. The reporter lists and resolves (`NATIVE_POOL_KEY` or `NATIVE_ESCROW_KEY`). Deploy with `forge script script/DeployPool.s.sol:DeployPool`. Allowlist in `app/lib/native-tokens.ts`. Run `supabase/migrations/0008_native_markets.sql`. Settle with `POST /api/native/settle` and `NATIVE_SETTLE_KEY`. Escrow-wallet tickets from before the contract still pay from `NATIVE_ESCROW_KEY`.
+Parimutuel USDG on Robinhood Chain memes. `/pool`. Odds are the pools. Tickets live in `HedgePool` once `VITE_HEDGE_POOL_ADDRESS` is set: $1–$25, one ticket, lock before expiry, $1,000 desk cap. Winners `claim()`. The reporter lists and resolves (`NATIVE_POOL_KEY` or `NATIVE_ESCROW_KEY`). Deploy with `forge script script/DeployPool.s.sol:DeployPool`. Allowlist in `app/lib/native-tokens.ts`. Run `supabase/migrations/0008_native_markets.sql`. Settle with `POST /api/native/settle` and `NATIVE_SETTLE_KEY`. Escrow-wallet tickets from before the contract still pay from `NATIVE_ESCROW_KEY`.
 
 Discovery: `GET /api/native`. Stake: `POST /api/native/stake`.
 

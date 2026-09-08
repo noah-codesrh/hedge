@@ -23,10 +23,13 @@ export type VenueFeed = {
 
 export const VENUE_BODY_MAX = 400;
 
-export async function loadVenueFeed(eventId: string): Promise<VenueFeed> {
-  const res = await fetch(
-    `/api/venue/chat?eventId=${encodeURIComponent(eventId)}`,
-  );
+export async function loadVenueFeed(
+  eventId: string,
+  opts?: { hedgeOnly?: boolean },
+): Promise<VenueFeed> {
+  const q = new URLSearchParams({ eventId });
+  if (opts?.hedgeOnly) q.set("hedgeOnly", "1");
+  const res = await fetch(`/api/venue/chat?${q}`);
   if (!res.ok) {
     throw new Error("Could not load venue chat.");
   }

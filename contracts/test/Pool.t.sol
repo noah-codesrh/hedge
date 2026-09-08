@@ -144,6 +144,67 @@ contract PoolTest is Harness {
         pool.resolve(ID, B);
     }
 
+    function testRefundReturnsStake() public {
+        vm.prank(alice);
+        pool.stake(ID, A, 15e6);
+        vm.prank(alice);
+        pool.refund(ID);
+
+        (,, uint128 poolA,,,) = pool.markets(ID);
+        assertEq(poolA, 0, "pool A");
+        assertEq(pool.deskOpen(), 0, "desk");
+        assertEq(usdg.balanceOf(alice), 1_000e6, "alice whole");
+        (uint8 side, uint128 amount, bool claimed) = pool.tickets(ID, alice);
+        assertEq(side, 0, "cleared side");
+        assertEq(amount, 0, "cleared amount");
+        assertTrue(!claimed, "cleared claim");
+    }
+
+    function testRefundThenRestake() public {
+        vm.startPrank(alice);
+        pool.stake(ID, A, 10e6);
+        pool.refund(ID);
+        pool.stake(ID, B, 10e6);
+        vm.stopPrank();
+        (, uint128 amount,) = pool.tickets(ID, alice);
+        assertEq(amount, 10e6, "new ticket");
+        (,,, uint128 poolB,,) = pool.markets(ID);
+        assertEq(poolB, 10e6, "pool B");
+    }
+
+    function testRefundAfterLockReverts() public {
+        vm.prank(alice);
+        pool.stake(ID, A, 10e6);
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(alice);
+        vm.expectRevert(HedgePool.WindowLocked.selector);
+        pool.refund(ID);
+        assertEq(usdg.balanceOf(alice), 990e6, "still in");
+    }
+
+    function testRefundReleasesDeskCap() public {
+        vm.prank(admin);
+        pool.setLimits(1e6, 25e6, 25e6);
+        vm.prank(alice);
+        pool.stake(ID, A, 25e6);
+        vm.prank(bob);
+        vm.expectRevert(HedgePool.DeskCapReached.selector);
+        pool.stake(ID, B, 25e6);
+        vm.prank(alice);
+        pool.refund(ID);
+        vm.prank(bob);
+        pool.stake(ID, B, 25e6);
+        assertEq(pool.deskOpen(), 25e6, "bob in");
+    }
+
+    function testStrangerCannotRefund() public {
+        vm.prank(alice);
+        pool.stake(ID, A, 10e6);
+        vm.prank(bob);
+        vm.expectRevert(HedgePool.NoTicket.selector);
+        pool.refund(ID);
+    }
+
     function testStrangerCannotList() public {
         vm.prank(alice);
         vm.expectRevert(HedgePool.NotLister.selector);
