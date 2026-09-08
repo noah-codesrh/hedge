@@ -115,6 +115,25 @@ export async function embeddedWalletId(
   return null;
 }
 
+export function linkedWalletAddresses(user: {
+  linked_accounts?: Array<{ type?: string; address?: string }>;
+  linkedAccounts?: Array<{ type?: string; address?: string }>;
+  wallet?: { address?: string };
+}) {
+  const out: string[] = [];
+  const add = (value?: string) => {
+    const next = value?.trim() ?? "";
+    if (!/^0x[0-9a-fA-F]{40}$/.test(next)) return;
+    const lower = next.toLowerCase();
+    if (!out.includes(lower)) out.push(next);
+  };
+  add(user.wallet?.address);
+  for (const account of user.linked_accounts ?? user.linkedAccounts ?? []) {
+    add(account.address);
+  }
+  return out;
+}
+
 export function userHasWallet(
   user: {
     linked_accounts?: Array<{ type?: string; address?: string }>;

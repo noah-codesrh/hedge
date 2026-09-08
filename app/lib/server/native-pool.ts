@@ -333,6 +333,56 @@ async function readTicket(address: string, id: Hex, wallet: string) {
   }
 }
 
+/** First live refundable pool create block. Logs before this are not ours. */
+const LIVE_POOL_FROM_BLOCK = 57_405_228n;
+
+export type LivePoolTicket = {
+  id: Hex;
+  wallet: string;
+  side: number;
+  amount: number;
+  claimed: boolean;
+};
+
+/**
+ * Tickets this wallet still holds on the live pool. Finds them from Staked
+ * logs so Your tickets can recover a send that never wrote a DB row.
+ */
+export async function listLiveTicketsForWallets(wallets: string[]) {
+  const address = nativePoolAddress();
+  if (!address) return [] as LivePoolTicket[];
+  const out: LivePoolTicket[] = [];
+  const seen = new Set<string>();
+  for (const wallet of wallets) {
+    if (!ADDR.test(wallet)) continue;
+    let logs: Awaited<ReturnType<typeof publicClient.getContractEvents>>;
+    try {
+      logs = await publicClient.getContractEvents({
+        address: address as Hex,
+        abi: poolAbi,
+        eventName: "Staked",
+        args: { user: wallet as Hex },
+        fromBlock: LIVE_POOL_FROM_BLOCK,
+        toBlock: "latest",
+      });
+    } catch (error) {
+      console.error("[native] live ticket logs", wallet, error);
+      continue;
+    }
+    for (const log of logs) {
+      const id = log.args.id;
+      if (!id) continue;
+      const key = `${id}:${wallet.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ticket = await readTicket(address, id, wallet);
+      if (!ticket || (!(ticket.amount > 0) && !ticket.claimed)) continue;
+      out.push({ id, wallet, ...ticket });
+    }
+  }
+  return out;
+}
+
 export async function verifyPoolStakeTx(input: {
   hash: string;
   from: string;
@@ -361,9 +411,6 @@ export async function verifyPoolStakeTx(input: {
   }
   if (receipt.status !== "success") {
     return { error: "Stake transaction reverted.", status: 409 as const };
-  }
-  if (receipt.to?.toLowerCase() !== box.address.toLowerCase()) {
-    return { error: "That hash is not a pool stake.", status: 400 as const };
   }
   const stakes = parseEventLogs({
     abi: poolAbi,

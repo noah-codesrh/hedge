@@ -35,7 +35,13 @@ import {
 import { fiat, pct } from "../lib/format";
 import { toUsdgRaw } from "../lib/leverage-chain";
 import { poolIsLive } from "../lib/hedge-pool";
-import { claimPool, refundPool, stakeOnPool, type PoolSendContext } from "../lib/pool-actions";
+import {
+  claimPool,
+  refundPool,
+  stakeOnPool,
+  waitForPoolTicket,
+  type PoolSendContext,
+} from "../lib/pool-actions";
 import { RH_EXPLORER, USDG, encodeErc20Transfer } from "../lib/robinhood";
 import { sponsoredTokenSend } from "../lib/sponsored-send";
 import { NativeTicketCard } from "./NativeTickets";
@@ -76,12 +82,15 @@ function pendingKey(slug: string) {
   return `hedge-native-pending:${slug}`;
 }
 
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
+
 function readPending(slug: string): Pending | null {
   try {
     const raw = sessionStorage.getItem(pendingKey(slug));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Pending;
-    if (!parsed?.hash || !parsed.wallet) return null;
+    if (!parsed?.wallet || !(parsed.amount > 0)) return null;
+    if (!parsed.hash) parsed.hash = "onchain";
     return parsed;
   } catch {
     return null;
@@ -418,20 +427,33 @@ function NativeStakeInner({
   const record = async (ticket: Pending, opts?: { silent?: boolean }) => {
     const token = await getAccessToken();
     if (!token) throw new Error("Sign in again.");
-    const result = await authed<{
-      amount: number;
-      side: NativeSide;
-      txHash?: string;
-    }>(token, "/api/native/stake", {
-      method: "POST",
-      body: JSON.stringify({
-        slug: market.slug,
-        side: ticket.side,
-        amount: ticket.amount,
-        wallet: ticket.wallet,
-        txHash: ticket.hash,
-      }),
-    });
+    const hash = TX_HASH.test(ticket.hash) ? ticket.hash : "";
+    const result = hash
+      ? await authed<{
+          amount: number;
+          side: NativeSide;
+          txHash?: string;
+        }>(token, "/api/native/stake", {
+          method: "POST",
+          body: JSON.stringify({
+            slug: market.slug,
+            side: ticket.side,
+            amount: ticket.amount,
+            wallet: ticket.wallet,
+            txHash: hash,
+          }),
+        })
+      : await authed<{
+          amount: number;
+          side: NativeSide;
+          txHash?: string | null;
+        }>(token, "/api/native/sync", {
+          method: "POST",
+          body: JSON.stringify({
+            slug: market.slug,
+            wallet: ticket.wallet,
+          }),
+        });
     booked(result, { silent: opts?.silent });
   };
 
@@ -486,7 +508,9 @@ function NativeStakeInner({
       setError("That took too long. Check your wallet prompt and try again.");
       setSaving(false);
       setStatus(null);
-    }, 45_000);
+    }, 60_000);
+    let from = "";
+    let qty = 0;
     try {
       if (!NATIVE_POOL_OPEN || !escrowWallet) {
         throw new Error("Pool is under maintenance.");
@@ -494,9 +518,9 @@ function NativeStakeInner({
       const token = await getAccessToken();
       if (!token) throw new Error("Sign in again.");
       const signer = cashWallet ?? (await ensureCashWallet());
-      const from = signer?.address ?? primaryWalletAddress(user, wallets);
+      from = signer?.address ?? primaryWalletAddress(user, wallets) ?? "";
       if (!from || !signer) throw new Error("Connect a wallet that holds USDG.");
-      let qty = Number(amount);
+      qty = Number(amount);
       if (collateral) {
         setStatus(`Selling ${collateral.symbol}`);
         if (qty <= 0) throw new Error("Enter an amount first.");
@@ -587,13 +611,49 @@ function NativeStakeInner({
           });
         }
       }
-      if (!hash) throw new Error("Stake transaction did not return a hash.");
-      const saved: Pending = { hash, side, amount: qty, wallet: from };
+      if (!hash && poolIsLive) {
+        setStatus("Confirming ticket");
+        const landed = await waitForPoolTicket({
+          wallet: from,
+          slug: market.slug,
+          side,
+          amount: qty,
+        });
+        if (!landed) {
+          throw new Error(
+            "Could not confirm that ticket. Check Your tickets in a moment.",
+          );
+        }
+      } else if (!hash) {
+        throw new Error("Stake transaction did not return a hash.");
+      }
+      const saved: Pending = {
+        hash: hash || "onchain",
+        side,
+        amount: qty,
+        wallet: from,
+      };
       writePending(market.slug, saved);
-      booked({ amount: qty, side, txHash: hash });
+      booked({ amount: qty, side, txHash: hash || null });
       void record(saved, { silent: true }).catch(() => {});
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not place that ticket.");
+      const text =
+        err instanceof Error ? err.message : "Could not place that ticket.";
+      if (poolIsLive && from && qty > 0 && /One ticket per wallet/i.test(text)) {
+        try {
+          const saved: Pending = {
+            hash: "onchain",
+            side,
+            amount: qty,
+            wallet: from,
+          };
+          await record(saved, { silent: true });
+          return;
+        } catch {
+          /* still missing on chain */
+        }
+      }
+      setError(text);
     } finally {
       window.clearTimeout(timeout);
       setSaving(false);

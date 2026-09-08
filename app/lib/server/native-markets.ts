@@ -35,6 +35,7 @@ import {
 import {
   ensurePoolLimits,
   ensurePoolListed,
+  listLiveTicketsForWallets,
   nativePoolAddress,
   nativePoolConfigured,
   poolTicket,
@@ -45,7 +46,11 @@ import {
 } from "./native-pool";
 import { supabaseAdmin } from "./supabase";
 import { toUsd, toUsdgRaw } from "../leverage-chain";
-import { POOL_SIDE_A, POOL_SIDE_B } from "../hedge-pool";
+import {
+  POOL_SIDE_A,
+  POOL_SIDE_B,
+  poolMarketId,
+} from "../hedge-pool";
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -235,10 +240,64 @@ function ticketPayout(
   );
 }
 
-export async function listMyNativeTickets(userId: string) {
+async function backfillLiveTickets(userId: string, wallets: string[]) {
+  if (!nativePoolConfigured() || wallets.length === 0) return;
+  const db = supabaseAdmin();
+  if (!db) return;
+  const live = await listLiveTicketsForWallets(wallets);
+  if (live.length === 0) return;
+  const { data, error } = await db.from("native_markets").select("*");
+  if (error) {
+    console.error("[native] backfill markets", error);
+    return;
+  }
+  const byHash = new Map<string, NativeMarketRow>();
+  for (const raw of data ?? []) {
+    const market = asMarket(raw as Record<string, unknown>);
+    byHash.set(poolMarketId(market.slug).toLowerCase(), market);
+  }
+  let wrote = false;
+  for (const ticket of live) {
+    if (!(ticket.amount >= NATIVE_MIN_STAKE) && !ticket.claimed) continue;
+    const market = byHash.get(ticket.id.toLowerCase());
+    if (!market) continue;
+    const side: NativeSide | null =
+      ticket.side === POOL_SIDE_B ? "b" : ticket.side === POOL_SIDE_A ? "a" : null;
+    if (!side) continue;
+    const { data: existing } = await db
+      .from("native_stakes")
+      .select("id")
+      .eq("market_id", market.id)
+      .eq("privy_user_id", userId)
+      .maybeSingle();
+    if (existing?.id) continue;
+    const { error: insertError } = await db.from("native_stakes").insert({
+      market_id: market.id,
+      privy_user_id: userId,
+      wallet: ticket.wallet,
+      side,
+      amount: ticket.amount,
+      tx_hash: null,
+    });
+    if (insertError && insertError.code !== UNIQUE_VIOLATION) {
+      console.error("[native] backfill insert", insertError);
+      continue;
+    }
+    wrote = true;
+  }
+  if (wrote) invalidateNativeDesk();
+}
+
+export async function listMyNativeTickets(
+  userId: string,
+  wallets: string[] = [],
+) {
   const listed = await listNativeMarkets();
   const db = supabaseAdmin();
   if (!db || !listed.tracked) return { tickets: [] as NativeTicketView[] };
+  await backfillLiveTickets(userId, wallets).catch((error) =>
+    console.error("[native] backfill", error),
+  );
   const { data, error } = await db
     .from("native_stakes")
     .select(
@@ -250,7 +309,35 @@ export async function listMyNativeTickets(userId: string) {
     console.error("[native] my tickets", error);
     return { tickets: [] as NativeTicketView[] };
   }
+  const missingIds = [
+    ...new Set(
+      (data ?? [])
+        .map((row) => String(row.market_id))
+        .filter((id) => !listed.markets.some((market) => market.id === id)),
+    ),
+  ];
+  const extraById = new Map<string, NativePublicMarket>();
+  if (missingIds.length > 0) {
+    const { data: extra } = await db
+      .from("native_markets")
+      .select("*")
+      .in("id", missingIds);
+    const extraRows = (extra ?? []).map((row) =>
+      asMarket(row as Record<string, unknown>),
+    );
+    const extraStakes = await loadStakes(extraRows.map((row) => row.id));
+    const byMarket = new Map<string, NativeStakeRow[]>();
+    for (const stake of extraStakes) {
+      const list = byMarket.get(stake.market_id) ?? [];
+      list.push(stake);
+      byMarket.set(stake.market_id, list);
+    }
+    for (const row of extraRows) {
+      extraById.set(row.id, view(row, byMarket.get(row.id) ?? [], listed.quotes));
+    }
+  }
   const byId = new Map(listed.markets.map((market) => [market.id, market]));
+  for (const [id, market] of extraById) byId.set(id, market);
   const tickets: NativeTicketView[] = [];
   const claimed = await Promise.all(
     (data ?? []).map(async (row) => {
@@ -684,7 +771,11 @@ export async function listNativeMarkets() {
   return listInflight;
 }
 
-export async function getNativeMarket(slug: string, userId?: string | null) {
+export async function getNativeMarket(
+  slug: string,
+  userId?: string | null,
+  wallets: string[] = [],
+) {
   const listed = await listNativeMarkets();
   const { tracked, markets, quotes, escrowWallet, payoutLive } = listed;
   let market = markets.find((row) => row.slug === slug || row.id === slug) ?? null;
@@ -734,10 +825,31 @@ export async function getNativeMarket(slug: string, userId?: string | null) {
     .eq("market_id", market.id)
     .eq("privy_user_id", userId)
     .maybeSingle();
-  if (!data) {
+  let row = data;
+  if (!row && wallets.length > 0 && nativePoolConfigured()) {
+    for (const wallet of wallets) {
+      const synced = await syncOnchainStake({
+        userId,
+        slug: market.slug,
+        wallet,
+      });
+      if ("error" in synced) continue;
+      const again = await db
+        .from("native_stakes")
+        .select(
+          "id, created_at, market_id, privy_user_id, wallet, side, amount, tx_hash, payout_tx, payout_amount",
+        )
+        .eq("market_id", market.id)
+        .eq("privy_user_id", userId)
+        .maybeSingle();
+      row = again.data;
+      break;
+    }
+  }
+  if (!row) {
     return { tracked, market, mine: null, quotes, escrowWallet, payoutLive };
   }
-  const wallet = data.wallet ? String(data.wallet) : "";
+  const wallet = row.wallet ? String(row.wallet) : "";
   const live = wallet ? await poolTicketLive(market.slug, wallet) : null;
   const onchain = wallet ? await poolTicket(market.slug, wallet) : null;
   const onLive = Boolean(live && (live.amount > 0 || live.claimed));
@@ -745,22 +857,22 @@ export async function getNativeMarket(slug: string, userId?: string | null) {
   if (nativePoolConfigured() && onAny && !onLive) {
     return { tracked, market, mine: null, quotes, escrowWallet, payoutLive };
   }
-  const claimed = Boolean(data.payout_tx) || Boolean(onchain?.claimed);
+  const claimed = Boolean(row.payout_tx) || Boolean(onchain?.claimed);
   const mine = {
-    id: String(data.id),
-    side: data.side === "b" ? ("b" as const) : ("a" as const),
-    amount: n(data.amount),
+    id: String(row.id),
+    side: row.side === "b" ? ("b" as const) : ("a" as const),
+    amount: n(row.amount),
     payout: ticketPayout(
       market,
-      data.side === "b" ? "b" : "a",
-      n(data.amount),
-      data.payout_amount != null ? n(data.payout_amount) : null,
+      row.side === "b" ? "b" : "a",
+      n(row.amount),
+      row.payout_amount != null ? n(row.payout_amount) : null,
     ),
     payoutTx: claimed
-      ? String(data.payout_tx ?? "claimed")
+      ? String(row.payout_tx ?? "claimed")
       : null,
-    txHash: data.tx_hash ? String(data.tx_hash) : null,
-    created_at: String(data.created_at),
+    txHash: row.tx_hash ? String(row.tx_hash) : null,
+    created_at: String(row.created_at),
   };
   return { tracked, market, mine, quotes, escrowWallet, payoutLive };
 }

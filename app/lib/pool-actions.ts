@@ -169,9 +169,14 @@ async function send(
       data,
       signAuthorization: ctx.signAuthorization,
     });
-    if (!hash) throw new Error("Stake transaction did not return a hash.");
-    if (wait) await waitMined(hash);
-    return hash;
+    if (hash) {
+      if (wait) await waitMined(hash);
+      return hash;
+    }
+    // Privy sometimes broadcasts a sponsored send without a hash. The
+    // tokens can still move. Callers confirm on chain instead of failing.
+    if (wait) await new Promise((resolve) => setTimeout(resolve, 1_200));
+    return "";
   } catch (err) {
     const text = err instanceof Error ? err.message : "";
     if (ctx.wallet && /not linked to this account/i.test(text)) {
@@ -215,6 +220,34 @@ async function requireListed(slug: string) {
     await new Promise((resolve) => setTimeout(resolve, 350));
   }
   throw new Error("This card is not on chain yet.");
+}
+
+export async function waitForPoolTicket(input: {
+  wallet: string;
+  slug: string;
+  side: NativeSide;
+  amount: number;
+}) {
+  if (!poolIsLive || !ADDRESS.test(input.wallet)) return false;
+  const id = poolMarketId(input.slug);
+  const side = sideCode(input.side);
+  const want = toUsdgRaw(input.amount);
+  const floor = want > 10_000n ? want - 10_000n : 0n;
+  for (let i = 0; i < 16; i++) {
+    try {
+      const row = await client.readContract({
+        address: POOL_ADDRESS as Hex,
+        abi: poolAbi,
+        functionName: "tickets",
+        args: [id, input.wallet as Hex],
+      });
+      if (Number(row[0]) === side && row[1] >= floor) return true;
+    } catch {
+      /* rpc blip */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  }
+  return false;
 }
 
 export async function stakeOnPool(
