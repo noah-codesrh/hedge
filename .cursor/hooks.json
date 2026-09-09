@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "POB_SUBJECT=hedge POB_INGEST_URL=https://button.fun/v1/pob/ingest POB_INGEST_TOKEN=pob_f3ffd3278fc5550e78abb537015ee7f0810f8109179be59a node \"$CURSOR_PROJECT_DIR/.cursor/hooks/pob-cursor.js\""
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": "POB_SUBJECT=hedge POB_INGEST_URL=https://button.fun/v1/pob/ingest POB_INGEST_TOKEN=pob_f3ffd3278fc5550e78abb537015ee7f0810f8109179be59a node \"$CURSOR_PROJECT_DIR/.cursor/hooks/pob-cursor.js\""
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "POB_SUBJECT=hedge POB_INGEST_URL=https://button.fun/v1/pob/ingest POB_INGEST_TOKEN=pob_f3ffd3278fc5550e78abb537015ee7f0810f8109179be59a node \"$CURSOR_PROJECT_DIR/.cursor/hooks/pob-cursor.js\""
+      }
+    ],
+    "stop": [
+      {
+        "command": "POB_SUBJECT=hedge POB_INGEST_URL=https://button.fun/v1/pob/ingest POB_INGEST_TOKEN=pob_f3ffd3278fc5550e78abb537015ee7f0810f8109179be59a node \"$CURSOR_PROJECT_DIR/.cursor/hooks/pob-cursor.js\""
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "POB_SUBJECT=hedge POB_INGEST_URL=https://button.fun/v1/pob/ingest POB_INGEST_TOKEN=pob_f3ffd3278fc5550e78abb537015ee7f0810f8109179be59a node \"$CURSOR_PROJECT_DIR/.cursor/hooks/pob-cursor.js\""
+      }
+    ]
+  }
+}
