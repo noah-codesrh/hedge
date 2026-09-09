@@ -73,6 +73,8 @@ export function TradePanel(props: {
   market: Market;
   initialSide?: Side;
   initialLeverage?: number;
+  initialAmount?: number;
+  onSideChange?: (side: Side) => void;
 }) {
   const privyMounted = usePrivyMounted();
   if (privyMounted) return <AuthedTradePanel {...props} />;
@@ -84,6 +86,8 @@ function AuthedTradePanel(props: {
   market: Market;
   initialSide?: Side;
   initialLeverage?: number;
+  initialAmount?: number;
+  onSideChange?: (side: Side) => void;
 }) {
   const { authenticated, ready, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
@@ -137,6 +141,7 @@ function TradePanelView({
   market,
   initialSide = "yes",
   initialLeverage = 1,
+  initialAmount = 0,
   authenticated,
   sessionReady = true,
   getAccessToken,
@@ -154,11 +159,13 @@ function TradePanelView({
   onCancelOrder,
   leverBusyId = null,
   leverCloseStage = null,
+  onSideChange,
 }: {
   event: PolymarketEvent;
   market: Market;
   initialSide?: Side;
   initialLeverage?: number;
+  initialAmount?: number;
   authenticated: boolean;
   sessionReady?: boolean;
   getAccessToken?: () => Promise<string | null>;
@@ -180,11 +187,12 @@ function TradePanelView({
   onCancelOrder?: (order: LeverageOrder) => void;
   leverBusyId?: string | null;
   leverCloseStage?: TradeStage | null;
+  onSideChange?: (side: Side) => void;
 }) {
   const { openModal } = useAuthModal();
   const { cash, openDeposit, refresh, openPositions } = useBook();
   const [side, setSide] = useState<Side>(initialSide);
-  const [amount, setAmount] = useState(0);
+  const [amount, setAmount] = useState(initialAmount > 0 ? initialAmount : 0);
   const [busy, setBusy] = useState(false);
   const [convertStep, setConvertStep] = useState<ConvertStep | null>(null);
   const [convertError, setConvertError] = useState<string | null>(null);
@@ -207,6 +215,10 @@ function TradePanelView({
   useEffect(() => {
     setSide(initialSide);
   }, [initialSide]);
+
+  useEffect(() => {
+    if (initialAmount > 0) setAmount(initialAmount);
+  }, [initialAmount]);
 
   const price = side === "yes" ? market.yes.price : market.no.price;
   const tradeable = isLiveMarket(market) && price > 0;
@@ -573,7 +585,8 @@ function TradePanelView({
   // Also catches stepping up the multiple with an amount already typed, which
   // can put a previously fine number above the levered cap.
   useEffect(() => {
-    setAmount((a) => (marginCeiling > 0 ? Math.min(a, marginCeiling) : 0));
+    if (marginCeiling <= 0) return;
+    setAmount((a) => Math.min(a, marginCeiling));
   }, [marginCeiling]);
 
   /**
@@ -924,7 +937,10 @@ function TradePanelView({
 
         <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3">
           <button
-            onClick={() => setSide("yes")}
+            onClick={() => {
+              setSide("yes");
+              onSideChange?.("yes");
+            }}
             className={`min-w-0 truncate rounded-full py-3 text-[14px] font-bold transition sm:py-3.5 sm:text-[15px] ${
               side === "yes"
                 ? "bg-[#1f6f43] text-white"
@@ -934,7 +950,10 @@ function TradePanelView({
             {market.yes.label} {cents(market.yes.price)}
           </button>
           <button
-            onClick={() => setSide("no")}
+            onClick={() => {
+              setSide("no");
+              onSideChange?.("no");
+            }}
             className={`min-w-0 truncate rounded-full py-3 text-[14px] font-bold transition sm:py-3.5 sm:text-[15px] ${
               side === "no"
                 ? "bg-[#7a2b2b] text-white"

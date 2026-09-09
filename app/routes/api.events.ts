@@ -1,5 +1,10 @@
 import type { Route } from "./+types/api.events";
 import { listEventPage } from "../lib/polymarket";
+import { publicCorsHeaders } from "../lib/server/public-cors";
+
+export function headers() {
+  return publicCorsHeaders();
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);

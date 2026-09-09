@@ -14,11 +14,22 @@ The web app (`app/`) plus the leverage contracts and keeper (`contracts/`). The 
 
 Which markets get leverage is a hand-checked allowlist in `app/lib/leverage.ts` and `contracts/relayer/markets.json`. Those two must match the markets listed on-chain.
 
+## 1x spot for other products
+
+Another app can list and quote the live book, then send the user to a prefilled ticket. The fill stays in Hedge. No builder or relayer key.
+
+- Capability: `GET /api/spot`
+- Markets: `GET /api/spot/markets`
+- Quote / ticket: `GET /api/spot/quote` and `GET /api/spot/ticket`
+- Ticket URL: `/market/{eventSlug}?m={gammaId}&s=yes&amt=5`
+- Docs: https://docs.hedgeapp.trade/developers
+- Spot HTTP: https://docs.hedgeapp.trade/guides/spot
+
 ## Agent Wall
 
 Outside agents quote every live market through `GET/POST /api/agent/*`. 1x fills in the app. Listed names can return unsigned vault calls the agent signs from its own wallet. The wall is free.
 
-Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. `GET /api/agent/markets` is the live venue (`?desk=spot` or `?desk=leverage`). `status.live` is the venue. `openingPaused` is vault-only. On Vercel (Hedge app, not docs), set `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Leave `AGENT_API_KEY` / `AGENT_API_KEYS` unset unless you want named fills. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
+Discovery: `/api/agent` and `/llms.txt`. Humans: `/wall`. Docs: https://docs.hedgeapp.trade/developers. `GET /api/agent/markets` is the live venue (`?desk=spot` or `?desk=leverage`). `status.live` is the venue. `openingPaused` is vault-only. On Vercel (Hedge app, not docs), set `AGENT_MAX_MARGIN`, `AGENT_MAX_LEVERAGE`, `AGENT_DAILY_NOTIONAL`. Leave `AGENT_API_KEY` / `AGENT_API_KEYS` unset unless you want named fills. Run `supabase/migrations/0006_agent_bets.sql` so fills land on the wall.
 
 ## Referrals
 

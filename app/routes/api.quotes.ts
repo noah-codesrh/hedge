@@ -1,5 +1,10 @@
 import type { Route } from "./+types/api.quotes";
 import { getMarketQuotes } from "../lib/polymarket";
+import { publicCorsHeaders } from "../lib/server/public-cors";
+
+export function headers() {
+  return publicCorsHeaders();
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
   const ids = new URL(request.url).searchParams.get("ids") ?? "";

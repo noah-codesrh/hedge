@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import type { Route } from "./+types/market.$id";
 import { ArrowLeftIcon } from "../components/icons";
 import { ChanceBar } from "../components/OutrightCard";
-import { PriceChart } from "../components/PriceChart";
+import { MarketChart } from "../components/MarketChart";
 import { TradePanel } from "../components/TradePanel";
 import { VenueChat } from "../components/VenueChat";
 import {
@@ -13,7 +13,8 @@ import {
   pickLiveMarket,
   type PricePoint,
 } from "../lib/polymarket";
-import { formatEnd, pct } from "../lib/format";
+import { formatEnd } from "../lib/format";
+import { parseSpotAmount } from "../lib/spot-ticket";
 import type { Market, Side } from "../lib/types";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { RemoteImg } from "../components/RemoteImg";
@@ -37,13 +38,16 @@ export function meta({ loaderData, matches }: Route.MetaArgs) {
 export async function loader({ params, request }: Route.LoaderArgs) {
   const event = await getEvent(params.id);
   if (!event) return { event: null, history: [] as PricePoint[], defaultMarketId: null };
-  const wanted = new URL(request.url).searchParams.get("m");
+  const url = new URL(request.url);
+  const wanted = url.searchParams.get("m");
+  const wantedSide = url.searchParams.get("s") === "no" ? "no" : "yes";
   const wantedMarket = wanted
     ? event.markets.find((m) => m.id === wanted)
     : undefined;
   const market =
     wantedMarket ?? pickLiveMarket(event) ?? event.markets[0];
-  const tokenId = market?.yes.tokenId;
+  const tokenId =
+    wantedSide === "no" ? market?.no.tokenId : market?.yes.tokenId;
   const history = tokenId ? await getPriceHistory(tokenId) : [];
   return { event, history, defaultMarketId: market?.id ?? null };
 }
@@ -54,6 +58,8 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   const initialSide = (params.get("s") === "no" ? "no" : "yes") as Side;
   const lev = Number(params.get("lev"));
   const initialLeverage = lev === 2 || lev === 3 || lev === 4 ? lev : 1;
+  const initialAmount =
+    parseSpotAmount(params.get("amt") ?? params.get("amount")) ?? 0;
   const queriedMarket = params.get("m");
   const [activeId, setActiveId] = useState<string | undefined>(
     queriedMarket ?? defaultMarketId ?? undefined,
@@ -61,10 +67,15 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   const [history, setHistory] = useState(loaderData.history);
   const [chartBusy, setChartBusy] = useState(false);
   const [outcomesOpen, setOutcomesOpen] = useState(false);
+  const [side, setSide] = useState<Side>(initialSide);
 
   useEffect(() => {
     if (queriedMarket) setActiveId(queriedMarket);
   }, [queriedMarket]);
+
+  useEffect(() => {
+    setSide(initialSide);
+  }, [initialSide]);
 
   useEffect(() => {
     setOutcomesOpen(false);
@@ -76,12 +87,12 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
 
   useEffect(() => {
     if (!market) return;
-    const tokenId = market.yes.tokenId;
+    const tokenId = side === "no" ? market.no.tokenId : market.yes.tokenId;
     if (!tokenId) {
       setHistory([]);
       return;
     }
-    if (market.id === defaultMarketId) {
+    if (market.id === defaultMarketId && side === initialSide) {
       setHistory(loaderData.history);
       setChartBusy(false);
       return;
@@ -96,7 +107,15 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
     return () => {
       cancelled = true;
     };
-  }, [market?.id, market?.yes.tokenId, defaultMarketId, loaderData.history]);
+  }, [
+    market?.id,
+    market?.yes.tokenId,
+    market?.no.tokenId,
+    side,
+    defaultMarketId,
+    initialSide,
+    loaderData.history,
+  ]);
 
   if (!event || !market) {
     return (
@@ -149,25 +168,12 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="mt-5 grid min-w-0 items-start gap-5 lg:mt-6 lg:grid-cols-[1fr_360px] lg:gap-8">
-        <div className="order-2 min-w-0 overflow-hidden rounded-3xl bg-card p-3 ring-1 ring-white/5 sm:p-4 lg:order-none lg:col-start-1 lg:row-start-1">
-          <div className="mb-3 flex items-baseline justify-between gap-3 px-1">
-            <p className="min-w-0 truncate text-[13px] text-muted">
-              {market.groupItemTitle
-                ? `${market.groupItemTitle} chance`
-                : "Yes chance"}
-            </p>
-            <p className="shrink-0 text-2xl font-semibold tracking-tight sm:text-3xl">
-              {pct(market.yes.price)}
-            </p>
-          </div>
-          {chartBusy ? (
-            <div className="grid h-52 place-items-center text-sm text-muted sm:h-72">
-              Loading chart…
-            </div>
-          ) : (
-            <PriceChart key={market.id} points={history} />
-          )}
-        </div>
+        <MarketChart
+          market={market}
+          history={history}
+          busy={chartBusy}
+          side={side}
+        />
 
         <div className="order-1 min-w-0 lg:order-none lg:col-start-2 lg:row-span-3 lg:row-start-1">
           <div className="lg:sticky lg:top-20">
@@ -176,6 +182,8 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
               market={market}
               initialSide={initialSide}
               initialLeverage={initialLeverage}
+              initialAmount={initialAmount}
+              onSideChange={setSide}
             />
           </div>
         </div>

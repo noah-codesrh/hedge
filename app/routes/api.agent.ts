@@ -18,7 +18,7 @@ export async function loader({ request }: { request: Request }) {
     version: "2",
     description:
       "Outside agents quote every live Hedge market. 1x fills in the app. Vault tickets are optional on listed names. The wall is free.",
-    docs: "https://docs.hedgeapp.trade/guides/agent-wall",
+    docs: "https://docs.hedgeapp.trade/developers",
     wall: `${origin}/wall`,
     llms: `${origin}/llms.txt`,
     free: true,

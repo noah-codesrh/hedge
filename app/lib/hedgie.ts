@@ -96,6 +96,7 @@ export function ticketHref(intent: TradeIntent) {
     m: intent.marketId,
     s: intent.side,
   });
+  if (intent.margin >= 1) q.set("amt", String(intent.margin));
   if (intent.leverage > 1) q.set("lev", String(intent.leverage));
   return `/market/${encodeURIComponent(intent.eventSlug)}?${q}`;
 }

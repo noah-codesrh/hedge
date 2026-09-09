@@ -205,6 +205,19 @@ const BY_ID = new Map(LEVERAGE_MARKETS.map((m) => [m.marketId, m]));
 const BY_SLUG = new Map(LEVERAGE_MARKETS.map((m) => [m.marketSlug, m]));
 
 /**
+ * Allowlisted for leverage even if trading is switched off. Used by the
+ * candle chart so listed names still get the token-style view.
+ */
+export function listedLeverageFor(market: Market): LeverageMarket | null {
+  return (
+    (market.yes.tokenId ? BY_TOKEN.get(market.yes.tokenId) : undefined) ??
+    BY_ID.get(market.id) ??
+    BY_SLUG.get(market.slug) ??
+    null
+  );
+}
+
+/**
  * The leverage config for a market, or null if it is a normal market.
  *
  * Matches on the YES token first because that is what the oracle keys on, so
@@ -218,12 +231,7 @@ const BY_SLUG = new Map(LEVERAGE_MARKETS.map((m) => [m.marketSlug, m]));
  */
 export function leverageFor(market: Market): LeverageMarket | null {
   if (!leverageEnabled) return null;
-  return (
-    (market.yes.tokenId ? BY_TOKEN.get(market.yes.tokenId) : undefined) ??
-    BY_ID.get(market.id) ??
-    BY_SLUG.get(market.slug) ??
-    null
-  );
+  return listedLeverageFor(market);
 }
 
 export function isLeverageMarket(market: Market): boolean {
