@@ -708,6 +708,10 @@ export type NativeTicketView = {
   /** Live chance of this ticket's side, 0–1. */
   implied: number;
   created_at?: string | null;
+  /** On-chain `previewPayout` is above zero. Redeem is a no-op until this is true. */
+  claimable?: boolean;
+  /** Expired, still on chain, stake can be released then claimed. */
+  releasable?: boolean;
 };
 
 /** Sponsored gas Hedge covers on the mark so a fresh ticket is not red from fees. */

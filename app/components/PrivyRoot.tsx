@@ -4,28 +4,13 @@ import { base, polygon, robinhoodChain } from "../lib/chains";
 import { ENV } from "../lib/env";
 import { writeSessionHint } from "../lib/session-hint";
 
-function SessionKeepAlive() {
-  const { authenticated, ready, getAccessToken } = usePrivy();
-
-  useEffect(() => {
-    if (!ready) return;
-    writeSessionHint(authenticated);
-  }, [authenticated, ready]);
+function SessionHint() {
+  const { authenticated, ready } = usePrivy();
 
   useEffect(() => {
     if (!ready || !authenticated) return;
-    const refresh = () => {
-      if (document.visibilityState !== "visible") return;
-      void getAccessToken().catch(() => {});
-    };
-    refresh();
-    document.addEventListener("visibilitychange", refresh);
-    window.addEventListener("focus", refresh);
-    return () => {
-      document.removeEventListener("visibilitychange", refresh);
-      window.removeEventListener("focus", refresh);
-    };
-  }, [authenticated, getAccessToken, ready]);
+    writeSessionHint(true);
+  }, [authenticated, ready]);
 
   return null;
 }
@@ -68,7 +53,7 @@ export default function PrivyRoot({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      <SessionKeepAlive />
+      <SessionHint />
       {children}
     </PrivyProvider>
   );

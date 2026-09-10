@@ -86,12 +86,17 @@ function NeutralizePrivyOverlay() {
   return null;
 }
 
+/** Survives a Providers remount so Privy is not torn down mid-session. */
+let privyClientOnce = false;
+
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [wantPrivy, setWantPrivy] = useState(false);
+  const [wantPrivy, setWantPrivy] = useState(privyClientOnce);
   const [privyReady, setPrivyReady] = useState(false);
 
   useLayoutEffect(() => {
-    if (ENV.privyAppId) setWantPrivy(true);
+    if (!ENV.privyAppId) return;
+    privyClientOnce = true;
+    setWantPrivy(true);
   }, []);
 
   const onPrivyReady = useCallback(() => setPrivyReady(true), []);
@@ -113,7 +118,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         */}
         <LoginModal />
         {wantPrivy ? (
-          <Suspense fallback={children}>
+          <Suspense fallback={null}>
             <PrivyRoot>
               <MarkPrivyReady onReady={onPrivyReady} />
               <PrivyLoginMethods />

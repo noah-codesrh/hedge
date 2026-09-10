@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Form, Link, useLocation, useSearchParams } from "react-router";
-import { readSessionHint, writeSessionHint } from "../lib/session-hint";
+import { forgetAccessToken } from "../lib/privy-session";
+import {
+  sessionStillHeld,
+  useHeldSession,
+  writeSessionHint,
+} from "../lib/session-hint";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DepositButton, useBook } from "./Book";
 import { ReferralBind } from "./ReferralCapture";
@@ -154,6 +159,7 @@ function HeaderShell({
               {book ? <HeaderBook /> : null}
               {book ? <DepositButton /> : null}
               <button
+                type="button"
                 onClick={onLogout}
                 className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-[#cfcfcf] transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-2 sm:text-sm"
               >
@@ -216,12 +222,26 @@ function HeaderBook() {
   );
 }
 
-function PrivyHeader() {
-  const { authenticated, logout } = usePrivy();
+function PrivyHeader({
+  hinted,
+  onHinted,
+}: {
+  hinted: boolean;
+  onHinted: (on: boolean) => void;
+}) {
+  const { authenticated, ready, logout } = usePrivy();
   const { openModal } = useAuthModal();
+  const held = useHeldSession(authenticated, ready);
+  const signedIn = authenticated || held;
+
+  useEffect(() => {
+    onHinted(signedIn);
+  }, [onHinted, signedIn]);
 
   const onLogout = () => {
+    forgetAccessToken();
     writeSessionHint(false);
+    onHinted(false);
     void logout();
   };
 
@@ -229,10 +249,10 @@ function PrivyHeader() {
     <>
       <ReferralBind />
       <HeaderShell
-        authenticated={authenticated}
+        authenticated={signedIn}
         onGetStarted={openModal}
         onLogout={onLogout}
-        book
+        book={authenticated}
       />
     </>
   );
@@ -309,13 +329,13 @@ export function Header() {
   const privyMounted = usePrivyMounted();
   const [hinted, setHinted] = useState(false);
   useLayoutEffect(() => {
-    setHinted(readSessionHint());
+    setHinted(sessionStillHeld());
   }, []);
 
   return (
     <>
       {privyMounted ? (
-        <PrivyHeader />
+        <PrivyHeader hinted={hinted} onHinted={setHinted} />
       ) : (
         <HeaderShell
           authenticated={hinted}

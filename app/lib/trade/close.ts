@@ -103,6 +103,9 @@ function friendlyCloseError(err: unknown, fallback: string) {
   ) {
     return "Could not sponsor Polygon gas for this hop. Add a small Privy gas-credit limit, then try Cash out again.";
   }
+  if (/allowance|not[_ ]?enough[_ ]?balance/i.test(message)) {
+    return "Polymarket would not release these shares yet. Your position is still there. Tap Close again.";
+  }
   return message || fallback;
 }
 
@@ -145,14 +148,91 @@ async function waitForUsdg(address: string, before: number, expected: number | n
   return { balance: latest, gained: Math.max(0, latest - before) };
 }
 
+function clobCoverError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /allowance|not[_ ]?enough[_ ]?balance|insufficient (?:balance|collateral)/i.test(
+    message,
+  );
+}
+
+function clobAllowanceError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /allowance/i.test(message);
+}
+
+function floorShares(n: number) {
+  return Math.floor(Math.max(0, n) * 1e6) / 1e6;
+}
+
+async function clobOutcomeShares(client: TradingClient, tokenId: string) {
+  try {
+    const { updateBalanceAllowance } = await import("@polymarket/client/actions");
+    const res = await updateBalanceAllowance(client, {
+      assetType: "CONDITIONAL" as never,
+      tokenId,
+    });
+    const raw = res?.balance;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n > 1_000 ? n / 1e6 : n;
+  } catch {
+    return null;
+  }
+}
+
+/** Polygon Conditional Tokens + the exchanges that pull Yes/No on a sell. */
+const CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+const OUTCOME_OPERATORS = [
+  "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E", // standard CTF exchange
+  "0xC5d563A36AE78145C45a50134d48A1215220f80a", // neg-risk exchange
+  "0xd91E80cF2E7be2e162cce2D06f1D00dA3519667d", // neg-risk adapter
+] as const;
+
+async function approveOutcomeSpenders(client: TradingClient) {
+  const extra = (
+    client as {
+      environment?: { contracts?: Record<string, string> };
+    }
+  ).environment?.contracts;
+  const operators = new Set<string>(OUTCOME_OPERATORS.map((a) => a.toLowerCase()));
+  for (const key of [
+    "standardExchange",
+    "negRiskExchange",
+    "negRiskAdapter",
+    "exchangeV3",
+  ] as const) {
+    const addr = extra?.[key];
+    if (addr && /^0x[a-fA-F0-9]{40}$/.test(addr)) operators.add(addr.toLowerCase());
+  }
+  const token = extra?.conditionalTokens || CTF;
+  for (const operator of operators) {
+    try {
+      const handle = await client.approveErc1155ForAll({
+        approved: true,
+        operatorAddress: operator,
+        tokenAddress: token,
+        metadata: "Hedge close",
+      });
+      await handle.wait();
+    } catch {
+      /* already approved or relayer skipped this operator */
+    }
+  }
+}
+
 async function sellPosition(
   client: TradingClient,
   input: CloseInput,
   builderCode: string,
 ) {
-  // Round down: a share amount above the position triggers the same CLOB
-  // balance rejection that reads as an allowance error.
-  const shares = Math.floor(Math.max(0, input.shares) * 1e6) / 1e6;
+  // A share amount above what the CLOB cache holds is rejected as
+  // "allowance is not enough", even when the on-chain Yes tokens are there.
+  // A prior close on another market leaves that cache stale for this token.
+  let shares = floorShares(input.shares);
+  const held = await clobOutcomeShares(client, input.tokenId);
+  if (held != null && held > 0) {
+    shares = floorShares(Math.min(shares, held * 0.99));
+  }
   if (shares < 0.01) throw new Error("This position is too small to close.");
 
   let minPrice = clobTick(input.marketPrice - 0.05);
@@ -170,40 +250,59 @@ async function sellPosition(
     /* use UI price buffer */
   }
 
-  const response = await client.placeMarketOrder({
-    tokenId: input.tokenId,
-    side: OrderSide.SELL,
-    shares,
-    minPrice,
-    builderCode: builderCode as `0x${string}`,
-    orderType: OrderType.FAK,
-  });
+  let recoveredAllowance = false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await client.placeMarketOrder({
+        tokenId: input.tokenId,
+        side: OrderSide.SELL,
+        shares,
+        minPrice,
+        builderCode: builderCode as `0x${string}`,
+        orderType: OrderType.FAK,
+      });
 
-  if (!response.ok) {
-    throw new Error(
-      friendlyCloseError(response.message, response.message) ||
-        "The sell order was rejected.",
-    );
-  }
+      if (response.ok) {
+        try {
+          await client.waitForOrderFillSettlement(response, {
+            timeoutMs: 15_000,
+          });
+        } catch {
+          /* matched fills can settle asynchronously */
+        }
+        const taking = Number(response.takingAmount);
+        const making = Number(response.makingAmount);
+        const pusd = Number.isFinite(taking) && taking > 0 ? taking : 0;
+        const sold = Number.isFinite(making) && making > 0 ? making : 0;
+        if (pusd <= 0 && sold <= 0) {
+          throw new Error("This outcome had no fillable liquidity.");
+        }
+        return {
+          sharesSold: sold > 0 ? sold : shares,
+          pusd,
+          orderId: String(response.orderId ?? "") || null,
+        };
+      }
 
-  try {
-    await client.waitForOrderFillSettlement(response, { timeoutMs: 15_000 });
-  } catch {
-    /* matched fills can settle asynchronously */
+      throw new Error(response.message || "The sell order was rejected.");
+    } catch (err) {
+      const rejected =
+        err instanceof Error ? err : new Error(String(err ?? "sell failed"));
+      const next = floorShares(shares * 0.85);
+      const canShrink = attempt < 6 && next >= 0.01;
+      if (clobAllowanceError(rejected) && !recoveredAllowance) {
+        recoveredAllowance = true;
+        await client.setupTradingApprovals();
+        await approveOutcomeSpenders(client);
+        await clobOutcomeShares(client, input.tokenId);
+        continue;
+      }
+      if (!canShrink || !clobCoverError(rejected)) {
+        throw new Error(friendlyCloseError(rejected, rejected.message));
+      }
+      shares = next;
+    }
   }
-
-  const taking = Number(response.takingAmount);
-  const making = Number(response.makingAmount);
-  const pusd = Number.isFinite(taking) && taking > 0 ? taking : 0;
-  const sold = Number.isFinite(making) && making > 0 ? making : 0;
-  if (pusd <= 0 && sold <= 0) {
-    throw new Error("This outcome had no fillable liquidity.");
-  }
-  return {
-    sharesSold: sold > 0 ? sold : shares,
-    pusd,
-    orderId: String(response.orderId ?? "") || null,
-  };
 }
 
 async function redeemResolved(

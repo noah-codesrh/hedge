@@ -134,11 +134,16 @@ export function useEnsureTradingWallet(options?: { provision?: boolean }) {
     if (!provision || !authenticated || !privyReady || !walletsReady) return;
     if (embeddedWallet(wallets) || linkedEmbeddedAddress(user)) return;
     if (createEmbeddedInFlight) return;
-    createEmbeddedInFlight = createWallet()
-      .catch(() => undefined)
-      .finally(() => {
-        createEmbeddedInFlight = null;
-      });
+    const wait = window.setTimeout(() => {
+      if (createEmbeddedInFlight) return;
+      if (embeddedWallet(wallets) || linkedEmbeddedAddress(user)) return;
+      createEmbeddedInFlight = createWallet()
+        .catch(() => undefined)
+        .finally(() => {
+          createEmbeddedInFlight = null;
+        });
+    }, 5_000);
+    return () => window.clearTimeout(wait);
   }, [
     provision,
     authenticated,

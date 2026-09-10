@@ -12,6 +12,7 @@ import type { loader as portfolioLoader } from "./api.pm.portfolio";
 import { HoneycombMarquee } from "../components/HoneycombMarquee";
 import { NativeTickets } from "../components/NativeTickets";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
+import { useHeldSession } from "../lib/session-hint";
 import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
@@ -185,7 +186,9 @@ function ProfileInner() {
     total,
   );
 
-  if (!ready) return <PortfolioSkeleton />;
+  const held = useHeldSession(authenticated, ready);
+
+  if (!ready || (!authenticated && held)) return <PortfolioSkeleton />;
   if (!authenticated) return <PortfolioGate onGetStarted={openModal} />;
 
   const assetsError = assetsFetcher.data?.error;
@@ -405,6 +408,7 @@ function ProfileInner() {
               {(["open", "closed"] as const).map((f) => (
                 <button
                   key={f}
+                  type="button"
                   onClick={() => setPosFilter(f)}
                   className={`rounded-full px-4 py-1.5 text-sm font-medium capitalize transition ${
                     posFilter === f

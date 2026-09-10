@@ -23,6 +23,8 @@ export type LivePosition = {
   redeemable: boolean;
   /** Pool ticket can pull the stake back before lock. */
   refundable?: boolean;
+  /** Expired pool ticket: settle if needed, then claim the stake back. */
+  stakeBack?: boolean;
   endDate: string | null;
   /** Pool is 1x. Spot infers Nx from entry. */
   leverage?: number | null;

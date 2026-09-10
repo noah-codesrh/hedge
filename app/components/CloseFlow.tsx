@@ -18,10 +18,9 @@ import {
   useEnsureTradingWallet,
 } from "../lib/wallet";
 import { notifyBalancesChanged } from "../lib/positions";
-import { requireAccessToken, sessionLostMessage } from "../lib/privy-session";
+import { requireAccessToken } from "../lib/privy-session";
 import { trackTrade } from "../lib/track";
 import { ConversionFlow, FlowSuccess } from "./ConversionFlow";
-import { useAuthModal } from "./Providers";
 import { useBook } from "./Book";
 
 type Confirm =
@@ -37,7 +36,6 @@ type Confirm =
 export function useCloseFlow(options?: { provisionWallet?: boolean }) {
   const provisionWallet = options?.provisionWallet !== false;
   const { getAccessToken, user, ready: privyReady } = usePrivy();
-  const { openModal } = useAuthModal();
   const { generateAuthorizationSignature } = useAuthorizationSignature();
   const { wallets } = useWallets();
   const { ensureTradingWallet } = useEnsureTradingWallet({
@@ -89,11 +87,7 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
       }
       const accessToken = await requireAccessToken(getAccessToken);
       if (!accessToken) {
-        setMode(null);
-        setStep(null);
-        setPending(null);
-        openModal();
-        return;
+        throw new Error("Session expired. Sign in again.");
       }
       const tradingWallet = await ensureTradingWallet();
       if (!tradingWallet || !isEmbeddedWallet(tradingWallet.walletClientType)) {
@@ -198,14 +192,6 @@ export function useCloseFlow(options?: { provisionWallet?: boolean }) {
       }
       settled();
     } catch (e) {
-      if (sessionLostMessage(e)) {
-        setMode(null);
-        setStep(null);
-        setPending(null);
-        setError(null);
-        openModal();
-        return;
-      }
       setError(e instanceof Error ? e.message : "Could not cash out.");
     }
   };
@@ -322,7 +308,11 @@ function ConfirmSheet({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onConfirm();
+            }}
             className="rounded-full bg-gold py-3.5 text-sm font-semibold text-black"
           >
             {confirmLabel}

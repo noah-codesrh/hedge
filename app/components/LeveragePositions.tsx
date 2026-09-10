@@ -12,6 +12,7 @@ import {
 import { readStockTicketsFor } from "../lib/stock-collateral";
 import type { TradeStage } from "../lib/leverage-actions";
 import { notifyBalancesChanged, watchBalanceReloads } from "../lib/positions";
+import { PRIVY_RESTORE_MS, requireAccessToken } from "../lib/privy-session";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { LayersIcon } from "./icons";
 import { LeverageOrders } from "./LeverageOrders";
@@ -45,7 +46,7 @@ export function useLeveragePositions() {
       setLoading(false);
       return;
     }
-    const token = await getAccessToken().catch(() => null);
+    const token = await requireAccessToken(getAccessToken);
     const [cash, stock, resting] = await Promise.all([
       readPositionsFor(cashAddress),
       readStockTicketsFor(cashAddress),
@@ -61,22 +62,35 @@ export function useLeveragePositions() {
       setLoading(false);
       return;
     }
-    // Burst-reload after an open so the market page card appears as soon as
-    // the chain lists the new id, not on the next 15s poll.
-    return watchBalanceReloads(() => void load());
+    let stop: (() => void) | undefined;
+    const start = window.setTimeout(() => {
+      // Burst-reload after an open so the market page card appears as soon as
+      // the chain lists the new id, not on the next 15s poll.
+      stop = watchBalanceReloads(() => void load());
+    }, PRIVY_RESTORE_MS);
+    return () => {
+      window.clearTimeout(start);
+      stop?.();
+    };
   }, [authenticated, load]);
 
   useEffect(() => {
     if (!leverageIsLive || !authenticated) return;
-    const id = window.setInterval(() => void load(), 12_000);
-    return () => window.clearInterval(id);
+    let id = 0;
+    const start = window.setTimeout(() => {
+      id = window.setInterval(() => void load(), 12_000);
+    }, PRIVY_RESTORE_MS);
+    return () => {
+      window.clearTimeout(start);
+      window.clearInterval(id);
+    };
   }, [authenticated, load]);
 
   const close = async (position: LeveragePosition, fractionBps: number) => {
     setBusyId(`${position.id}`);
     setError(null);
     try {
-      const accessToken = await getAccessToken();
+      const accessToken = await requireAccessToken(getAccessToken);
       if (!accessToken) throw new Error("Session expired. Sign in again.");
       const cashWallet = await ensureCashWallet();
       if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
@@ -125,7 +139,7 @@ export function useLeveragePositions() {
   };
 
   const withWallet = async () => {
-    const accessToken = await getAccessToken();
+    const accessToken = await requireAccessToken(getAccessToken);
     if (!accessToken) throw new Error("Session expired. Sign in again.");
     const cashWallet = await ensureCashWallet();
     if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");
@@ -555,7 +569,10 @@ export function LeveragePositionCard({
           <button
             type="button"
             disabled={busy}
-            onClick={() => onClose(5_000)}
+            onClick={(e) => {
+              e.preventDefault();
+              onClose(5_000);
+            }}
             className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10 disabled:opacity-40"
           >
             Close half
@@ -564,7 +581,10 @@ export function LeveragePositionCard({
         <button
           type="button"
           disabled={busy}
-          onClick={() => onClose(10_000)}
+          onClick={(e) => {
+            e.preventDefault();
+            onClose(10_000);
+          }}
           className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10 disabled:opacity-40"
         >
           {busy ? STAGE_LABEL[stage ?? "submitting"] : "Close"}

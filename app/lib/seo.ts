@@ -4,6 +4,14 @@ export const SITE_URL = "https://hedgeapp.trade/";
 export const SITE_DESCRIPTION = "Trade predictions. Up to 4x leverage";
 export const OG_IMAGE_PATH = "/og-preview.jpg";
 
+/** www is a different origin. Privy storage does not follow it. */
+export function apexHostname(host: string) {
+  const name = host.split(":")[0]?.toLowerCase() ?? "";
+  if (name === "www.hedgeapp.trade") return "hedgeapp.trade";
+  if (name === "www.app.hedgeapp.trade") return "app.hedgeapp.trade";
+  return null;
+}
+
 export function publicOrigin(request: Request) {
   const url = new URL(request.url);
   const proto = (

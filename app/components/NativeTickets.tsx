@@ -4,6 +4,7 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
+import { PRIVY_RESTORE_MS } from "../lib/privy-session";
 import { usePrivyMounted } from "./Providers";
 import {
   markNativeTicket,
@@ -56,8 +57,12 @@ export function liveFromNativeTicket(ticket: NativeTicketView): LivePosition {
     status: closed ? "closed" : "open",
     redeemable:
       !ticket.payoutTx &&
-      (ticket.resolved_side === "void" || ticket.resolved_side === ticket.side),
+      (Boolean(ticket.claimable) || Boolean(ticket.releasable)) &&
+      (ticket.resolved_side === "void" ||
+        ticket.resolved_side === ticket.side ||
+        Boolean(ticket.releasable)),
     refundable,
+    stakeBack: Boolean(ticket.releasable) && !ticket.payoutTx,
     endDate: ticket.expiry_at,
     leverage: 1,
     duration: ticket.timeframe ?? timeframeFromSlug(ticket.slug),
@@ -73,9 +78,7 @@ export function NativeTicketCard({
   onClaim?: () => void;
   onRefund?: () => void;
 }) {
-  const won =
-    ticket.resolved_side === "void" || ticket.resolved_side === ticket.side;
-  const canClaim = Boolean(onClaim) && won && !ticket.payoutTx;
+  const canClaim = Boolean(onClaim) && !ticket.payoutTx;
   const canRefund = Boolean(onRefund) && ticketCanRefund(ticket);
   return (
     <LivePositionCard
@@ -131,11 +134,14 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
       const data = (await res.json()) as { tickets?: NativeTicketView[] };
       if (alive && Array.isArray(data.tickets)) setTickets(data.tickets);
     };
-    void run();
+    const start = window.setTimeout(() => {
+      void run();
+    }, PRIVY_RESTORE_MS);
     const onPlaced = () => void run();
     window.addEventListener("native-ticket", onPlaced);
     return () => {
       alive = false;
+      window.clearTimeout(start);
       window.removeEventListener("native-ticket", onPlaced);
     };
   }, [authenticated, getAccessToken]);
@@ -204,11 +210,37 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
     }
   }
 
+  async function releaseTicket(ticket: NativeTicketView) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Sign in again.");
+    const res = await fetch("/api/native/release", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ slug: ticket.slug }),
+    });
+    const data = (await res.json().catch(() => null)) as {
+      error?: string;
+      payout?: number;
+    } | null;
+    if (!res.ok) throw new Error(data?.error ?? "Could not release this stake.");
+    return data?.payout ?? 0;
+  }
+
   async function onClaim(ticket: NativeTicketView) {
     setError(null);
     setBusy(ticket.id);
     try {
       const ctx = await poolCtx(ticket.wallet);
+      let payout = ticket.claimable ? ticket.amount : 0;
+      if (!ticket.claimable || ticket.releasable) {
+        payout = await releaseTicket(ticket);
+      }
+      if (!(payout > 0)) {
+        throw new Error("This side lost. There is nothing to claim.");
+      }
       await claimPool(ctx, ticket.slug);
       window.dispatchEvent(new Event("native-ticket"));
       await load();
@@ -226,15 +258,17 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
   return (
     <section id="tickets" className={compact ? "mt-5" : "mt-8"}>
       <h2 className="text-xl font-semibold text-white">Your tickets</h2>
-      <p className="mt-1 text-sm text-muted">{POOL_REFUND_COPY}</p>
+      <p className="mt-1 text-sm text-muted">
+        {POOL_REFUND_COPY} After expiry, Claim stake settles a one-sided pot
+        and returns your USDG. That is a refund, not a profit.
+      </p>
       {error ? <p className="mt-2 text-sm text-down">{error}</p> : null}
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
         {tickets.map((ticket) => {
-          const won =
-            ticket.resolved_side === "void" ||
-            ticket.resolved_side === ticket.side;
           const canClaim =
-            poolIsLive && won && !ticket.payoutTx && Boolean(ticket.resolved_side);
+            poolIsLive &&
+            !ticket.payoutTx &&
+            (Boolean(ticket.claimable) || Boolean(ticket.releasable));
           const canRefund = poolIsLive && ticketCanRefund(ticket);
           return (
             <li

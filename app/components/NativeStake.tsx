@@ -6,6 +6,7 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
+import { PRIVY_RESTORE_MS } from "../lib/privy-session";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { CheckIcon } from "./icons";
 import { ConversionFlow } from "./ConversionFlow";
@@ -375,19 +376,26 @@ function NativeStakeInner({
 
   useEffect(() => {
     if (!authenticated) return;
-    void (async () => {
-      const token = await getAccessToken().catch(() => null);
-      if (!token) return;
-      const data = await authed<{ mine: Mine }>(
-        token,
-        `/api/native/${market.slug}`,
-      );
-      if (data.mine) {
-        setMine(data.mine);
-        writePending(market.slug, null);
-        setPending(null);
-      }
-    })().catch(() => {});
+    let cancelled = false;
+    const wait = window.setTimeout(() => {
+      void (async () => {
+        const token = await getAccessToken().catch(() => null);
+        if (!token || cancelled) return;
+        const data = await authed<{ mine: Mine }>(
+          token,
+          `/api/native/${market.slug}`,
+        );
+        if (data.mine) {
+          setMine(data.mine);
+          writePending(market.slug, null);
+          setPending(null);
+        }
+      })().catch(() => {});
+    }, PRIVY_RESTORE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(wait);
+    };
   }, [authenticated, getAccessToken, market.slug]);
   const a = sideLabel(market.kind, "a", market.token_a, market.token_b);
   const b = sideLabel(market.kind, "b", market.token_a, market.token_b);
@@ -477,26 +485,29 @@ function NativeStakeInner({
     if (!wallet) return;
     syncTried.current = true;
     let alive = true;
-    void (async () => {
-      const token = await getAccessToken().catch(() => null);
-      if (!token || !alive) return;
-      try {
-        const result = await authed<{
-          amount: number;
-          side: NativeSide;
-          txHash?: string | null;
-        }>(token, "/api/native/sync", {
-          method: "POST",
-          body: JSON.stringify({ slug: market.slug, wallet }),
-        });
-        if (!alive) return;
-        booked(result, { silent: true });
-      } catch {
-        /* no ticket on chain */
-      }
-    })();
+    const wait = window.setTimeout(() => {
+      void (async () => {
+        const token = await getAccessToken().catch(() => null);
+        if (!token || !alive) return;
+        try {
+          const result = await authed<{
+            amount: number;
+            side: NativeSide;
+            txHash?: string | null;
+          }>(token, "/api/native/sync", {
+            method: "POST",
+            body: JSON.stringify({ slug: market.slug, wallet }),
+          });
+          if (!alive) return;
+          booked(result, { silent: true });
+        } catch {
+          /* no ticket on chain */
+        }
+      })();
+    }, PRIVY_RESTORE_MS);
     return () => {
       alive = false;
+      window.clearTimeout(wait);
     };
   }, [authenticated, mine, cashAddress, user, wallets, market.slug]);
 

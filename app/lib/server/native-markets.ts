@@ -40,6 +40,8 @@ import {
   nativePoolConfigured,
   poolTicket,
   poolTicketLive,
+  poolMarketState,
+  poolPreviewPayout,
   resolvePool,
   verifyPoolRefundTx,
   verifyPoolStakeTx,
@@ -349,7 +351,20 @@ export async function listMyNativeTickets(
       const onLive = Boolean(live && (live.amount > 0 || live.claimed));
       const onAny = Boolean(onchain && (onchain.amount > 0 || onchain.claimed));
       if (nativePoolConfigured() && onAny && !onLive) return null;
-      return { row, market, claimed: Boolean(row.payout_tx) || Boolean(onchain?.claimed) };
+      const claimable = wallet
+        ? (await poolPreviewPayout(market.slug, wallet)) > 0
+        : false;
+      const expired = Date.now() >= Date.parse(market.expiry_at);
+      const releasable = Boolean(
+        expired && onchain && onchain.amount > 0 && !onchain.claimed,
+      );
+      return {
+        row,
+        market,
+        claimed: Boolean(row.payout_tx) || Boolean(onchain?.claimed),
+        claimable,
+        releasable,
+      };
     }),
   );
   for (const item of claimed) {
@@ -382,6 +397,8 @@ export async function listMyNativeTickets(
       timeframe: market.timeframe ?? timeframeFromSlug(market.slug),
       implied: side === "a" ? pA : 1 - pA,
       created_at: String(row.created_at),
+      claimable: item.claimable,
+      releasable: item.releasable,
     });
   }
   return { tickets };
@@ -647,15 +664,24 @@ async function payMarket(
 async function settleExpiredMarkets(quotes: NativeQuote[]) {
   const db = supabaseAdmin();
   if (!db) return;
-  const { data } = await db.from("native_markets").select("*").is("resolved_side", null);
+  const { data: stakeRows } = await db.from("native_stakes").select("market_id");
+  const ids = [
+    ...new Set((stakeRows ?? []).map((row) => String(row.market_id))),
+  ];
+  if (ids.length === 0) return;
+  const { data } = await db.from("native_markets").select("*").in("id", ids);
+  const now = Date.now();
   for (const raw of data ?? []) {
     const market = asMarket(raw as Record<string, unknown>);
-    if (nativePhase(market) !== "locked") continue;
-    const outcome = resolveNativeOutcome(
-      market,
-      quoteFor(quotes, market.token_a),
-      quoteFor(quotes, market.token_b),
-    );
+    const expired = now >= Date.parse(market.expiry_at);
+    if (!expired && nativePhase(market) !== "locked") continue;
+    const outcome =
+      market.resolved_side ??
+      resolveNativeOutcome(
+        market,
+        quoteFor(quotes, market.token_a),
+        quoteFor(quotes, market.token_b),
+      );
     if (!outcome) continue;
     await settleNative(market.slug, outcome);
   }
@@ -1153,6 +1179,12 @@ export async function settleNative(slug: string, rawSide: unknown) {
   if (!row) return { error: "Market not found.", status: 404 as const };
   const market = asMarket(row as Record<string, unknown>);
   if (market.resolved_side) {
+    if (nativePoolConfigured()) {
+      const resolved = await resolvePool(market.slug, market.resolved_side);
+      if ("error" in resolved) {
+        return { error: resolved.error, status: resolved.status };
+      }
+    }
     const stakes = await loadStakes([market.id]);
     const paid = await payMarket(market.slug, stakes, market.resolved_side);
     return { ok: true as const, side: market.resolved_side, ...paid };
@@ -1195,4 +1227,91 @@ export async function settleExpired() {
   const quotes = await fetchNativeQuotes().catch(() => [] as NativeQuote[]);
   await settleExpiredMarkets(quotes);
   return { ok: true as const };
+}
+
+const WALLET = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Holder-triggered release: settle an expired card they still hold, so
+ * `claim` can return the stake on a one-sided pot (or winnings if they won).
+ */
+export async function releaseNativeTicket(input: {
+  userId: string;
+  wallets: string[];
+  slug: string;
+}) {
+  const db = supabaseAdmin();
+  if (!db) return { error: "Pool tracking is not connected.", status: 503 as const };
+  const slug = input.slug.trim();
+  if (!slug) return { error: "Missing market.", status: 400 as const };
+  const { row } = await readMarketRow(slug);
+  if (!row) return { error: "Market not found.", status: 404 as const };
+  const market = asMarket(row as Record<string, unknown>);
+  if (Date.now() < Date.parse(market.expiry_at)) {
+    return { error: "This card is still open.", status: 409 as const };
+  }
+  const { data: stakes } = await db
+    .from("native_stakes")
+    .select("wallet")
+    .eq("privy_user_id", input.userId)
+    .eq("market_id", market.id);
+  const candidates = [
+    ...new Set(
+      [...(stakes ?? []).map((s) => String(s.wallet ?? "")), ...input.wallets]
+        .map((w) => w.trim())
+        .filter((w) => WALLET.test(w)),
+    ),
+  ];
+  let wallet: string | null = null;
+  for (const addr of candidates) {
+    const ticket = await poolTicket(slug, addr);
+    if (ticket && ticket.amount > 0 && !ticket.claimed) {
+      wallet = addr;
+      break;
+    }
+  }
+  if (!wallet) {
+    return { error: "No open ticket in a linked wallet.", status: 404 as const };
+  }
+
+  const state = await poolMarketState(slug);
+  if (!state) return { error: "This card is not on chain.", status: 404 as const };
+
+  if (state.outcome === 0) {
+    const oneSided = state.poolA <= 0 || state.poolB <= 0;
+    if (!oneSided) {
+      const quotes = await fetchNativeQuotes().catch(() => [] as NativeQuote[]);
+      const tape = resolveNativeOutcome(
+        market,
+        quoteFor(quotes, market.token_a),
+        quoteFor(quotes, market.token_b),
+      );
+      if (!tape) {
+        return {
+          error: "Live tape is not ready to settle this card.",
+          status: 409 as const,
+        };
+      }
+      const settled = await settleNative(slug, tape);
+      if ("error" in settled) {
+        return { error: settled.error, status: settled.status };
+      }
+    } else {
+      const resolved = await resolvePool(slug, "void");
+      if ("error" in resolved) {
+        return { error: resolved.error, status: resolved.status };
+      }
+      await db
+        .from("native_markets")
+        .update({
+          resolved_side: "void",
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", market.id);
+      invalidateNativeDesk();
+    }
+  }
+
+  const payout = await poolPreviewPayout(slug, wallet);
+  return { ok: true as const, payout, wallet };
 }

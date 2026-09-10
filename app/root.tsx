@@ -1,8 +1,10 @@
+import { useLayoutEffect } from "react";
 import {
   isRouteErrorResponse,
   Links,
   Meta,
   Outlet,
+  redirect,
   Scripts,
   ScrollRestoration,
 } from "react-router";
@@ -11,7 +13,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
 import { ReferralCapture } from "./components/ReferralCapture";
-import { publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
+import { apexHostname, publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
@@ -27,7 +29,38 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function loader({ request }: Route.LoaderArgs) {
+  const incoming = new URL(request.url);
+  const host = (
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    incoming.host
+  )
+    .split(",")[0]
+    .trim();
+  const apex = apexHostname(host);
+  if (apex) {
+    const proto = (
+      request.headers.get("x-forwarded-proto") ?? "https"
+    )
+      .split(",")[0]
+      .trim();
+    throw redirect(
+      `${proto}://${apex}${incoming.pathname}${incoming.search}`,
+      308,
+    );
+  }
   return { origin: publicOrigin(request) };
+}
+
+function CanonicalHost() {
+  useLayoutEffect(() => {
+    const { hostname, pathname, search, hash } = window.location;
+    const apex = apexHostname(hostname);
+    if (apex) {
+      window.location.replace(`https://${apex}${pathname}${search}${hash}`);
+    }
+  }, []);
+  return null;
 }
 
 export function meta({ loaderData, location }: Route.MetaArgs) {
@@ -60,6 +93,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Providers>
+      <CanonicalHost />
       <ReferralCapture />
       <Outlet />
     </Providers>

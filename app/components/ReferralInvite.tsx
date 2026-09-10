@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { usePrivy } from "@privy-io/react-auth";
+import { PRIVY_RESTORE_MS } from "../lib/privy-session";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import {
   CheckIcon,
@@ -283,7 +284,10 @@ function ReferralAuthed() {
       setStats(null);
       return;
     }
-    void load().catch(() => {});
+    const wait = window.setTimeout(() => {
+      void load().catch(() => {});
+    }, PRIVY_RESTORE_MS);
+    return () => window.clearTimeout(wait);
   }, [authenticated, getAccessToken]);
 
   const code = stats?.code ?? null;

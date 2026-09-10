@@ -31,7 +31,11 @@ import { LeverageOrders } from "./LeverageOrders";
 import type { TradeStage } from "../lib/leverage-actions";
 import { ensureOpeningLive, ensureOracleFresh } from "../lib/leverage-refresh";
 import type { SignPrivyAuthorization } from "../lib/sponsored-send";
-import { requireAccessToken, sessionLostMessage } from "../lib/privy-session";
+import {
+  PRIVY_RESTORE_MS,
+  requireAccessToken,
+  sessionLostMessage,
+} from "../lib/privy-session";
 import { trackTrade } from "../lib/track";
 import {
   findWallet,
@@ -264,16 +268,19 @@ function TradePanelView({
     };
 
     setOpeningWarm(true);
-    void load(true).finally(() => {
-      if (!alive) return;
-      first = false;
-      setOpeningWarm(false);
-    });
+    const start = window.setTimeout(() => {
+      void load(true).finally(() => {
+        if (!alive) return;
+        first = false;
+        setOpeningWarm(false);
+      });
+    }, PRIVY_RESTORE_MS);
     const timer = setInterval(() => {
       if (!first) void load(false);
     }, 30_000);
     return () => {
       alive = false;
+      window.clearTimeout(start);
       clearInterval(timer);
     };
   }, [getAccessToken, leverageConfig]);

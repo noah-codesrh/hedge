@@ -316,6 +316,52 @@ export async function poolTicketLive(slug: string, wallet: string) {
   return readTicket(address, poolMarketId(slug), wallet);
 }
 
+/** USDG `claim` would pay right now. Zero if the card is still unresolved on-chain. */
+export async function poolPreviewPayout(slug: string, wallet: string) {
+  if (!ADDR.test(wallet)) return 0;
+  const id = poolMarketId(slug);
+  for (const address of poolAddresses()) {
+    try {
+      const raw = await publicClient.readContract({
+        ...poolBox(address),
+        functionName: "previewPayout",
+        args: [id, wallet as Hex],
+      });
+      const amount = toUsd(raw);
+      if (amount > 0) return amount;
+    } catch {
+      /* pool missing this id */
+    }
+  }
+  return 0;
+}
+
+export async function poolMarketState(slug: string) {
+  const id = poolMarketId(slug);
+  for (const address of poolAddresses()) {
+    try {
+      const row = await publicClient.readContract({
+        ...poolBox(address),
+        functionName: "markets",
+        args: [id],
+      });
+      if (!row[5]) continue;
+      return {
+        address,
+        lockAt: Number(row[0]),
+        expiryAt: Number(row[1]),
+        poolA: toUsd(row[2]),
+        poolB: toUsd(row[3]),
+        outcome: Number(row[4]),
+        listed: Boolean(row[5]),
+      };
+    } catch {
+      /* try the other pool */
+    }
+  }
+  return null;
+}
+
 async function readTicket(address: string, id: Hex, wallet: string) {
   try {
     const row = await publicClient.readContract({

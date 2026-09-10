@@ -32,6 +32,7 @@ export default [
   route("api/native/refund", "routes/api.native.refund.ts"),
   route("api/native/settle", "routes/api.native.settle.ts"),
   route("api/native/tickets", "routes/api.native.tickets.ts"),
+  route("api/native/release", "routes/api.native.release.ts"),
     route("api/native/sync", "routes/api.native.sync.ts"),
     route("api/native/prepare", "routes/api.native.prepare.ts"),
     route("api/native/:slug", "routes/api.native.$slug.ts"),

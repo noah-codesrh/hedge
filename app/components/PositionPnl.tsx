@@ -128,13 +128,15 @@ export function LivePositionCard({
             onClick={onClose}
             className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
           >
-            {position.redeemable
-              ? "Redeem"
-              : position.refundable
-                ? "Refund"
-                : isSettledPosition(position) && position.currentPrice <= 0.01
-                  ? "Clear"
-                  : "Close"}
+            {position.stakeBack
+              ? "Claim stake"
+              : position.redeemable
+                ? "Redeem"
+                : position.refundable
+                  ? "Refund"
+                  : isSettledPosition(position) && position.currentPrice <= 0.01
+                    ? "Clear"
+                    : "Close"}
           </button>
         ) : null}
       </div>

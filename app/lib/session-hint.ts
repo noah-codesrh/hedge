@@ -1,4 +1,54 @@
+import { useEffect, useLayoutEffect, useState } from "react";
+
 const KEY = "hedge-session";
+
+/** Keys Privy writes for an email / social session. */
+const PRIVY_KEYS = ["privy:token", "privy:refresh_token", "privy:id_token"];
+
+/** True when Privy still has something to restore from this browser. */
+export function hasPrivyStorage() {
+  if (typeof window === "undefined") return false;
+  try {
+    return PRIVY_KEYS.some((key) => Boolean(window.localStorage.getItem(key)));
+  } catch {
+    return false;
+  }
+}
+
+/** Real Privy keys only. A leftover hedge-session sticker is not a login. */
+export function sessionStillHeld() {
+  return hasPrivyStorage();
+}
+
+/**
+ * Stay on the signed-in chrome while Privy restores.
+ * Never clear just because `authenticated` flickered false.
+ * Give up only after Privy storage is empty.
+ */
+export function useHeldSession(authenticated: boolean, ready: boolean) {
+  const [held, setHeld] = useState(false);
+
+  useLayoutEffect(() => {
+    setHeld(sessionStillHeld());
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) {
+      writeSessionHint(true);
+      setHeld(true);
+      return;
+    }
+    if (!ready) return;
+    if (hasPrivyStorage()) {
+      setHeld(true);
+      return;
+    }
+    writeSessionHint(false);
+    setHeld(false);
+  }, [authenticated, ready]);
+
+  return held;
+}
 
 /**
  * Cheap "this browser was signed in" flag.
@@ -8,9 +58,9 @@ const KEY = "hedge-session";
  * header treats the gap as logged out — so leaving the site and coming back
  * looks like an instant logout even though the session is still there.
  *
- * This hint is written on a successful Privy restore and cleared on logout.
- * The chrome reads it synchronously after hydrate so a returning trader
- * stays signed in on screen while Privy catches up.
+ * This hint is written when Privy reports signed in. It is cleared only on
+ * Logout. A brief `authenticated: false` while Privy remounts must not wipe
+ * it, or a refresh looks like a logout.
  */
 export function readSessionHint() {
   if (typeof window === "undefined") return false;
