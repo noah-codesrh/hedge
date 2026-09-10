@@ -225,7 +225,12 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
       error?: string;
       payout?: number;
     } | null;
-    if (!res.ok) throw new Error(data?.error ?? "Could not release this stake.");
+    if (!res.ok) {
+      const raw = data?.error?.trim() ?? "";
+      throw new Error(
+        raw && raw.length < 160 ? raw : "Could not release this stake.",
+      );
+    }
     return data?.payout ?? 0;
   }
 

@@ -100,6 +100,21 @@ async function reporterWallet() {
   };
 }
 
+const SETTLE_DOWN = "Could not settle this card. Try again in a moment.";
+
+function settleError(error: unknown) {
+  const text = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
+  if (/insufficient funds|exceeds the balance|gas \* price \+ value/i.test(text)) {
+    return SETTLE_DOWN;
+  }
+  if (/EmptyWinningSide/i.test(text)) return text;
+  if (/MarketResolved/i.test(text)) return text;
+  if (/NotLister|Not authorized|NotReporter/i.test(text)) {
+    return "Pool is under maintenance.";
+  }
+  return SETTLE_DOWN;
+}
+
 let limitsAttempted = false;
 const listing = new Map<
   string,
@@ -261,6 +276,11 @@ export async function resolvePool(slug: string, side: NativeSide | "void") {
   if (!writer) {
     return { error: "Pool is under maintenance.", status: 503 as const };
   }
+  const gas = await publicClient.getBalance({ address: writer.account.address });
+  if (gas < 50_000_000_000_000n) {
+    console.error("[native] resolve reporter has no gas", writer.account.address);
+    return { error: SETTLE_DOWN, status: 503 as const };
+  }
   const id = poolMarketId(slug);
   const outcome =
     side === "void" ? POOL_OUTCOME_VOID : side === "b" ? POOL_SIDE_B : POOL_SIDE_A;
@@ -284,16 +304,16 @@ export async function resolvePool(slug: string, side: NativeSide | "void") {
       await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });
       last = { ok: true as const, hash };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not settle.";
-      if (/EmptyWinningSide/i.test(message) && side !== "void") {
+      const raw = error instanceof Error ? error.message : String(error);
+      if (/EmptyWinningSide/i.test(raw) && side !== "void") {
         return resolvePool(slug, "void");
       }
-      if (/MarketResolved/i.test(message)) {
+      if (/MarketResolved/i.test(raw)) {
         last = { ok: true as const, skipped: true };
         continue;
       }
       console.error("[native] resolve", address, error);
-      return { error: message, status: 502 as const };
+      return { error: settleError(error), status: 502 as const };
     }
   }
   return last;
