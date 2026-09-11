@@ -14,6 +14,7 @@ import {
   type PricePoint,
 } from "../lib/polymarket";
 import { listedLeverageFor } from "../lib/leverage";
+import { stockBySymbol } from "../lib/stock-tokens";
 import { formatEnd } from "../lib/format";
 import { parseSpotAmount } from "../lib/spot-ticket";
 import type { Market, Side } from "../lib/types";
@@ -62,6 +63,7 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   const initialLeverage = lev === 2 || lev === 3 || lev === 4 ? lev : 1;
   const initialAmount =
     parseSpotAmount(params.get("amt") ?? params.get("amount")) ?? 0;
+  const initialStock = stockBySymbol(params.get("stock"))?.symbol;
   const queriedMarket = params.get("m");
   const [activeId, setActiveId] = useState<string | undefined>(
     queriedMarket ?? defaultMarketId ?? undefined,
@@ -198,7 +200,21 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
               initialSide={initialSide}
               initialLeverage={initialLeverage}
               initialAmount={initialAmount}
+              initialStock={initialStock}
               onSideChange={setSide}
+              onStockChange={(symbol) => {
+                setParams(
+                  (current) => {
+                    const have = current.get("stock") ?? undefined;
+                    if (have === symbol) return current;
+                    const next = new URLSearchParams(current);
+                    if (symbol) next.set("stock", symbol);
+                    else next.delete("stock");
+                    return next;
+                  },
+                  { replace: true },
+                );
+              }}
             />
           </div>
         </div>

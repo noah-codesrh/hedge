@@ -592,7 +592,7 @@ export function LeveragePositionCard({
       </div>
       <p className="pt-2 text-center text-[11px] leading-snug text-muted">
         Closes to USDG
-        {position.stock ? ". Leftover stock unlocks." : "."}
+        {position.stock ? ". Same shares out." : "."}
       </p>
 
       {shareOpen ? (

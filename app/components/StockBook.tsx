@@ -39,8 +39,8 @@ export function StockBook() {
           <div className="min-w-0">
             <p className="text-[15px] font-semibold">Stock liquidity</p>
             <p className="mt-0.5 text-[13px] leading-snug text-muted">
-              Deposit NVDA, SPCX, AAPL, GME, or TSLA. Same token out. Use it as
-              margin on leveraged trades without selling the name.
+              Park NVDA, SPCX, AAPL, GME, or TSLA. Same token out. Open a stock
+              ticket on a listed market. You do not sell the name.
             </p>
           </div>
         </div>

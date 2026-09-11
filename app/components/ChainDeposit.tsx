@@ -25,6 +25,13 @@ type Quote = {
   rate: number | null;
 };
 
+/** Privy posts destination USDG in 6-decimal units, not dollars. */
+function usdgFromDestination(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n / 1e6;
+}
+
 function privyMessage(err: unknown) {
   if (err instanceof Error && err.message) return err.message;
   if (err && typeof err === "object" && "message" in err) {
@@ -303,8 +310,8 @@ export function TransferCryptoModal({
         });
         if (!alive || final.status !== "success") return;
         if (final.order.status === "completed") {
-          const out = Number(final.order.destination_amount);
-          if (baseline != null && Number.isFinite(out) && out > 0.4) {
+          const out = usdgFromDestination(final.order.destination_amount);
+          if (baseline != null && out > 0.4) {
             markArrived(out);
           }
           return;

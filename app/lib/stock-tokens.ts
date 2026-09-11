@@ -63,6 +63,12 @@ export function stockByAddress(address: string | null | undefined) {
   return BY_ADDRESS.get(address.toLowerCase()) ?? null;
 }
 
+export function stockBySymbol(symbol: string | null | undefined) {
+  if (!symbol) return null;
+  const wanted = symbol.trim().toUpperCase();
+  return STOCK_TOKENS.find((token) => token.symbol === wanted) ?? null;
+}
+
 export const STOCK_COLLATERAL_ADDRESS = (
   import.meta.env.VITE_HEDGE_STOCK_COLLATERAL ?? ""
 ).trim();

@@ -52,7 +52,7 @@ export function CollateralPicker({
   selected: StockToken | null;
   holdings: StockHolding[];
   onSelect: (token: StockToken | null) => void;
-  /** 2x–4x locks stock on the desk. 1x sells it into USDG first. */
+  /** Trade-panel stock tickets lock. Pool still sells into USDG first. */
   levered?: boolean;
   kind?: "trade" | "pool";
 }) {
@@ -124,13 +124,13 @@ function caption(
   kind: "trade" | "pool",
 ) {
   if (selected && levered) {
-    return `Locks ${selected.symbol} and posts USDG from the desk. Close pays cash; leftover stock unlocks.`;
+    return `Same shares in, same shares out. Locks ${selected.symbol}. Close unlocks what's left.`;
   }
   if (selected && kind === "pool") {
     return `Sells ${selected.symbol} into cash, then stakes this ticket. Winnings pay cash.`;
   }
   if (selected) {
-    return `Sells ${selected.symbol} into cash, then buys this outcome. Close and cash-out stay in cash.`;
+    return `Sells ${selected.symbol} into cash, then stakes or buys. Close pays cash.`;
   }
   if (kind === "pool") {
     return "Cash is USDG. You can sell a listed stock into the ticket instead. Winnings pay cash.";
