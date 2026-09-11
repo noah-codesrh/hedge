@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useAuthorizationSignature,
   usePrivy,
@@ -242,16 +242,21 @@ function TradePanelView({
   // Unpause on open and on each poll. A later read that still sees the old
   // pause (or a failed RPC that used to write `null`) was snapping 2x–4x off
   // after ~30s. Keep the last good snapshot. Skip the position sweep on load.
+  const tokenFn = useRef(getAccessToken);
+  tokenFn.current = getAccessToken;
+  const listedSlug = leverageConfig?.marketSlug ?? "";
+
   useEffect(() => {
-    if (!leverageConfig || !leverageIsLive) return;
+    if (!listedSlug || !leverageIsLive) return;
     let alive = true;
     let first = true;
 
     const load = async (refreshPrice: boolean) => {
       let token: string | null = null;
-      if (getAccessToken) {
+      const getToken = tokenFn.current;
+      if (getToken) {
         try {
-          token = await getAccessToken();
+          token = await getToken();
           if (token && alive) await ensureOpeningLive(token);
         } catch {
           /* stay paused if the reporter cannot sign */
@@ -260,8 +265,8 @@ function TradePanelView({
       const next = await readEngineState();
       if (!alive) return;
       if (next) setEngineState(next);
-      if (refreshPrice && token && leverageConfig) {
-        void ensureOracleFresh(token, [leverageConfig.marketSlug], {
+      if (refreshPrice && token) {
+        void ensureOracleFresh(token, [listedSlug], {
           sweep: false,
         }).catch(() => {});
       }
@@ -283,12 +288,12 @@ function TradePanelView({
       window.clearTimeout(start);
       clearInterval(timer);
     };
-  }, [getAccessToken, leverageConfig]);
+  }, [listedSlug]);
 
   useEffect(() => {
-    if (!leverageConfig || !leverageIsLive) return;
+    if (!listedSlug || !leverageIsLive) return;
     void limitOrdersLive().then(setLimitsOn);
-  }, [leverageConfig]);
+  }, [listedSlug]);
 
   const listedMax = leverageConfig?.maxLeverage ?? 1;
   const chainMax = engineState?.maxLeverage ?? 0;
@@ -347,19 +352,28 @@ function TradePanelView({
     (h) => stockToNumber(h.wallet + h.free, h.token.decimals) > 0,
   );
 
-  const effectiveLeverage = leverageOffered ? Math.min(leverage, maxLeverage) : 1;
-  const levered = effectiveLeverage > 1;
   const usingLimit =
-    levered && limitsOn && ticketKind === "limit" && !usingStock;
+    Boolean(leverageConfig) &&
+    limitsOn &&
+    ticketKind === "limit" &&
+    !usingStock;
+  const effectiveLeverage = leverageConfig
+    ? Math.min(
+        Math.max(leverage, usingLimit && maxLeverage > 1 ? 2 : 1),
+        Math.max(maxLeverage, 1),
+      )
+    : 1;
+  const levered = effectiveLeverage > 1;
 
   const [leverStage, setLeverStage] = useState<TradeStage | null>(null);
 
-  // Falling out of the band or switching to a plain market must not strand a
-  // leverage setting the trader can no longer act on. A pause poll must not
-  // snap a 2x ticket back to 1x. Listed stock still pays for a 1x buy.
+  // Only drop the multiple when leaving a listed market. A pause poll or a
+  // Yes tick outside 35–65 used to snap 2x–4x off and hide Market / Limit.
   useEffect(() => {
-    if (!leverageConfig || !tradeable || !onBand) setLeverage(1);
-  }, [leverageConfig, tradeable, onBand]);
+    setTicketKind("market");
+    setLimitPrice(0);
+    if (!leverageFor(market)) setLeverage(1);
+  }, [market.id]);
 
   const stockMargin =
     usingStock && levered && amount > 0 && stockRow
@@ -452,7 +466,14 @@ function TradePanelView({
    * that appears as the number is entered.
    */
   const leverBlock = (() => {
-    if (!levered || !engineState || marginUsd <= 0) return null;
+    if (!levered || marginUsd <= 0) return null;
+    if (!onBand) {
+      return `Leverage opens only between ${pct(PRICE_BAND.min)} and ${pct(PRICE_BAND.max)}.`;
+    }
+    if (vaultPaused) {
+      return "New leveraged positions are paused while the pool is checked over. 1x still opens on the book.";
+    }
+    if (!engineState) return null;
     if (usingStock && !stockCollateralIsLive) {
       return "The stock desk is not live yet.";
     }
@@ -971,7 +992,7 @@ function TradePanelView({
           </button>
         </div>
 
-        {leverageConfig && limitsOn && leverageOffered ? (
+        {leverageConfig && limitsOn ? (
           <div className="mb-3 grid grid-cols-2 gap-2">
             <button
               type="button"

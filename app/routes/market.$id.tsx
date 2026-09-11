@@ -13,6 +13,7 @@ import {
   pickLiveMarket,
   type PricePoint,
 } from "../lib/polymarket";
+import { listedLeverageFor } from "../lib/leverage";
 import { formatEnd } from "../lib/format";
 import { parseSpotAmount } from "../lib/spot-ticket";
 import type { Market, Side } from "../lib/types";
@@ -44,8 +45,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const wantedMarket = wanted
     ? event.markets.find((m) => m.id === wanted)
     : undefined;
+  const listed = event.markets.find((row) => listedLeverageFor(row));
   const market =
-    wantedMarket ?? pickLiveMarket(event) ?? event.markets[0];
+    wantedMarket ?? listed ?? pickLiveMarket(event) ?? event.markets[0];
   const tokenId =
     wantedSide === "no" ? market?.no.tokenId : market?.yes.tokenId;
   const history = tokenId ? await getPriceHistory(tokenId) : [];
@@ -54,7 +56,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
 export default function MarketPage({ loaderData }: Route.ComponentProps) {
   const { event, defaultMarketId } = loaderData;
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const initialSide = (params.get("s") === "no" ? "no" : "yes") as Side;
   const lev = Number(params.get("lev"));
   const initialLeverage = lev === 2 || lev === 3 || lev === 4 ? lev : 1;
@@ -72,6 +74,19 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     if (queriedMarket) setActiveId(queriedMarket);
   }, [queriedMarket]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    setParams(
+      (current) => {
+        if (current.get("m") === activeId) return current;
+        const next = new URLSearchParams(current);
+        next.set("m", activeId);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [activeId, setParams]);
 
   useEffect(() => {
     setSide(initialSide);
@@ -194,7 +209,17 @@ export default function MarketPage({ loaderData }: Route.ComponentProps) {
             activeId={market.id}
             expanded={outcomesOpen}
             onExpand={setOutcomesOpen}
-            onSelect={setActiveId}
+            onSelect={(id) => {
+              setActiveId(id);
+              setParams(
+                (current) => {
+                  const next = new URLSearchParams(current);
+                  next.set("m", id);
+                  return next;
+                },
+                { replace: true },
+              );
+            }}
           />
         ) : null}
 
