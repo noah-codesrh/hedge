@@ -12,7 +12,7 @@ import {
 import { readStockTicketsFor } from "../lib/stock-collateral";
 import type { TradeStage } from "../lib/leverage-actions";
 import { notifyBalancesChanged, watchBalanceReloads } from "../lib/positions";
-import { PRIVY_RESTORE_MS, requireAccessToken } from "../lib/privy-session";
+import { requireAccessToken } from "../lib/privy-session";
 import { useEnsureCashWallet } from "../lib/wallet";
 import { LayersIcon } from "./icons";
 import { LeverageOrders } from "./LeverageOrders";
@@ -62,26 +62,16 @@ export function useLeveragePositions() {
       setLoading(false);
       return;
     }
-    let stop: (() => void) | undefined;
-    const start = window.setTimeout(() => {
-      // Burst-reload after an open so the market page card appears as soon as
-      // the chain lists the new id, not on the next 15s poll.
-      stop = watchBalanceReloads(() => void load());
-    }, PRIVY_RESTORE_MS);
+    const stop = watchBalanceReloads(() => void load());
     return () => {
-      window.clearTimeout(start);
-      stop?.();
+      stop();
     };
   }, [authenticated, load]);
 
   useEffect(() => {
     if (!leverageIsLive || !authenticated) return;
-    let id = 0;
-    const start = window.setTimeout(() => {
-      id = window.setInterval(() => void load(), 12_000);
-    }, PRIVY_RESTORE_MS);
+    const id = window.setInterval(() => void load(), 12_000);
     return () => {
-      window.clearTimeout(start);
       window.clearInterval(id);
     };
   }, [authenticated, load]);

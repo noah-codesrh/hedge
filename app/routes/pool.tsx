@@ -1,5 +1,6 @@
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useMemo } from "react";
+import type { ShouldRevalidateFunctionArgs } from "react-router";
 import type { Route } from "./+types/pool";
 import { NativeCard, NativeLongRace } from "../components/NativeCard";
 import { NativeTickets } from "../components/NativeTickets";
@@ -11,13 +12,14 @@ import {
   formatMcap,
   isCommunityMarket,
   isLongRace,
-  LONG_WINDOWS,
   nativeBaseSlug,
-  parseLongTimeframe,
+  nativePhase,
   parseNativeTimeframe,
+  previewRollingMarkets,
   NATIVE_POOL_OPEN,
   NATIVE_TIMEFRAMES,
   NATIVE_USER_CAP,
+  STRIKE_WINDOWS,
   type NativeTimeframe,
 } from "../lib/native";
 import { useNativeDesk } from "../lib/native-live";
@@ -43,43 +45,63 @@ export function meta({ matches }: Route.MetaArgs) {
   });
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const url = new URL(request.url);
-  const kind = parsePoolKind(url.searchParams.get("kind"));
-  const timeframe = url.searchParams.has("tf")
-    ? parseNativeTimeframe(url.searchParams.get("tf"))
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formMethod && formMethod !== "GET") return true;
+  if (currentUrl.pathname === nextUrl.pathname) return false;
+  return defaultShouldRevalidate;
+}
+
+export async function loader() {
+  return listNativeMarkets();
+}
+
+function usePoolView() {
+  const [params] = useSearchParams();
+  const kind = parsePoolKind(params.get("kind"));
+  const rawTf = params.has("tf")
+    ? parseNativeTimeframe(params.get("tf"))
     : kind === "community"
-      ? "24h"
-      : parseNativeTimeframe(null);
-  const longTf = parseLongTimeframe(
-    url.searchParams.get("long") ??
-      (LONG_WINDOWS.includes(timeframe) ? timeframe : "7d"),
-  );
-  const data = await listNativeMarkets();
-  return { ...data, kind, timeframe, longTf };
+      ? "3d"
+      : "12h";
+  const timeframe =
+    kind === "community"
+      ? COMMUNITY_WINDOWS.includes(rawTf)
+        ? rawTf
+        : "3d"
+      : STRIKE_WINDOWS.includes(rawTf)
+        ? rawTf
+        : "12h";
+  return { kind, timeframe };
 }
 
 export default function Pool({ loaderData }: Route.ComponentProps) {
-  const { tracked, kind, timeframe, longTf } = loaderData;
+  const { tracked } = loaderData;
+  const { kind, timeframe } = usePoolView();
   const desk = useNativeDesk({
     markets: loaderData.markets,
     quotes: loaderData.quotes,
     deskUsed: loaderData.deskUsed,
     deskCap: loaderData.deskCap,
   });
-  const markets = desk.markets ?? loaderData.markets;
   const quotes = desk.quotes ?? loaderData.quotes;
-  const windows =
-    kind === "community"
-      ? COMMUNITY_WINDOWS
-      : NATIVE_TIMEFRAMES.filter((row) => !LONG_WINDOWS.includes(row.id)).map(
-          (row) => row.id,
-        );
-  const shortTf = COMMUNITY_WINDOWS.includes(timeframe) ? timeframe : "24h";
+  const markets = useMemo(() => {
+    const live = desk.markets ?? loaderData.markets;
+    const have = new Set(live.map((row) => row.slug));
+    return live.concat(
+      previewRollingMarkets(quotes).filter((row) => !have.has(row.slug)),
+    );
+  }, [desk.markets, loaderData.markets, quotes]);
+  const windows = kind === "community" ? COMMUNITY_WINDOWS : STRIKE_WINDOWS;
+  const shortTf = COMMUNITY_WINDOWS.includes(timeframe) ? timeframe : "3d";
   const longRaces = useMemo(() => {
     const rows = markets.filter(
       (market) =>
-        isLongRace(market.slug) && (market.timeframe ?? "7d") === longTf,
+        isLongRace(market.slug) && (market.timeframe ?? shortTf) === shortTf,
     );
     const rank = (market: (typeof markets)[number]) => {
       const i = FEATURED_LONG_BASES.indexOf(nativeBaseSlug(market.slug));
@@ -91,7 +113,7 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         (b.quoteA?.marketCap ?? 0) + (b.quoteB?.marketCap ?? 0) -
           ((a.quoteA?.marketCap ?? 0) + (a.quoteB?.marketCap ?? 0)),
     );
-  }, [markets, longTf]);
+  }, [markets, shortTf]);
   const longRace = longRaces[0] ?? null;
   const shown = useMemo(() => {
     const rows = markets.filter((market) => {
@@ -105,44 +127,41 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
       }
       const tf = kind === "community" ? shortTf : timeframe;
       if (market.timeframe) return market.timeframe === tf;
-      return tf === "24h";
+      return tf === "3d";
     });
-    if (kind === "strike") {
-      const seen = new Set<string>();
-      return rows.filter((market) => {
-        const key = market.token_a.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-    if (kind === "community") {
-      const seen = new Set<string>();
-      return rows.filter((market) => {
-        const key = nativeBaseSlug(market.slug);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-    return rows;
+    const ranked = [...rows].sort((a, b) => {
+      const ao = nativePhase(a) === "open" ? 0 : 1;
+      const bo = nativePhase(b) === "open" ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return Date.parse(b.expiry_at) - Date.parse(a.expiry_at);
+    });
+    const seen = new Set<string>();
+    return ranked.filter((market) => {
+      const key =
+        kind === "strike"
+          ? market.token_a.toLowerCase()
+          : nativeBaseSlug(market.slug);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [markets, kind, timeframe, shortTf]);
   const kindHref = (tf: NativeTimeframe | string) =>
     kind === "community"
-      ? `/pool?kind=community&tf=${tf}&long=${longTf}`
+      ? `/pool?kind=community&tf=${tf}`
       : kind === "pvp"
         ? `/pool?kind=pvp&tf=${tf}`
         : `/pool?kind=strike&tf=${tf}`;
-  const longHref = (tf: NativeTimeframe) =>
-    `/pool?kind=community&tf=${shortTf}&long=${tf}`;
   const tfHref = (next: PoolKind) => {
     const tf =
-      next === "community" && !COMMUNITY_WINDOWS.includes(timeframe)
-        ? "24h"
-        : timeframe;
-    return next === "community"
-      ? `/pool?kind=${next}&tf=${tf}&long=${longTf}`
-      : `/pool?kind=${next}&tf=${tf}`;
+      next === "community"
+        ? COMMUNITY_WINDOWS.includes(timeframe)
+          ? timeframe
+          : "3d"
+        : STRIKE_WINDOWS.includes(timeframe)
+          ? timeframe
+          : "12h";
+    return `/pool?kind=${next}&tf=${tf}`;
   };
 
   return (
@@ -173,6 +192,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         <Link
           to={tfHref("community")}
           prefetch="intent"
+          preventScrollReset
+          replace
           className={`rounded-full px-4 py-2 text-[13px] font-semibold sm:px-5 sm:text-sm ${
             kind === "community"
               ? "bg-white/12 text-white ring-1 ring-gold/50"
@@ -184,6 +205,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         <Link
           to={tfHref("strike")}
           prefetch="intent"
+          preventScrollReset
+          replace
           className={`rounded-full px-4 py-2 text-[13px] font-semibold sm:px-5 sm:text-sm ${
             kind === "strike"
               ? "bg-white/12 text-white ring-1 ring-gold/50"
@@ -195,6 +218,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         <Link
           to={tfHref("pvp")}
           prefetch="intent"
+          preventScrollReset
+          replace
           className={`rounded-full px-4 py-2 text-[13px] font-semibold sm:px-5 sm:text-sm ${
             kind === "pvp"
               ? "bg-white/12 text-white ring-1 ring-gold/50"
@@ -212,6 +237,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
               key={row.id}
               to={kindHref(row.id)}
               prefetch="intent"
+              preventScrollReset
+              replace
               className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
                 timeframe === row.id
                   ? "bg-gold text-black"
@@ -228,41 +255,23 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
 
       {kind === "community" && longRaces.length > 0 ? (
         <section className="mt-8">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-white">
-                ZCAT vs ANSEM
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm text-muted">
-                Anonymous Cat vs The Black Bull, ZCAT vs MEME, then ANSEM
-                against the top Robinhood names. Longer windows. Winners take
-                the other side.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {LONG_WINDOWS.map((id) => (
-                <Link
-                  key={id}
-                  to={longHref(id)}
-                  prefetch="intent"
-                  className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
-                    longTf === id
-                      ? "bg-gold text-black"
-                      : "border border-white/10 text-[#b8b8b8] hover:text-white"
-                  }`}
-                >
-                  {id}
-                </Link>
-              ))}
-            </div>
+          <div>
+            <h2 className="text-xl font-semibold text-white">
+              ZCAT vs ANSEM
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              Anonymous Cat vs The Black Bull, ZCAT vs MEME, then ANSEM
+              against the top Robinhood names. Same window as the chip you
+              pick. Winners take the other side.
+            </p>
           </div>
           <div className="mt-4">
             {longRace ? <NativeLongRace market={longRace} /> : null}
           </div>
           {longRaces.length > 1 ? (
             <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {longRaces.slice(1).map((market, i) => (
-                <NativeCard key={market.slug} market={market} delay={i * 40} />
+              {longRaces.slice(1).map((market) => (
+                <NativeCard key={market.slug} market={market} />
               ))}
             </div>
           ) : null}
@@ -294,8 +303,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
                 : "sm:grid-cols-2"
             }`}
           >
-            {shown.map((market, i) => (
-              <NativeCard key={market.slug} market={market} delay={i * 40} />
+            {shown.map((market) => (
+              <NativeCard key={market.slug} market={market} />
             ))}
           </div>
         )}

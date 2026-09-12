@@ -57,7 +57,7 @@ export function NativeCard({
         to={
           market.kind === "strike"
             ? poolTokenPath(market.token_a, {
-                tf: market.timeframe ?? "1h",
+                tf: market.timeframe ?? "12h",
               })
             : `/pool/${market.slug}`
         }
@@ -136,7 +136,7 @@ export function NativeCard({
           to={
             market.kind === "strike"
               ? poolTokenPath(market.token_a, {
-                  tf: market.timeframe ?? "1h",
+                  tf: market.timeframe ?? "12h",
                   s: "a",
                 })
               : `/pool/${market.slug}?s=a`
@@ -151,7 +151,7 @@ export function NativeCard({
           to={
             market.kind === "strike"
               ? poolTokenPath(market.token_a, {
-                  tf: market.timeframe ?? "1h",
+                  tf: market.timeframe ?? "12h",
                   s: "b",
                 })
               : `/pool/${market.slug}?s=b`
@@ -229,7 +229,7 @@ export function NativeLongRace({ market }: { market: NativeMarketView }) {
               {nativeBaseSlug(market.slug) === "zcat-ansem"
                 ? "ZCAT vs ANSEM"
                 : "ANSEM vs Robinhood"}{" "}
-              · {market.timeframe ?? "7d"} · {phase}
+              · {market.timeframe ?? "12h"} · {phase}
             </p>
             <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-white sm:text-2xl">
               {a} vs {b}

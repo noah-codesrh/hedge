@@ -5,6 +5,7 @@ import { ModalShell } from "./ModalShell";
 import { formatTokenAmount, parseTokenAmount, type OwnedToken } from "../lib/robinhood";
 import { fiat } from "../lib/format";
 import { notifyBalancesChanged } from "../lib/positions";
+import { requireAccessToken } from "../lib/privy-session";
 import {
   quoteSwapToCash,
   runSwapToCash,
@@ -246,7 +247,7 @@ function SwapModal({
     setError(null);
     const timer = window.setTimeout(async () => {
       try {
-        const accessToken = await getAccessToken();
+        const accessToken = await requireAccessToken(getAccessToken);
         if (!accessToken) throw new SwapError("Session expired. Sign in again.");
         const next = await quoteSwapToCash({
           accessToken,
@@ -278,7 +279,7 @@ function SwapModal({
     try {
       const signer = wallet ?? (await ensureCashWallet?.());
       if (!signer) throw new SwapError("Your wallet isn't ready yet.");
-      const accessToken = await getAccessToken();
+      const accessToken = await requireAccessToken(getAccessToken);
       if (!accessToken) throw new SwapError("Session expired. Sign in again.");
       const result = await runSwapToCash(
         {

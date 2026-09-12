@@ -2,7 +2,7 @@
 
 import { robinhoodTokens, type NativeQuote } from "./native-tokens";
 
-export const NATIVE_MAX_STAKE = 25;
+export const NATIVE_MAX_STAKE = 10;
 export const NATIVE_MIN_STAKE = 1;
 /** Combined user tickets across every open native market. */
 export const NATIVE_USER_CAP = 1000;
@@ -32,8 +32,19 @@ export const FEATURED_LONG_BASES = [
   "zcat-meme",
   ...TOP_RH_RIVALS.map((symbol) => `ansem-${symbol.toLowerCase()}`),
 ];
-export const COMMUNITY_WINDOWS: NativeTimeframe[] = ["4h", "6h", "12h", "24h"];
+export const COMMUNITY_WINDOWS: NativeTimeframe[] = ["3d", "7d", "30d", "2mo"];
+/** Strike and meme PvP. Short slices (15m / 4h / 6h) are off the desk. */
+export const STRIKE_WINDOWS: NativeTimeframe[] = [
+  "12h",
+  "24h",
+  "30d",
+  "2mo",
+  "3mo",
+  "1yr",
+];
 export const LONG_WINDOWS: NativeTimeframe[] = ["7d", "14d", "30d", "3mo", "6mo"];
+/** Featured community races use the same chips as Community. */
+export const FEATURED_WINDOWS: NativeTimeframe[] = [...COMMUNITY_WINDOWS];
 export const COMMUNITY_BASES = new Set([
   "cashcat-meme",
   "ai-cashcat",
@@ -47,13 +58,16 @@ export type NativeTimeframe =
   | "6h"
   | "12h"
   | "24h"
+  | "3d"
   | "7d"
   | "14d"
   | "30d"
+  | "2mo"
   | "3mo"
-  | "6mo";
+  | "6mo"
+  | "1yr";
 
-const TF_SLUG = "15m|1h|4h|6h|12h|24h|7d|14d|30d|3mo|6mo";
+const TF_SLUG = "15m|1h|4h|6h|12h|24h|7d|14d|30d|3d|2mo|3mo|6mo|1yr";
 const TF_SLUG_RE = new RegExp(`-(${TF_SLUG})-\\d+$`);
 
 /** Rolling windows. Lock is a slice of the window, not a flat hour. */
@@ -69,11 +83,14 @@ export const NATIVE_TIMEFRAMES: {
   { id: "6h", label: "6h", ms: 6 * 60 * 60 * 1000, lockMs: 20 * 60 * 1000 },
   { id: "12h", label: "12h", ms: 12 * 60 * 60 * 1000, lockMs: 30 * 60 * 1000 },
   { id: "24h", label: "24h", ms: 24 * 60 * 60 * 1000, lockMs: 60 * 60 * 1000 },
+  { id: "3d", label: "3d", ms: 3 * 24 * 60 * 60 * 1000, lockMs: 6 * 60 * 60 * 1000 },
   { id: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000, lockMs: 12 * 60 * 60 * 1000 },
   { id: "14d", label: "14d", ms: 14 * 24 * 60 * 60 * 1000, lockMs: 24 * 60 * 60 * 1000 },
   { id: "30d", label: "30d", ms: 30 * 24 * 60 * 60 * 1000, lockMs: 48 * 60 * 60 * 1000 },
+  { id: "2mo", label: "2mo", ms: 60 * 24 * 60 * 60 * 1000, lockMs: 4 * 24 * 60 * 60 * 1000 },
   { id: "3mo", label: "3mo", ms: 90 * 24 * 60 * 60 * 1000, lockMs: 7 * 24 * 60 * 60 * 1000 },
   { id: "6mo", label: "6mo", ms: 180 * 24 * 60 * 60 * 1000, lockMs: 14 * 24 * 60 * 60 * 1000 },
+  { id: "1yr", label: "1yr", ms: 365 * 24 * 60 * 60 * 1000, lockMs: 30 * 24 * 60 * 60 * 1000 },
 ];
 
 /** Chart windows on the pool trading panel. Not the ticket lock window. */
@@ -93,8 +110,9 @@ export function poolChartCutoff(range: PoolChartRange, now = Date.now() / 1000) 
 
 export function parseNativeTimeframe(raw: unknown): NativeTimeframe {
   const id = String(raw ?? "").trim();
-  return NATIVE_TIMEFRAMES.some((row) => row.id === id)
-    ? (id as NativeTimeframe)
+  const alias = id === "24hr" ? "24h" : id === "1y" ? "1yr" : id;
+  return NATIVE_TIMEFRAMES.some((row) => row.id === alias)
+    ? (alias as NativeTimeframe)
     : "1h";
 }
 
@@ -159,11 +177,9 @@ export function stakeTimeframes(market: {
   title?: string | null;
   kind: NativeKind;
 }): NativeTimeframe[] {
-  if (isLongRace(market.slug)) return [...LONG_WINDOWS];
+  if (isLongRace(market.slug)) return [...FEATURED_WINDOWS];
   if (isCommunityMarket(market.slug, market.title)) return [...COMMUNITY_WINDOWS];
-  return NATIVE_TIMEFRAMES.filter((row) => !LONG_WINDOWS.includes(row.id)).map(
-    (row) => row.id,
-  );
+  return [...STRIKE_WINDOWS];
 }
 
 export type RollingNativeSpec = {
@@ -195,6 +211,69 @@ export function rollingNativeSpecs(now = Date.now()): RollingNativeSpec[] {
     }
   }
   return rows;
+}
+
+function quoteForSymbol(quotes: NativeQuote[], symbol: string | null) {
+  if (!symbol) return null;
+  return quotes.find((row) => row.symbol.toLowerCase() === symbol.toLowerCase()) ?? null;
+}
+
+/** Open windows even before the row is in the desk store. */
+export function previewRollingMarkets(quotes: NativeQuote[]): NativeMarketView[] {
+  return rollingNativeSpecs()
+    .filter(
+      (row) =>
+        !isDroppedNativeMarket(row.slug, row.spec.tokenA, row.spec.tokenB),
+    )
+    .map((row) => {
+      const quoteA = quoteForSymbol(quotes, row.spec.tokenA);
+      const quoteB = quoteForSymbol(quotes, row.spec.tokenB);
+      const strike =
+        row.spec.kind === "strike"
+          ? niceStrike(quoteA?.marketCap ?? 1_000_000)
+          : null;
+      const title =
+        row.spec.prompt ??
+        (row.spec.kind === "pvp" && row.spec.tokenB
+          ? pvpQuestion(row.spec.tokenA, row.spec.tokenB)
+          : strikeQuestion(
+              row.spec.tokenA,
+              strike ?? 0,
+              row.spec.metric ?? "marketCap",
+            ));
+      return {
+        id: row.slug,
+        slug: row.slug,
+        kind: row.spec.kind,
+        title,
+        token_a: row.spec.tokenA,
+        token_b: row.spec.tokenB,
+        metric: row.spec.metric,
+        strike,
+        timeframe: row.timeframe,
+        open_at: row.openAt.toISOString(),
+        lock_at: row.lockAt.toISOString(),
+        expiry_at: row.expiryAt.toISOString(),
+        seed_a: NATIVE_SEED,
+        seed_b: NATIVE_SEED,
+        open_mcap_a: quoteA?.marketCap ?? null,
+        open_mcap_b: quoteB?.marketCap ?? null,
+        open_price_a: quoteA?.priceUsd ?? null,
+        open_price_b: quoteB?.priceUsd ?? null,
+        resolved_side: null,
+        resolved_at: null,
+        phase: nativePhase({
+          lock_at: row.lockAt.toISOString(),
+          expiry_at: row.expiryAt.toISOString(),
+        }),
+        poolA: NATIVE_SEED,
+        poolB: NATIVE_SEED,
+        tickets: 0,
+        protocolBoost: protocolBoost(row.slug),
+        quoteA,
+        quoteB,
+      };
+    });
 }
 
 export type NativeKind = "strike" | "pvp";
@@ -270,16 +349,32 @@ export function nativeDefaultSpecs(): NativeMarketSpec[] {
     tokenA: token.symbol,
     tokenB: null,
     metric: "marketCap",
+    timeframes: STRIKE_WINDOWS,
   }));
   const pvps: NativeMarketSpec[] = [
-    { slug: "pons-cashcat", kind: "pvp", tokenA: "PONS", tokenB: "CASHCAT", metric: null },
-    { slug: "ai-index", kind: "pvp", tokenA: "AI", tokenB: "INDEX", metric: null },
+    {
+      slug: "pons-cashcat",
+      kind: "pvp",
+      tokenA: "PONS",
+      tokenB: "CASHCAT",
+      metric: null,
+      timeframes: STRIKE_WINDOWS,
+    },
+    {
+      slug: "ai-index",
+      kind: "pvp",
+      tokenA: "AI",
+      tokenB: "INDEX",
+      metric: null,
+      timeframes: STRIKE_WINDOWS,
+    },
     {
       slug: "stonkbroker-shroom",
       kind: "pvp",
       tokenA: "STONKBROKER",
       tokenB: "SHROOM",
       metric: null,
+      timeframes: STRIKE_WINDOWS,
     },
   ];
   const community: NativeMarketSpec[] = [
@@ -290,7 +385,7 @@ export function nativeDefaultSpecs(): NativeMarketSpec[] {
       tokenB: "ANSEM",
       metric: null,
       featured: true,
-      timeframes: LONG_WINDOWS,
+      timeframes: FEATURED_WINDOWS,
       prompt: raceQuestion("ZCAT", "ANSEM"),
     },
     {
@@ -300,7 +395,7 @@ export function nativeDefaultSpecs(): NativeMarketSpec[] {
       tokenB: "MEME",
       metric: null,
       featured: true,
-      timeframes: LONG_WINDOWS,
+      timeframes: FEATURED_WINDOWS,
       prompt: raceQuestion("ZCAT", "MEME"),
     },
     ...TOP_RH_RIVALS.map((symbol) => ({
@@ -310,7 +405,7 @@ export function nativeDefaultSpecs(): NativeMarketSpec[] {
       tokenB: symbol,
       metric: null,
       featured: true,
-      timeframes: LONG_WINDOWS,
+      timeframes: FEATURED_WINDOWS,
       prompt: raceQuestion("ANSEM", symbol),
     })),
     {
@@ -479,7 +574,8 @@ export function payoutIfWin(
 ) {
   if (!(stake > 0)) return 0;
   const extra = Math.max(0, boost);
-  const pool = side + other + extra;
+  const cover = other > 0 ? other : side;
+  const pool = side + cover + extra;
   if (!(side > 0)) return 0;
   return (stake * pool) / side;
 }
@@ -497,14 +593,15 @@ export function winBreakdown(
   boost = 0,
 ) {
   const extra = Math.max(0, boost);
+  const cover = other > 0 ? other : side;
   if (!(stake > 0) || !(side > 0)) {
     return { payout: 0, returned: 0, fromOthers: 0, fromHedge: 0 };
   }
   return {
-    payout: (stake * (side + other + extra)) / side,
+    payout: (stake * (side + cover + extra)) / side,
     returned: stake,
-    fromOthers: (stake * other) / side,
-    fromHedge: (stake * extra) / side,
+    fromOthers: (stake * (other > 0 ? other : 0)) / side,
+    fromHedge: (stake * (other > 0 ? extra : cover + extra)) / side,
   };
 }
 
@@ -702,6 +799,7 @@ export type NativeTicketView = {
   wallet?: string | null;
   phase: NativePhase;
   resolved_side: NativeSide | "void" | null;
+  lock_at?: string | null;
   expiry_at: string;
   /** Window this ticket was bought on, e.g. 24h / 7d / 3mo. */
   timeframe?: NativeTimeframe | null;
@@ -826,11 +924,26 @@ export function nativeTicketFromMarket(
     wallet: stake.wallet ?? null,
     phase: market.phase,
     resolved_side: market.resolved_side,
+    lock_at: market.lock_at,
     expiry_at: market.expiry_at,
     timeframe: market.timeframe ?? timeframeFromSlug(market.slug),
     implied: stake.side === "a" ? pA : 1 - pA,
     created_at: stake.created_at ?? null,
   };
+}
+
+export function refundTimelineCopy(
+  ticket: Pick<NativeTicketView, "lock_at" | "expiry_at" | "phase">,
+) {
+  const lockLeft = ticket.lock_at ? remainingWindow(ticket.lock_at) : null;
+  const expLeft = remainingWindow(ticket.expiry_at);
+  if (ticket.phase === "open" && lockLeft && lockLeft !== "ended") {
+    return `Refund is open until lock (${lockLeft}). After lock this ticket stays until expiry (${expLeft}). Win: Redeem. Lose: the stake is taken.`;
+  }
+  if (ticket.phase === "open") {
+    return `Refund is open until lock. After lock this ticket stays until expiry. Win: Redeem. Lose: the stake is taken.`;
+  }
+  return `Refund is closed. This ticket stays until expiry (${expLeft}). Win: Redeem. Lose: the stake is taken.`;
 }
 
 export function ticketCanRefund(

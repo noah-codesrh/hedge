@@ -2,14 +2,21 @@ import { useEffect } from "react";
 import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
 import { base, polygon, robinhoodChain } from "../lib/chains";
 import { ENV } from "../lib/env";
+import { beginPrivyRestore } from "../lib/privy-session";
+import { requestPersistentStorage } from "../lib/pwa";
 import { writeSessionHint } from "../lib/session-hint";
 
 function SessionHint() {
   const { authenticated, ready } = usePrivy();
 
   useEffect(() => {
+    beginPrivyRestore();
+  }, []);
+
+  useEffect(() => {
     if (!ready || !authenticated) return;
     writeSessionHint(true);
+    requestPersistentStorage();
   }, [authenticated, ready]);
 
   return null;

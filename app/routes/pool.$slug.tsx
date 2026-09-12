@@ -60,7 +60,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const side = new URL(request.url).searchParams.get("s");
     throw redirect(
       poolTokenPath(data.market.token_a, {
-        tf: data.market.timeframe ?? "1h",
+        tf: data.market.timeframe ?? "12h",
         ...(side ? { s: side } : {}),
       }),
     );
@@ -110,10 +110,10 @@ export default function PoolMarket({ loaderData }: Route.ComponentProps) {
   const boost = market.protocolBoost ?? 0;
   const depth = market.poolA + market.poolB;
   const backTo = community
-    ? `/pool?kind=community&tf=${market.timeframe ?? "24h"}`
+    ? `/pool?kind=community&tf=${market.timeframe ?? "3d"}`
     : market.kind === "pvp"
-      ? `/pool?kind=pvp&tf=${market.timeframe ?? "1h"}`
-      : `/pool?kind=strike&tf=${market.timeframe ?? "1h"}`;
+      ? `/pool?kind=pvp&tf=${market.timeframe ?? "12h"}`
+      : `/pool?kind=strike&tf=${market.timeframe ?? "12h"}`;
   const [range, setRange] = useState<PoolChartRange>("7d");
   const supplyA =
     market.quoteA?.marketCap &&

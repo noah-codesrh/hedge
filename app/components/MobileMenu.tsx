@@ -66,10 +66,12 @@ export function MobileMenu({
   authenticated,
   onGetStarted,
   onLogout,
+  onAddHome,
 }: {
   authenticated: boolean;
   onGetStarted: () => void;
   onLogout: () => void;
+  onAddHome?: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
@@ -243,12 +245,28 @@ export function MobileMenu({
               <ChevronRight />
             </span>
           </Link>
+          {onAddHome ? (
+            <button
+              type="button"
+              onClick={() => {
+                close();
+                onAddHome();
+              }}
+              style={stagger(5)}
+              className={`${item(5)} w-full text-left`}
+            >
+              Add to Home Screen
+              <span className="text-muted">
+                <ChevronRight />
+              </span>
+            </button>
+          ) : null}
           <Link
             to="/app"
             prefetch="intent"
             onClick={close}
-            style={stagger(5)}
-            className={item(5)}
+            style={stagger(6)}
+            className={item(6)}
           >
             <span className="font-semibold text-gold">App waitlist</span>
             <span className="text-gold/50">

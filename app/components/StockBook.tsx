@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuthorizationSignature, usePrivy } from "@privy-io/react-auth";
+import { requireAccessToken } from "../lib/privy-session";
 import { fiat } from "../lib/format";
 import { notifyBalancesChanged, watchBalanceReloads } from "../lib/positions";
 import {
@@ -129,7 +130,7 @@ function StockBookInner() {
     setError(null);
     setDone(null);
     try {
-      const accessToken = await getAccessToken();
+      const accessToken = await requireAccessToken(getAccessToken);
       if (!accessToken) throw new Error("Session expired. Sign in again.");
       const cashWallet = await ensureCashWallet();
       if (!cashWallet?.address) throw new Error("Your wallet isn't ready yet.");

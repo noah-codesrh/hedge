@@ -1,6 +1,8 @@
 import { startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
+import { beginPrivyRestore } from "./lib/privy-session";
+import { requestPersistentStorage } from "./lib/pwa";
 
 /**
  * No StrictMode. React Router's default client entry wraps the tree in it,
@@ -11,3 +13,12 @@ import { HydratedRouter } from "react-router/dom";
 startTransition(() => {
   hydrateRoot(document, <HydratedRouter />);
 });
+
+beginPrivyRestore();
+
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  if (!import.meta.env.DEV) {
+    void navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
+  requestPersistentStorage();
+}

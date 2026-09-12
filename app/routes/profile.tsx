@@ -12,6 +12,7 @@ import type { loader as portfolioLoader } from "./api.pm.portfolio";
 import { HoneycombMarquee } from "../components/HoneycombMarquee";
 import { NativeTickets } from "../components/NativeTickets";
 import { useAuthModal, usePrivyMounted } from "../components/Providers";
+import { requireAccessToken } from "../lib/privy-session";
 import { useHeldSession } from "../lib/session-hint";
 import {
   ArrowDownTrayIcon,
@@ -513,7 +514,7 @@ function ProfileInner() {
             setNickTick((n) => n + 1);
             setNickOpen(false);
             void (async () => {
-              const token = await getAccessToken().catch(() => null);
+              const token = await requireAccessToken(getAccessToken);
               if (token) trackNickname(token, { nickname: value, wallet });
             })();
           }}
@@ -792,7 +793,7 @@ function SendModal({
       // Token sends from the embedded wallet go through Privy so the app pays
       // gas. Native ETH is the gas, and external wallets pay their own.
       if (data && isEmbeddedWallet(signer.walletClientType)) {
-        const accessToken = await getAccessToken();
+        const accessToken = await requireAccessToken(getAccessToken);
         if (!accessToken) throw new Error("Session expired. Sign in again.");
         const hash = await sponsoredTokenSend({
           accessToken,

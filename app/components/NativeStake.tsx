@@ -6,7 +6,7 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
-import { PRIVY_RESTORE_MS } from "../lib/privy-session";
+import { requireAccessToken } from "../lib/privy-session";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { CheckIcon } from "./icons";
 import { ConversionFlow } from "./ConversionFlow";
@@ -263,8 +263,8 @@ function StakeCopy({
       </p>
       <p className="mt-2 text-sm text-muted">
         $1–${NATIVE_MAX_STAKE} USDG, or listed stock sold into USDG. One ticket.
-        Odds {a} {pct(pA)} · {b} {pct(1 - pA)}. Tape plus the USDG pools. Pools
-        pay USDG.
+        Odds {a} {pct(pA)} · {b} {pct(1 - pA)}. The desk takes the other side.
+        Win and the treasury pays. Lose and the ticket is liquidated.
       </p>
       <p className="mt-2 text-sm text-muted">{POOL_REFUND_COPY}</p>
       {mine ? (
@@ -306,6 +306,7 @@ function NativeStakeInner({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refunded, setRefunded] = useState<string | null>(null);
   const [mine, setMine] = useState(initialMine);
   const [pending, setPending] = useState<Pending | null>(null);
   const [receipt, setReceipt] = useState<Mine>(null);
@@ -314,7 +315,7 @@ function NativeStakeInner({
   const phase = nativePhase(market);
 
   async function poolSend(): Promise<PoolSendContext> {
-    const token = await getAccessToken();
+    const token = await requireAccessToken(getAccessToken);
     if (!token) throw new Error("Sign in again.");
     const signer = (await ensureCashWallet()) ?? cashWallet;
     const from = signer?.address ?? primaryWalletAddress(user, wallets);
@@ -377,24 +378,21 @@ function NativeStakeInner({
   useEffect(() => {
     if (!authenticated) return;
     let cancelled = false;
-    const wait = window.setTimeout(() => {
-      void (async () => {
-        const token = await getAccessToken().catch(() => null);
-        if (!token || cancelled) return;
-        const data = await authed<{ mine: Mine }>(
-          token,
-          `/api/native/${market.slug}`,
-        );
-        if (data.mine) {
-          setMine(data.mine);
-          writePending(market.slug, null);
-          setPending(null);
-        }
-      })().catch(() => {});
-    }, PRIVY_RESTORE_MS);
+    void (async () => {
+      const token = await requireAccessToken(getAccessToken);
+      if (!token || cancelled) return;
+      const data = await authed<{ mine: Mine }>(
+        token,
+        `/api/native/${market.slug}`,
+      );
+      if (data.mine) {
+        setMine(data.mine);
+        writePending(market.slug, null);
+        setPending(null);
+      }
+    })().catch(() => {});
     return () => {
       cancelled = true;
-      window.clearTimeout(wait);
     };
   }, [authenticated, getAccessToken, market.slug]);
   const a = sideLabel(market.kind, "a", market.token_a, market.token_b);
@@ -433,7 +431,7 @@ function NativeStakeInner({
   };
 
   const record = async (ticket: Pending, opts?: { silent?: boolean }) => {
-    const token = await getAccessToken();
+    const token = await requireAccessToken(getAccessToken);
     if (!token) throw new Error("Sign in again.");
     const hash = TX_HASH.test(ticket.hash) ? ticket.hash : "";
     const result = hash
@@ -485,29 +483,26 @@ function NativeStakeInner({
     if (!wallet) return;
     syncTried.current = true;
     let alive = true;
-    const wait = window.setTimeout(() => {
-      void (async () => {
-        const token = await getAccessToken().catch(() => null);
-        if (!token || !alive) return;
-        try {
-          const result = await authed<{
-            amount: number;
-            side: NativeSide;
-            txHash?: string | null;
-          }>(token, "/api/native/sync", {
-            method: "POST",
-            body: JSON.stringify({ slug: market.slug, wallet }),
-          });
-          if (!alive) return;
-          booked(result, { silent: true });
-        } catch {
-          /* no ticket on chain */
-        }
-      })();
-    }, PRIVY_RESTORE_MS);
+    void (async () => {
+      const token = await requireAccessToken(getAccessToken);
+      if (!token || !alive) return;
+      try {
+        const result = await authed<{
+          amount: number;
+          side: NativeSide;
+          txHash?: string | null;
+        }>(token, "/api/native/sync", {
+          method: "POST",
+          body: JSON.stringify({ slug: market.slug, wallet }),
+        });
+        if (!alive) return;
+        booked(result, { silent: true });
+      } catch {
+        /* no ticket on chain */
+      }
+    })();
     return () => {
       alive = false;
-      window.clearTimeout(wait);
     };
   }, [authenticated, mine, cashAddress, user, wallets, market.slug]);
 
@@ -526,7 +521,7 @@ function NativeStakeInner({
       if (!NATIVE_POOL_OPEN || !escrowWallet) {
         throw new Error("Pool is under maintenance.");
       }
-      const token = await getAccessToken();
+      const token = await requireAccessToken(getAccessToken);
       if (!token) throw new Error("Sign in again.");
       const signer = cashWallet ?? (await ensureCashWallet());
       from = signer?.address ?? primaryWalletAddress(user, wallets) ?? "";
@@ -779,7 +774,9 @@ function NativeStakeInner({
               ticketCanRefund(nativeTicketFromMarket(market, mine))
                 ? () => {
                     setError(null);
+                    setRefunded(null);
                     setSaving(true);
+                    const refundedAmount = mine.amount;
                     void (async () => {
                       const ctx = await poolSend();
                       let hash = "";
@@ -789,7 +786,7 @@ function NativeStakeInner({
                         const text = err instanceof Error ? err.message : "";
                         if (!/No ticket/i.test(text)) throw err;
                       }
-                      const token = await getAccessToken();
+                      const token = await requireAccessToken(getAccessToken);
                       if (!token) throw new Error("Sign in again.");
                       const res = await fetch("/api/native/refund", {
                         method: "POST",
@@ -810,6 +807,9 @@ function NativeStakeInner({
                         throw new Error(data?.error ?? "Could not record that refund.");
                       }
                       setMine(null);
+                      setRefunded(
+                        `Refunded ${fiat(refundedAmount)}. The stake is back in your cash wallet.`,
+                      );
                       window.dispatchEvent(new Event("native-ticket"));
                     })()
                       .catch((err) =>
@@ -917,6 +917,7 @@ function NativeStakeInner({
               : `Stake ${side === "a" ? a : b}`}
         </button>
       )}
+      {refunded ? <p className="mt-2 text-sm text-up">{refunded}</p> : null}
       {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
       {saving && !receipt ? (
         <ConversionFlow

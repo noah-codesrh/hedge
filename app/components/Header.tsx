@@ -11,6 +11,7 @@ import { useAuthModal, usePrivyMounted } from "./Providers";
 import { DepositButton, useBook } from "./Book";
 import { ReferralBind } from "./ReferralCapture";
 import { FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
+import { InstallHedge } from "./InstallHedge";
 import { MobileMenu } from "./MobileMenu";
 import { fiat } from "../lib/format";
 
@@ -61,11 +62,13 @@ function HeaderShell({
   authenticated,
   onGetStarted,
   onLogout,
+  onAddHome,
   book,
 }: {
   authenticated: boolean;
   onGetStarted: () => void;
   onLogout: () => void;
+  onAddHome?: () => void;
   book?: boolean;
 }) {
   return (
@@ -180,6 +183,7 @@ function HeaderShell({
             authenticated={authenticated}
             onGetStarted={onGetStarted}
             onLogout={onLogout}
+            onAddHome={onAddHome}
           />
         </div>
       </div>
@@ -225,9 +229,11 @@ function HeaderBook() {
 function PrivyHeader({
   hinted,
   onHinted,
+  onAddHome,
 }: {
   hinted: boolean;
   onHinted: (on: boolean) => void;
+  onAddHome?: () => void;
 }) {
   const { authenticated, ready, logout } = usePrivy();
   const { openModal } = useAuthModal();
@@ -252,6 +258,7 @@ function PrivyHeader({
         authenticated={signedIn}
         onGetStarted={openModal}
         onLogout={onLogout}
+        onAddHome={onAddHome}
         book={authenticated}
       />
     </>
@@ -328,6 +335,7 @@ export function Header() {
   const { openModal } = useAuthModal();
   const privyMounted = usePrivyMounted();
   const [hinted, setHinted] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
   useLayoutEffect(() => {
     setHinted(sessionStillHeld());
   }, []);
@@ -335,14 +343,23 @@ export function Header() {
   return (
     <>
       {privyMounted ? (
-        <PrivyHeader hinted={hinted} onHinted={setHinted} />
+        <PrivyHeader
+          hinted={hinted}
+          onHinted={setHinted}
+          onAddHome={() => setInstallOpen(true)}
+        />
       ) : (
         <HeaderShell
           authenticated={hinted}
           onGetStarted={openModal}
           onLogout={() => {}}
+          onAddHome={() => setInstallOpen(true)}
         />
       )}
+      <InstallHedge
+        force={installOpen}
+        onClose={() => setInstallOpen(false)}
+      />
       <MobileTabBar />
     </>
   );

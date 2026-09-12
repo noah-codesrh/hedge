@@ -1,3 +1,4 @@
+import { requireAccessToken } from "./privy-session";
 import type { PrivyAuthorizationPayload, SignPrivyAuthorization } from "./sponsored-send";
 
 const TOTAL_MS = 20 * 60 * 1000;
@@ -79,7 +80,7 @@ export async function convertOnrampToCash(input: {
   let variant = 0;
 
   const token = async () => {
-    const access = await input.getAccessToken();
+    const access = await requireAccessToken(input.getAccessToken);
     if (!access) throw new Error("Session expired. Sign in again.");
     return access;
   };

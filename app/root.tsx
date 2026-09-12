@@ -7,6 +7,7 @@ import {
   redirect,
   Scripts,
   ScrollRestoration,
+  type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -17,6 +18,8 @@ import { apexHostname, publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
+  { rel: "manifest", href: "/manifest.webmanifest" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
   { rel: "preload", href: "/hero-banner.jpg", as: "image" },
   { rel: "preload", href: "/logo-full.png", as: "image" },
   {
@@ -52,6 +55,17 @@ export function loader({ request }: Route.LoaderArgs) {
   return { origin: publicOrigin(request) };
 }
 
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formMethod && formMethod !== "GET") return true;
+  if (currentUrl.pathname === nextUrl.pathname) return false;
+  return defaultShouldRevalidate;
+}
+
 function CanonicalHost() {
   useLayoutEffect(() => {
     const { hostname, pathname, search, hash } = window.location;
@@ -76,6 +90,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#111111" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Hedge" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* Sharing tags come from each route's meta() so og:image is absolute.
             Duplicating them here shadowed those with a relative path. */}
         <Meta />

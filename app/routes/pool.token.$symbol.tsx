@@ -20,7 +20,8 @@ import {
   sideLabel,
   displayImpliedP,
   tapeLine,
-  NATIVE_TIMEFRAMES,
+  previewRollingMarkets,
+  STRIKE_WINDOWS,
   type NativeMarketView,
   type NativeTimeframe,
 } from "../lib/native";
@@ -86,13 +87,25 @@ function pickWindow(markets: NativeMarketView[], tf: NativeTimeframe) {
 export default function PoolToken({ loaderData }: Route.ComponentProps) {
   const { token, tracked, escrowWallet, payoutLive, candles } = loaderData;
   const [params, setParams] = useSearchParams();
-  const timeframe = parseNativeTimeframe(params.get("tf"));
+  const rawTf = parseNativeTimeframe(params.get("tf"));
+  const timeframe = STRIKE_WINDOWS.includes(rawTf) ? rawTf : "12h";
   const initialSide = parseSide(params.get("s")) ?? "a";
   const [metric, setMetric] = useState<"price" | "mcap">("price");
   const [range, setRange] = useState<PoolChartRange>("7d");
   const [copied, setCopied] = useState(false);
   const quote = loaderData.quote;
-  const market = pickWindow(loaderData.strikes, timeframe);
+  const strikes = useMemo(() => {
+    const extras = previewRollingMarkets(quote ? [quote] : []).filter(
+      (row) =>
+        row.kind === "strike" &&
+        row.token_a.toLowerCase() === token.symbol.toLowerCase(),
+    );
+    const have = new Set(loaderData.strikes.map((row) => row.slug));
+    return loaderData.strikes.concat(
+      extras.filter((row) => !have.has(row.slug)),
+    );
+  }, [loaderData.strikes, quote, token.symbol]);
+  const market = pickWindow(strikes, timeframe);
   const live = useNativeMarket(market?.slug ?? "", market ?? {
     id: token.symbol,
     slug: "",
@@ -272,12 +285,12 @@ export default function PoolToken({ loaderData }: Route.ComponentProps) {
         <div className="order-1 min-w-0 lg:order-none lg:col-start-2 lg:row-span-3 lg:row-start-1">
           <div className="lg:sticky lg:top-20">
             <div className="mb-3 flex flex-wrap gap-1.5">
-              {NATIVE_TIMEFRAMES.map((row) => (
+              {STRIKE_WINDOWS.map((id) => (
                 <Chip
-                  key={row.id}
-                  active={timeframe === row.id}
-                  onClick={() => setTf(row.id)}
-                  label={row.label}
+                  key={id}
+                  active={timeframe === id}
+                  onClick={() => setTf(id)}
+                  label={id}
                 />
               ))}
             </div>

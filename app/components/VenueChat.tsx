@@ -11,6 +11,7 @@ import {
   type VenueMessage,
   type VenueSource,
 } from "../lib/venue-chat";
+import { requireAccessToken } from "../lib/privy-session";
 import { primaryWalletAddress } from "../lib/wallet";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import { ChatIcon } from "./icons";
@@ -137,7 +138,7 @@ function VenueChatInner({
     setBusy(true);
     setError(null);
     try {
-      const token = await getAccessToken();
+      const token = await requireAccessToken(getAccessToken);
       if (!token) throw new Error("Session expired. Sign in again.");
       const wallet = primaryWalletAddress(user);
       const photo = privyPhoto(user);

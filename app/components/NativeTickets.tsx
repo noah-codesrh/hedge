@@ -4,16 +4,18 @@ import {
   usePrivy,
   useWallets,
 } from "@privy-io/react-auth";
-import { PRIVY_RESTORE_MS } from "../lib/privy-session";
+import { requireAccessToken } from "../lib/privy-session";
 import { usePrivyMounted } from "./Providers";
 import {
   markNativeTicket,
   sideLabel,
   ticketCanRefund,
   timeframeFromSlug,
+  refundTimelineCopy,
   POOL_REFUND_COPY,
   type NativeTicketView,
 } from "../lib/native";
+import { fiat } from "../lib/format";
 import type { LivePosition } from "../lib/polymarket-portfolio";
 import { poolIsLive } from "../lib/hedge-pool";
 import { claimPool, refundPool, type PoolSendContext } from "../lib/pool-actions";
@@ -80,12 +82,27 @@ export function NativeTicketCard({
 }) {
   const canClaim = Boolean(onClaim) && !ticket.payoutTx;
   const canRefund = Boolean(onRefund) && ticketCanRefund(ticket);
+  const claimed = Boolean(ticket.payoutTx);
   return (
-    <LivePositionCard
-      position={liveFromNativeTicket(ticket)}
-      showClose={canClaim || canRefund}
-      onClose={canClaim ? onClaim : canRefund ? onRefund : undefined}
-    />
+    <div>
+      <LivePositionCard
+        position={liveFromNativeTicket(ticket)}
+        showClose={canRefund}
+        onClose={canRefund ? onRefund : undefined}
+        previewRedeem={
+          claimed
+            ? undefined
+            : {
+                label: ticket.releasable ? "Claim stake" : "Redeem",
+                enabled: canClaim,
+                onClick: onClaim,
+              }
+        }
+      />
+      <p className="mt-2 px-1 text-[12px] leading-relaxed text-muted">
+        {refundTimelineCopy(ticket)}
+      </p>
+    </div>
   );
 }
 
@@ -104,9 +121,10 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
   const [tickets, setTickets] = useState<NativeTicketView[] | null>(null);
   const [busyId, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
-    const token = await getAccessToken().catch(() => null);
+    const token = await requireAccessToken(getAccessToken);
     if (!token) return;
     const res = await fetch("/api/native/tickets", {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
@@ -124,7 +142,7 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
     }
     let alive = true;
     const run = async () => {
-      const token = await getAccessToken().catch(() => null);
+      const token = await requireAccessToken(getAccessToken);
       if (!token) return;
       const res = await fetch("/api/native/tickets", {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
@@ -134,20 +152,17 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
       const data = (await res.json()) as { tickets?: NativeTicketView[] };
       if (alive && Array.isArray(data.tickets)) setTickets(data.tickets);
     };
-    const start = window.setTimeout(() => {
-      void run();
-    }, PRIVY_RESTORE_MS);
+    void run();
     const onPlaced = () => void run();
     window.addEventListener("native-ticket", onPlaced);
     return () => {
       alive = false;
-      window.clearTimeout(start);
       window.removeEventListener("native-ticket", onPlaced);
     };
   }, [authenticated, getAccessToken]);
 
   async function poolCtx(preferred?: string | null): Promise<PoolSendContext> {
-    const token = await getAccessToken();
+    const token = await requireAccessToken(getAccessToken);
     if (!token) throw new Error("Sign in again.");
     const wanted = preferred?.trim() || null;
     const signer =
@@ -174,7 +189,7 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
   }
 
   async function recordRefund(slug: string, wallet: string, txHash: string) {
-    const token = await getAccessToken();
+    const token = await requireAccessToken(getAccessToken);
     if (!token) throw new Error("Sign in again.");
     const res = await fetch("/api/native/refund", {
       method: "POST",
@@ -190,6 +205,7 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
 
   async function onRefund(ticket: NativeTicketView) {
     setError(null);
+    setNotice(null);
     setBusy(ticket.id);
     try {
       const ctx = await poolCtx(ticket.wallet);
@@ -203,6 +219,9 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
       await recordRefund(ticket.slug, ctx.from, hash);
       window.dispatchEvent(new Event("native-ticket"));
       await load();
+      setNotice(
+        `Refunded ${fiat(ticket.amount)}. The stake is back in your cash wallet.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not refund.");
     } finally {
@@ -211,7 +230,7 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
   }
 
   async function releaseTicket(ticket: NativeTicketView) {
-    const token = await getAccessToken();
+    const token = await requireAccessToken(getAccessToken);
     if (!token) throw new Error("Sign in again.");
     const res = await fetch("/api/native/release", {
       method: "POST",
@@ -256,9 +275,8 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
     }
   }
 
-  if (!authenticated || !tickets || tickets.length === 0) {
-    return null;
-  }
+  if (!authenticated) return null;
+  if ((!tickets || tickets.length === 0) && !notice) return null;
 
   return (
     <section id="tickets" className={compact ? "mt-5" : "mt-8"}>
@@ -267,9 +285,10 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
         {POOL_REFUND_COPY} After expiry, Claim stake settles a one-sided pot
         and returns your USDG. That is a refund, not a profit.
       </p>
+      {notice ? <p className="mt-2 text-sm text-up">{notice}</p> : null}
       {error ? <p className="mt-2 text-sm text-down">{error}</p> : null}
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-        {tickets.map((ticket) => {
+        {(tickets ?? []).map((ticket) => {
           const canClaim =
             poolIsLive &&
             !ticket.payoutTx &&

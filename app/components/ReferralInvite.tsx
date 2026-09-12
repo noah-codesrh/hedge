@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { usePrivy } from "@privy-io/react-auth";
-import { PRIVY_RESTORE_MS } from "../lib/privy-session";
+import { requireAccessToken } from "../lib/privy-session";
 import { useAuthModal, usePrivyMounted } from "./Providers";
 import {
   CheckIcon,
@@ -269,7 +269,7 @@ function ReferralAuthed() {
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
-    const token = await getAccessToken().catch(() => null);
+    const token = await requireAccessToken(getAccessToken);
     if (!token) return;
     const next = await authed<ReferralStats>(token, "/api/referral");
     setStats(next);
@@ -284,10 +284,7 @@ function ReferralAuthed() {
       setStats(null);
       return;
     }
-    const wait = window.setTimeout(() => {
-      void load().catch(() => {});
-    }, PRIVY_RESTORE_MS);
-    return () => window.clearTimeout(wait);
+    void load().catch(() => {});
   }, [authenticated, getAccessToken]);
 
   const code = stats?.code ?? null;
@@ -320,7 +317,7 @@ function ReferralAuthed() {
     setError(null);
     setSaving(true);
     try {
-      const token = await getAccessToken();
+      const token = await requireAccessToken(getAccessToken);
       if (!token) throw new Error("Sign in again.");
       const parsed = parseReferralCode(name);
       if (!parsed) {

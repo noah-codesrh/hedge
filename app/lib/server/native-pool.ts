@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   createWalletClient,
+  erc20Abi,
   fallback,
   http,
   parseEventLogs,
@@ -23,7 +24,8 @@ import {
   NATIVE_USER_CAP,
   type NativeSide,
 } from "../native";
-import { RH_RPC, RH_RPC_FALLBACK } from "../robinhood";
+import { readAllowance } from "../leverage-chain";
+import { RH_RPC, RH_RPC_FALLBACK, USDG } from "../robinhood";
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 const HASH = /^0x[a-fA-F0-9]{64}$/;
@@ -140,7 +142,7 @@ async function withTimeout<T>(work: Promise<T>, ms: number, message: string) {
 }
 
 /**
- * Raise on-chain $1–$25 / $1,000 defaults to the app desk if the reporter key
+ * Raise on-chain $1–$10 / $1,000 defaults to the app desk if the reporter key
  * is also admin. No-op when already matched or the key cannot sign setLimits.
  */
 export async function ensurePoolLimits() {
@@ -306,7 +308,10 @@ export async function resolvePool(slug: string, side: NativeSide | "void") {
     } catch (error) {
       const raw = error instanceof Error ? error.message : String(error);
       if (/EmptyWinningSide/i.test(raw) && side !== "void") {
-        return resolvePool(slug, "void");
+        return {
+          error: "EmptyWinningSide",
+          status: 409 as const,
+        };
       }
       if (/MarketResolved/i.test(raw)) {
         last = { ok: true as const, skipped: true };
@@ -354,6 +359,69 @@ export async function poolPreviewPayout(slug: string, wallet: string) {
     }
   }
   return 0;
+}
+
+/**
+ * Desk takes the empty side so a lone ticket can win or be liquidated.
+ * Uses the escrow key. No-op when both sides already have USDG.
+ */
+export async function houseTakeOtherSide(slug: string) {
+  const key = requiredEnv("NATIVE_ESCROW_KEY") ?? reporterKey();
+  const box = pool();
+  if (!key || !box) return { ok: true as const, skipped: true };
+  const state = await poolMarketState(slug);
+  if (!state || state.outcome !== 0) return { ok: true as const, skipped: true };
+  if (Date.now() / 1000 >= state.lockAt) {
+    return { ok: true as const, skipped: true };
+  }
+  if (state.poolA > 0 && state.poolB > 0) {
+    return { ok: true as const, skipped: true };
+  }
+  const fill = Math.max(state.poolA, state.poolB);
+  if (!(fill >= NATIVE_MIN_STAKE)) return { ok: true as const, skipped: true };
+  const amount = Math.min(fill, NATIVE_MAX_STAKE);
+  const raw = toUsdgRaw(amount);
+  const side = state.poolA <= 0 ? POOL_SIDE_A : POOL_SIDE_B;
+  const account = privateKeyToAccount(key);
+  const house = account.address;
+  const existing = await readTicket(state.address, poolMarketId(slug), house);
+  if (existing && existing.amount > 0) {
+    return { ok: true as const, skipped: true };
+  }
+  const wallet = createWalletClient({
+    account,
+    chain: robinhoodChain,
+    transport: fallback([
+      http(RH_RPC_FALLBACK, { timeout: 20_000 }),
+      http(RH_RPC, { timeout: 20_000 }),
+    ]),
+  });
+  try {
+    const allowance = await readAllowance(house, state.address);
+    if (allowance < raw) {
+      const approve = await wallet.writeContract({
+        address: USDG as Hex,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [state.address as Hex, raw],
+      });
+      await publicClient.waitForTransactionReceipt({
+        hash: approve,
+        timeout: 90_000,
+      });
+    }
+    const hash = await wallet.writeContract({
+      ...poolBox(state.address),
+      account,
+      functionName: "stake",
+      args: [poolMarketId(slug), side, raw],
+    });
+    await publicClient.waitForTransactionReceipt({ hash, timeout: 90_000 });
+    return { ok: true as const, hash, amount };
+  } catch (error) {
+    console.error("[native] house fill", slug, error);
+    return { error: "Desk could not take the other side.", status: 502 as const };
+  }
 }
 
 export async function poolMarketState(slug: string) {

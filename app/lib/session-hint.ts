@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from "react";
+import { privyRestoreDone } from "./privy-session";
 
 const KEY = "hedge-session";
 
@@ -39,7 +40,7 @@ export function useHeldSession(authenticated: boolean, ready: boolean) {
       return;
     }
     if (!ready) return;
-    if (hasPrivyStorage()) {
+    if (hasPrivyStorage() || !privyRestoreDone()) {
       setHeld(true);
       return;
     }

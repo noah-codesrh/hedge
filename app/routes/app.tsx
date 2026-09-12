@@ -9,7 +9,7 @@ export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({
     title: "App waitlist · Hedge",
     description:
-      "The Hedge app is coming to your home screen. Leave your email. We will write when iOS and Android are ready.",
+      "Add Hedge to your home screen now. Leave your email for the native store listing.",
     origin: originFromMatches(matches),
     url: "/app",
   });
@@ -46,11 +46,15 @@ export default function AppWaitlist() {
       <div className="relative z-10 mx-auto grid w-full min-w-0 max-w-[1144px] items-start gap-8 px-6 pt-10 pb-16 sm:px-10 sm:pt-12 lg:grid-cols-[minmax(0,33.75rem)_minmax(0,1fr)] lg:gap-x-10 lg:gap-y-0 lg:pt-14 lg:pb-20">
         <section className="w-full min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gold">
-            App waitlist
+            Home screen
           </p>
           <h1 className="mt-3 text-[2rem] font-bold leading-[1.1] tracking-tight sm:text-[2.5rem]">
             Hedge on your home screen
           </h1>
+          <p className="mt-3 text-[15px] leading-relaxed text-muted">
+            On your phone: Share, then Add to Home Screen. The login stays when
+            you close the browser. The store listing is still on the waitlist.
+          </p>
         </section>
 
         <section className="relative min-w-0 w-full lg:col-start-2 lg:row-span-4 lg:row-start-1 lg:justify-self-end">
@@ -93,9 +97,9 @@ export default function AppWaitlist() {
 
           <p className="text-[12px] leading-relaxed text-[#5f5f5f]">
             No store listing yet. This list is how we reach you when there is.
-            Until then,{" "}
+            Until then, add the web app from the Share sheet, or{" "}
             <Link to="/" className="font-medium text-gold hover:underline">
-              trade on the web
+              trade in the browser
             </Link>
             .
           </p>

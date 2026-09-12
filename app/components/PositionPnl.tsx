@@ -44,10 +44,16 @@ export function LivePositionCard({
   position,
   onClose,
   showClose = false,
+  previewRedeem,
 }: {
   position: LivePosition;
   onClose?: () => void;
   showClose?: boolean;
+  previewRedeem?: {
+    label: string;
+    enabled: boolean;
+    onClick?: () => void;
+  };
 }) {
   const [shareOpen, setShareOpen] = useState(false);
   const open = position.status === "open";
@@ -128,15 +134,32 @@ export function LivePositionCard({
             onClick={onClose}
             className="flex-1 rounded-full bg-white/5 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
           >
-            {position.stakeBack
+            {position.stakeBack && !previewRedeem
               ? "Claim stake"
-              : position.redeemable
+              : position.redeemable && !previewRedeem
                 ? "Redeem"
                 : position.refundable
                   ? "Refund"
                   : isSettledPosition(position) && position.currentPrice <= 0.01
                     ? "Clear"
                     : "Close"}
+          </button>
+        ) : null}
+        {previewRedeem ? (
+          <button
+            type="button"
+            disabled={!previewRedeem.enabled}
+            onClick={
+              previewRedeem.enabled ? previewRedeem.onClick : undefined
+            }
+            title={
+              previewRedeem.enabled
+                ? undefined
+                : "Redeem unlocks after this ticket wins."
+            }
+            className="flex-1 rounded-full bg-gold py-2 text-[13px] font-semibold text-black transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/5 disabled:text-white/35"
+          >
+            {previewRedeem.label}
           </button>
         ) : null}
       </div>
