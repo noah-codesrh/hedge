@@ -1,11 +1,13 @@
 import { Link } from "react-router";
-import { SITE_DESCRIPTION } from "../lib/seo";
+import { useT } from "./I18n";
+import { LanguageTrigger } from "./LanguagePicker";
 import { DOCS_URL, SOCIALS } from "./site-links";
 
 /** UTC so the server and the browser never disagree across a year boundary. */
 const YEAR = new Date().getUTCFullYear();
 
 export function Footer() {
+  const t = useT();
   return (
     <footer className="mt-4 border-t border-white/5 pb-[calc(6.75rem+env(safe-area-inset-bottom))] lg:pb-10">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-3 py-8 sm:flex-row sm:items-end sm:justify-between">
@@ -19,55 +21,56 @@ export function Footer() {
             decoding="async"
             className="h-7 w-auto"
           />
-          <p className="mt-2.5 text-[13px] text-muted">{SITE_DESCRIPTION}.</p>
+          <p className="mt-2.5 text-[13px] text-muted">{t("footer.tagline")}</p>
           <p className="mt-1 text-[12px] text-[#5f5f5f]">
-            © {YEAR} Hedge. Prediction markets carry risk of loss.
+            {t("footer.risk", { year: YEAR })}
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <LanguageTrigger />
           <a
             href={DOCS_URL}
             target="_blank"
             rel="noreferrer"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            Docs
+            {t("footer.docs")}
           </a>
           <Link
             to="/pool"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            Pool
+            {t("footer.pool")}
           </Link>
           <Link
             to="/wall"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            Wall
+            {t("footer.wall")}
           </Link>
           <Link
             to="/roadmap"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            Roadmap
+            {t("footer.roadmap")}
           </Link>
           <Link
             to="/app"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            App
+            {t("footer.app")}
           </Link>
           <Link
             to="/terms"
             prefetch="intent"
             className="text-[13px] font-medium text-muted transition hover:text-white"
           >
-            Terms
+            {t("footer.terms")}
           </Link>
           <div className="flex items-center gap-2">
             {SOCIALS.map((social) => (

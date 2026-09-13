@@ -1,4 +1,5 @@
 import type { Route } from "./+types/api.events";
+import { localeFromRequest } from "../lib/i18n";
 import { listEventPage } from "../lib/polymarket";
 import { publicCorsHeaders } from "../lib/server/public-cors";
 
@@ -15,5 +16,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     tag,
     sort,
     offset: Number.isFinite(offset) ? offset : 0,
+    locale: localeFromRequest(request),
   });
 }

@@ -12,10 +12,13 @@ import { DepositButton, useBook } from "./Book";
 import { ReferralBind } from "./ReferralCapture";
 import { FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
 import { InstallHedge } from "./InstallHedge";
+import { useT } from "./I18n";
+import { LanguageTrigger } from "./LanguagePicker";
 import { MobileMenu } from "./MobileMenu";
 import { fiat } from "../lib/format";
 
 function SearchBar() {
+  const t = useT();
   const [params] = useSearchParams();
   const inputRef = useRef<HTMLInputElement>(null);
   const q = params.get("q") ?? "";
@@ -50,7 +53,7 @@ function SearchBar() {
         ref={inputRef}
         name="q"
         defaultValue={q}
-        placeholder="Search markets"
+        placeholder={t("nav.searchMarkets")}
         className="w-full bg-transparent text-sm text-white placeholder-muted outline-none"
       />
       <kbd className="text-base font-medium text-muted">/</kbd>
@@ -71,6 +74,7 @@ function HeaderShell({
   onAddHome?: () => void;
   book?: boolean;
 }) {
+  const t = useT();
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 min-w-0 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-3 lg:gap-4">
@@ -92,35 +96,35 @@ function HeaderShell({
             prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
-            Markets
+            {t("nav.markets")}
           </Link>
           <Link
             to="/earn"
             prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
-            Earn
+            {t("nav.earn")}
           </Link>
           <Link
             to="/rewards"
             prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
-            Rewards
+            {t("nav.rewards")}
           </Link>
           <Link
             to="/pool"
             prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
-            Pool
+            {t("nav.pool")}
           </Link>
           <Link
             to="/wall"
             prefetch="intent"
             className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
           >
-            Wall
+            {t("nav.wall")}
           </Link>
           <Link
             to="/token"
@@ -135,7 +139,7 @@ function HeaderShell({
               prefetch="intent"
               className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
             >
-              Profile
+              {t("nav.profile")}
             </Link>
           )}
         </nav>
@@ -146,8 +150,8 @@ function HeaderShell({
           <Link
             to="/ai"
             prefetch="intent"
-            aria-label="Hedgie"
-            title="Ask Hedgie"
+            aria-label={t("nav.hedgie")}
+            title={t("nav.askHedgie")}
             className="group relative grid h-10 w-10 place-items-center rounded-full ring-1 ring-white/10 transition hover:ring-gold/60"
           >
             <span className="absolute inset-0 rounded-full bg-gold/20 opacity-0 blur-md transition group-hover:opacity-100" />
@@ -166,7 +170,7 @@ function HeaderShell({
                 onClick={onLogout}
                 className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-[#cfcfcf] transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-2 sm:text-sm"
               >
-                Log out
+                {t("nav.logOut")}
               </button>
             </>
           ) : (
@@ -175,9 +179,11 @@ function HeaderShell({
               onClick={onGetStarted}
               className="rounded-full bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-105 sm:px-5 sm:py-2 sm:text-sm"
             >
-              Get Started
+              {t("nav.getStarted")}
             </button>
           )}
+
+          <LanguageTrigger compact className="hidden lg:grid" />
 
           <MobileMenu
             authenticated={authenticated}
@@ -192,6 +198,7 @@ function HeaderShell({
 }
 
 function HeaderBook() {
+  const t = useT();
   const { cash, portfolio } = useBook();
   return (
     <>
@@ -201,14 +208,14 @@ function HeaderBook() {
       >
         <span className="text-right">
           <span className="block text-[11px] leading-none text-muted">
-            Portfolio
+            {t("nav.portfolio")}
           </span>
           <span className="mt-1 block text-sm font-semibold tabular-nums">
             {fiat(portfolio)}
           </span>
         </span>
         <span className="text-right">
-          <span className="block text-[11px] leading-none text-muted">Cash</span>
+          <span className="block text-[11px] leading-none text-muted">{t("nav.cash")}</span>
           <span className="mt-1 block text-sm font-semibold tabular-nums">
             {fiat(cash)}
           </span>
@@ -216,7 +223,7 @@ function HeaderBook() {
       </Link>
       <Link to="/profile" className="text-right md:hidden">
         <span className="block text-[10px] leading-none text-muted">
-          Portfolio
+          {t("nav.portfolio")}
         </span>
         <span className="mt-0.5 block text-sm font-semibold tabular-nums">
           {fiat(portfolio)}
@@ -291,6 +298,7 @@ function MobileTab({
 }
 
 function MobileTabBar() {
+  const t = useT();
   const { pathname } = useLocation();
   const isMarkets = pathname === "/" || pathname.startsWith("/market");
   const isProfile = pathname.startsWith("/profile");
@@ -299,7 +307,7 @@ function MobileTabBar() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
       <div className="grid grid-cols-3 items-end border-t border-white/10 bg-[#161616]/95 px-2 pt-2.5 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-xl">
-        <MobileTab href="/earn" label="Earn" active={isEarn}>
+        <MobileTab href="/earn" label={t("nav.earn")} active={isEarn}>
           <PiggyBankIcon size={22} />
         </MobileTab>
 
@@ -307,7 +315,7 @@ function MobileTabBar() {
           to="/"
           prefetch="render"
           className="flex flex-col items-center gap-1"
-          aria-label="Markets"
+          aria-label={t("nav.markets")}
         >
           <span
             className={`-mt-8 grid h-12 w-12 place-items-center rounded-full text-black shadow-lg shadow-gold/30 ring-4 ring-[#161616] transition ${
@@ -319,11 +327,11 @@ function MobileTabBar() {
           <span
             className={`text-[10px] font-semibold ${isMarkets ? "text-gold" : "text-muted"}`}
           >
-            Markets
+            {t("nav.markets")}
           </span>
         </Link>
 
-        <MobileTab href="/profile" label="Profile" active={isProfile}>
+        <MobileTab href="/profile" label={t("nav.profile")} active={isProfile}>
           <WalletIcon size={22} />
         </MobileTab>
       </div>

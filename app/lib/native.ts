@@ -23,6 +23,33 @@ export const NATIVE_POOL_OPEN = true;
 /** Shown next to Refund. Stake back before lock, not a sale at the mark. */
 export const POOL_REFUND_COPY =
   "Refund is an undo, not a sale. You get the stake back before lock. After lock the ticket stays until expiry.";
+/** How a pool ticket lives, for the desk and ticket cards. */
+export const POOL_TICKET_STEPS: { title: string; body: string }[] = [
+  {
+    title: "Pick a window",
+    body: "The chip you tap is the ticket. A 12h card locks and expires on that 12h clock. Nothing is switched to 7d for you.",
+  },
+  {
+    title: "Stake",
+    body: "USDG leaves your cash wallet and sits in the pool. The desk takes the other side.",
+  },
+  {
+    title: "Refund until lock",
+    body: "Refund gives the same USDG back. After lock, Refund turns off and the ticket stays.",
+  },
+  {
+    title: "Wait for expiry",
+    body: "Redeem stays grey on purpose. That is a preview. The tape settles when the window ends.",
+  },
+  {
+    title: "Win: tap Redeem",
+    body: "If your side won, Redeem lights up. Tap it. USDG returns to the same cash wallet. It is not sent by itself.",
+  },
+  {
+    title: "Lose: stake is taken",
+    body: "If your side lost, Redeem stays off. There is nothing to claim.",
+  },
+];
 /** Community "hits $1B first" races resolve on live mcap, not return from open. */
 export const NATIVE_RACE_TARGET = 1_000_000_000;
 /** Biggest Robinhood names ANSEM races against. */

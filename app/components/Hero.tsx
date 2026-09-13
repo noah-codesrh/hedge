@@ -1,8 +1,10 @@
+import { useT } from "./I18n";
 import { useAuthModal } from "./Providers";
 import { MarketCard } from "./MarketCard";
 import type { PolymarketEvent } from "../lib/types";
 
 export function Hero({ featured }: { featured: PolymarketEvent[] }) {
+  const t = useT();
   const { openModal } = useAuthModal();
   const cards = featured.slice(0, 2);
 
@@ -26,17 +28,17 @@ export function Hero({ featured }: { featured: PolymarketEvent[] }) {
             className="mb-2 h-8 w-auto sm:mb-3 sm:h-12 md:h-14"
           />
           <h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-black sm:text-3xl md:text-4xl">
-            Trade predictions. Up to 4x leverage
+            {t("hero.title")}
           </h1>
           <p className="mt-1 text-sm font-medium text-black/70 md:text-base">
-            Trade Yes/No markets in USDG on Robinhood.
+            {t("hero.sub")}
           </p>
           <button
             type="button"
             onClick={openModal}
             className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#141414] px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:bg-black sm:mt-5 sm:px-6 sm:py-3"
           >
-            <span className="text-gold">●</span> Get started
+            <span className="text-gold">●</span> {t("nav.getStarted")}
           </button>
         </div>
 

@@ -22,6 +22,7 @@ import {
   type LeverageListing,
 } from "../lib/polymarket";
 import type { PolymarketEvent } from "../lib/types";
+import { localeFromRequest } from "../lib/i18n";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import {
   CHALLENGE_PRIZE_PNL,
@@ -45,6 +46,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const sort = url.searchParams.get("sort") ?? "trending";
   const q = (url.searchParams.get("q") ?? "").trim();
   const sectionHint = url.searchParams.get("section");
+  const locale = localeFromRequest(request);
 
   if (sort === "rewards" && !q) {
     throw redirect(rewardsHref());
@@ -58,18 +60,21 @@ export async function loader({ request }: Route.LoaderArgs) {
       skipFeed
         ? Promise.resolve({ events: [] as PolymarketEvent[], nextOffset: 0, hasMore: false })
         : q
-          ? searchEvents(q)
-          : listEvents({ tag, sort }),
+          ? searchEvents(q, locale)
+          : listEvents({ tag, sort, locale }),
       q || skipFeed
         ? Promise.resolve({ section: null, children: [] })
         : resolveBrowse(tag, sectionHint),
-      leverageTab ? listLeverageMarkets() : Promise.resolve([] as LeverageListing[]),
+      leverageTab
+        ? listLeverageMarkets(locale)
+        : Promise.resolve([] as LeverageListing[]),
     ]);
     return {
       events: page.events,
       leverage,
       nextOffset: page.nextOffset,
       hasMore: page.hasMore && !q && !skipFeed,
+      locale,
       tag,
       sort,
       q,
@@ -83,6 +88,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       leverage: [] as LeverageListing[],
       nextOffset: 0,
       hasMore: false,
+      locale,
       tag,
       sort,
       q,
@@ -117,7 +123,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     setCursor(loaderData.nextOffset);
     setHasMore(loaderData.hasMore);
     seenPage.current = null;
-  }, [tag, sort, q, loaderData.nextOffset, loaderData.hasMore]);
+  }, [tag, sort, q, loaderData.nextOffset, loaderData.hasMore, loaderData.locale]);
 
   useEffect(() => {
     const page = fetcher.data;

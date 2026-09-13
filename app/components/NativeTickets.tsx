@@ -12,7 +12,6 @@ import {
   ticketCanRefund,
   timeframeFromSlug,
   refundTimelineCopy,
-  POOL_REFUND_COPY,
   type NativeTicketView,
 } from "../lib/native";
 import { fiat } from "../lib/format";
@@ -282,8 +281,8 @@ function NativeTicketsInner({ compact }: { compact: boolean }) {
     <section id="tickets" className={compact ? "mt-5" : "mt-8"}>
       <h2 className="text-xl font-semibold text-white">Your tickets</h2>
       <p className="mt-1 text-sm text-muted">
-        {POOL_REFUND_COPY} After expiry, Claim stake settles a one-sided pot
-        and returns your USDG. That is a refund, not a profit.
+        Refund until lock. After expiry, Redeem lights up if you won. Tap it
+        to pull USDG back. Lose and the stake is taken.
       </p>
       {notice ? <p className="mt-2 text-sm text-up">{notice}</p> : null}
       {error ? <p className="mt-2 text-sm text-down">{error}</p> : null}

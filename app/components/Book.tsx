@@ -36,6 +36,7 @@ import {
 } from "./icons";
 import { TransferCryptoModal, ChainIcons } from "./ChainDeposit";
 import { DEPOSIT_CHAINS, type DepositChain } from "../lib/deposit-chains";
+import { useT } from "./I18n";
 
 type BookValue = {
   address: string | null;
@@ -516,6 +517,7 @@ function QrMark() {
 
 export function DepositButton({ compact = false }: { compact?: boolean }) {
   const { openDeposit } = useBook();
+  const t = useT();
   return (
     <button
       type="button"
@@ -523,7 +525,7 @@ export function DepositButton({ compact = false }: { compact?: boolean }) {
       className="inline-flex items-center justify-center gap-1.5 rounded-full bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-105 sm:px-4 sm:py-2 sm:text-sm"
     >
       <ArrowDownTrayIcon size={15} />
-      {compact ? null : <span>Deposit</span>}
+      {compact ? null : <span>{t("nav.deposit")}</span>}
     </button>
   );
 }

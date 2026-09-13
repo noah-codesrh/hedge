@@ -56,6 +56,7 @@ import { BalanceSpark, usePortfolioSpark } from "../components/BalanceSpark";
 import { watchBalanceReloads } from "../lib/positions";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { ReferralTeaser } from "../components/ReferralInvite";
+import { LanguageSettings } from "../components/LanguagePicker";
 
 export function meta({ matches }: Route.MetaArgs) {
   return siteMeta({ title: "Profile - Hedge", origin: originFromMatches(matches) });
@@ -317,6 +318,8 @@ function ProfileInner() {
       </section>
 
       <ReferralTeaser />
+
+      <LanguageSettings />
 
       <section className="space-y-2.5">
         <div className="inline-flex items-center gap-1 rounded-full bg-[#141414] p-1 ring-1 ring-white/5">

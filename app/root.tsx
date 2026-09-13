@@ -7,6 +7,7 @@ import {
   redirect,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
@@ -14,6 +15,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { Providers } from "./components/Providers";
 import { ReferralCapture } from "./components/ReferralCapture";
+import { localeFromRequest } from "./lib/i18n";
 import { apexHostname, publicOrigin, rewardsMeta, siteMeta } from "./lib/seo";
 
 export const links: Route.LinksFunction = () => [
@@ -52,7 +54,10 @@ export function loader({ request }: Route.LoaderArgs) {
       308,
     );
   }
-  return { origin: publicOrigin(request) };
+  return {
+    origin: publicOrigin(request),
+    locale: localeFromRequest(request),
+  };
 }
 
 export function shouldRevalidate({
@@ -86,9 +91,10 @@ export function meta({ loaderData, location }: Route.MetaArgs) {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" translate="no">
       <head>
         <meta charSet="utf-8" />
+        <meta name="google" content="notranslate" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#111111" />
         <meta name="mobile-web-app-capable" content="yes" />
@@ -110,8 +116,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { locale } = useLoaderData<typeof loader>();
   return (
-    <Providers>
+    <Providers locale={locale}>
       <CanonicalHost />
       <ReferralCapture />
       <Outlet />

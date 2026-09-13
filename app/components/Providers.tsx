@@ -9,7 +9,10 @@ import {
   useState,
 } from "react";
 import { ENV } from "../lib/env";
+import type { Locale } from "../lib/i18n";
 import { AuthModalProvider, useAuthModal } from "./auth-modal";
+import { I18nProvider } from "./I18n";
+import { LanguagePickerHost } from "./LanguagePicker";
 import { LoginModal, PrivyLoginMethods } from "./LoginModal";
 import { BookProvider } from "./Book";
 
@@ -89,7 +92,13 @@ function NeutralizePrivyOverlay() {
 /** Survives a Providers remount so Privy is not torn down mid-session. */
 let privyClientOnce = false;
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  locale,
+}: {
+  children: React.ReactNode;
+  locale?: Locale;
+}) {
   const [wantPrivy, setWantPrivy] = useState(privyClientOnce);
   const [privyReady, setPrivyReady] = useState(false);
 
@@ -109,26 +118,29 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <PrivyStatusContext.Provider value={status}>
-      <AuthModalProvider>
-        <NeutralizePrivyOverlay />
+      <I18nProvider initialLocale={locale}>
+        <LanguagePickerHost />
+        <AuthModalProvider>
+          <NeutralizePrivyOverlay />
         {/*
           The sheet is a sibling of the Privy handoff, not a child of it.
           A Get Started click during chunk load used to open a modal that
           unmounted the moment Privy arrived.
         */}
-        <LoginModal />
-        {wantPrivy ? (
-          <Suspense fallback={null}>
-            <PrivyRoot>
-              <MarkPrivyReady onReady={onPrivyReady} />
-              <PrivyLoginMethods />
-              <BookProvider>{children}</BookProvider>
-            </PrivyRoot>
-          </Suspense>
-        ) : (
-          children
-        )}
-      </AuthModalProvider>
+          <LoginModal />
+          {wantPrivy ? (
+            <Suspense fallback={null}>
+              <PrivyRoot>
+                <MarkPrivyReady onReady={onPrivyReady} />
+                <PrivyLoginMethods />
+                <BookProvider>{children}</BookProvider>
+              </PrivyRoot>
+            </Suspense>
+          ) : (
+            children
+          )}
+        </AuthModalProvider>
+      </I18nProvider>
     </PrivyStatusContext.Provider>
   );
 }

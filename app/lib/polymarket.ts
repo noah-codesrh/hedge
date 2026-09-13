@@ -1,3 +1,4 @@
+import { gammaLocale } from "./i18n";
 import { LEVERAGE_MARKETS, type LeverageMarket } from "./leverage";
 import type { EventTag, Market, Outcome, PolymarketEvent } from "./types";
 
@@ -174,6 +175,16 @@ function gammaJson(path: string) {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(8_000),
   });
+}
+
+function withLocale(params: URLSearchParams, locale?: string | null) {
+  const tag = gammaLocale(locale);
+  if (tag) params.set("locale", tag);
+}
+
+function localeQs(locale?: string | null) {
+  const tag = gammaLocale(locale);
+  return tag ? `?locale=${encodeURIComponent(tag)}` : "";
 }
 
 async function sportIcons(): Promise<Map<string, string>> {
@@ -357,6 +368,7 @@ export async function listEventPage(opts: {
   tag?: string;
   sort?: string;
   offset?: number;
+  locale?: string | null;
 }): Promise<EventPage> {
   const offset = Math.max(0, opts.offset ?? 0);
   const { order, ascending } = sortParams(opts.sort ?? "trending");
@@ -369,6 +381,7 @@ export async function listEventPage(opts: {
     ascending,
   });
   if (opts.tag && opts.tag !== "all") params.set("tag_slug", opts.tag);
+  withLocale(params, opts.locale);
 
   const res = await fetch(`${GAMMA}/events?${params}`, {
     headers: { Accept: "application/json" },
@@ -390,10 +403,12 @@ const eventListInflight = new Map<string, Promise<EventPage>>();
 export async function listEvents(opts?: {
   tag?: string;
   sort?: string;
+  locale?: string | null;
 }): Promise<EventPage> {
   const tag = opts?.tag;
   const sort = opts?.sort;
-  const key = `${tag ?? "all"}:${sort ?? "trending"}`;
+  const locale = opts?.locale;
+  const key = `${tag ?? "all"}:${sort ?? "trending"}:${gammaLocale(locale) ?? "en"}`;
   const hit = eventListCache.get(key);
   if (hit && Date.now() - hit.at < EVENT_FRESH_MS) return hit.value;
   const pending = eventListInflight.get(key);
@@ -401,7 +416,7 @@ export async function listEvents(opts?: {
   const load = (async () => {
     const pages = await Promise.all(
       Array.from({ length: INITIAL_PAGES }, (_, i) =>
-        listEventPage({ tag, sort, offset: i * EVENT_PAGE_SIZE }),
+        listEventPage({ tag, sort, locale, offset: i * EVENT_PAGE_SIZE }),
       ),
     );
 
@@ -431,7 +446,10 @@ export async function listEvents(opts?: {
   return load;
 }
 
-export async function searchEvents(q: string): Promise<EventPage> {
+export async function searchEvents(
+  q: string,
+  locale?: string | null,
+): Promise<EventPage> {
   const params = new URLSearchParams({
     q,
     limit_per_type: "80",
@@ -444,18 +462,32 @@ export async function searchEvents(q: string): Promise<EventPage> {
   const data: unknown = await res.json();
   const { events } = mapRows(data, true);
   const pagination = (data as { pagination?: { hasMore?: boolean } }).pagination;
+  const localized = gammaLocale(locale)
+    ? await Promise.all(
+        events.map(async (event) => {
+          try {
+            return (await getEvent(event.slug, locale)) ?? event;
+          } catch {
+            return event;
+          }
+        }),
+      )
+    : events;
   return {
-    events,
-    nextOffset: events.length,
+    events: localized,
+    nextOffset: localized.length,
     hasMore: pagination?.hasMore === true,
   };
 }
 
-export async function getEvent(idOrSlug: string): Promise<PolymarketEvent | null> {
+export async function getEvent(
+  idOrSlug: string,
+  locale?: string | null,
+): Promise<PolymarketEvent | null> {
   const byId = /^\d+$/.test(idOrSlug);
   const url = byId
-    ? `${GAMMA}/events/${idOrSlug}`
-    : `${GAMMA}/events/slug/${idOrSlug}`;
+    ? `${GAMMA}/events/${idOrSlug}${localeQs(locale)}`
+    : `${GAMMA}/events/slug/${idOrSlug}${localeQs(locale)}`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Gamma event failed (${res.status})`);
@@ -530,13 +562,15 @@ export type LeverageListing = {
  * A market that has resolved or been pulled from the allowlist simply drops
  * out; one bad entry must not empty the whole tab.
  */
-export async function listLeverageMarkets(): Promise<LeverageListing[]> {
+export async function listLeverageMarkets(
+  locale?: string | null,
+): Promise<LeverageListing[]> {
   const slugs = [...new Set(LEVERAGE_MARKETS.map((m) => m.eventSlug))];
 
   const events = await Promise.all(
     slugs.map(async (slug) => {
       try {
-        return await getEvent(slug);
+        return await getEvent(slug, locale);
       } catch {
         return null;
       }

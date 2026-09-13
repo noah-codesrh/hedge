@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router";
 import type { Market, PolymarketEvent } from "../lib/types";
 import { pct } from "../lib/format";
 import { isLiveMarket } from "../lib/polymarket";
+import { useT } from "./I18n";
 import { RemoteImg } from "./RemoteImg";
 
 function rowLabel(market: Market) {
@@ -51,7 +52,9 @@ export function ChanceBar({
               className="h-4 w-5 shrink-0 rounded-[3px] object-cover"
             />
           ) : null}
-          <span className="min-w-0 truncate">{label}</span>
+          <span className="min-w-0 truncate" translate="no">
+            {label}
+          </span>
         </span>
       </span>
       <span className="w-11 shrink-0 text-right text-sm font-semibold tabular-nums text-muted">
@@ -68,6 +71,7 @@ export function OutrightCard({
   event: PolymarketEvent;
   delay?: number;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const href = `/market/${event.slug}`;
   const rows = [...event.markets]
@@ -104,6 +108,7 @@ export function OutrightCard({
         prefetch="intent"
         className="absolute inset-0 z-[1] rounded-3xl"
         aria-label={event.title}
+        translate="no"
       />
       <div className="relative z-[2] flex min-w-0 items-center gap-3">
         {event.icon || event.image ? (
@@ -115,7 +120,10 @@ export function OutrightCard({
         ) : (
           <div className="h-9 w-9 shrink-0 rounded-2xl bg-gold/15 sm:h-12 sm:w-12" />
         )}
-        <h3 className="min-w-0 line-clamp-2 text-[15px] font-semibold leading-snug text-white sm:text-base sm:leading-tight">
+        <h3
+          className="min-w-0 line-clamp-2 text-[15px] font-semibold leading-snug text-white sm:text-base sm:leading-tight"
+          translate="no"
+        >
           {event.title}
         </h3>
       </div>
@@ -148,7 +156,7 @@ export function OutrightCard({
 
       <div className="relative z-[2] mt-auto flex items-center justify-end gap-2 border-t border-white/5 pt-3 text-[12px] text-muted sm:text-[13px]">
         <span className="shrink-0 rounded-md bg-white/5 px-2 py-0.5 font-semibold text-white">
-          {event.marketCount} outcomes
+          {t("card.outcomes", { count: event.marketCount })}
         </span>
       </div>
     </article>

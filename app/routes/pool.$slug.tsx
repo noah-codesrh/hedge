@@ -2,6 +2,7 @@ import { Link, redirect, useSearchParams } from "react-router";
 import { useMemo, useState } from "react";
 import type { Route } from "./+types/pool.$slug";
 import { NativeStake } from "../components/NativeStake";
+import { PoolTicketGuide } from "../components/PoolTicketGuide";
 import { PriceChart } from "../components/PriceChart";
 import { RemoteImg } from "../components/RemoteImg";
 import { VenueChat } from "../components/VenueChat";
@@ -256,6 +257,9 @@ export default function PoolMarket({ loaderData }: Route.ComponentProps) {
           payoutLive={payoutLive}
           initialSide={initialSide}
         />
+        <div className="mt-4">
+          <PoolTicketGuide compact />
+        </div>
       </div>
 
       {tokens.length > 0 ? (

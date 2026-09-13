@@ -4,6 +4,7 @@ import type { Route } from "./+types/pool.token.$symbol";
 import { ArrowLeftIcon } from "../components/icons";
 import { NativeStake } from "../components/NativeStake";
 import { NativeTickets } from "../components/NativeTickets";
+import { PoolTicketGuide } from "../components/PoolTicketGuide";
 import { PriceChart } from "../components/PriceChart";
 import { RemoteImg } from "../components/RemoteImg";
 import { VenueChat } from "../components/VenueChat";
@@ -295,15 +296,20 @@ export default function PoolToken({ loaderData }: Route.ComponentProps) {
               ))}
             </div>
             {active ? (
-              <NativeStake
-                key={active.slug}
-                market={active}
-                tracked={tracked}
-                mine={null}
-                escrowWallet={escrowWallet}
-                payoutLive={payoutLive}
-                initialSide={initialSide}
-              />
+              <>
+                <NativeStake
+                  key={active.slug}
+                  market={active}
+                  tracked={tracked}
+                  mine={null}
+                  escrowWallet={escrowWallet}
+                  payoutLive={payoutLive}
+                  initialSide={initialSide}
+                />
+                <div className="mt-4">
+                  <PoolTicketGuide compact />
+                </div>
+              </>
             ) : (
               <div className="rounded-3xl bg-card p-5 text-sm text-muted ring-1 ring-white/5">
                 No open strike window on this name yet.

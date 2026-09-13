@@ -1,4 +1,6 @@
 import { Link, Outlet } from "react-router";
+import { useT } from "../components/I18n";
+import { LanguageTrigger } from "../components/LanguagePicker";
 import { SOCIALS } from "../components/site-links";
 import { TopProgress } from "../components/TopProgress";
 
@@ -6,6 +8,7 @@ const YEAR = new Date().getUTCFullYear();
 
 /** Slim chrome for the app waitlist. No search, no trading header. */
 export default function WaitlistShell() {
+  const t = useT();
   return (
     <div className="relative min-h-screen overflow-x-clip bg-bg">
       <img
@@ -28,20 +31,23 @@ export default function WaitlistShell() {
               className="h-7 w-auto max-w-full"
             />
           </Link>
-          <Link
-            to="/"
-            prefetch="intent"
-            className="shrink-0 rounded-full bg-gold px-4 py-2 text-sm font-semibold text-black transition hover:brightness-105 sm:px-5"
-          >
-            Trade now
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageTrigger compact />
+            <Link
+              to="/"
+              prefetch="intent"
+              className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-black transition hover:brightness-105 sm:px-5"
+            >
+              {t("nav.tradeNow")}
+            </Link>
+          </div>
         </div>
       </header>
       <Outlet />
       <footer className="relative z-10 border-t border-white/5 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-[1144px] flex-wrap items-center justify-between gap-4 px-6 py-6 sm:px-10">
           <p className="text-[12px] text-[#5f5f5f]">
-            © {YEAR} Hedge. Prediction markets carry risk of loss.
+            {t("footer.risk", { year: YEAR })}
           </p>
           <div className="flex items-center gap-2">
             {SOCIALS.map((social) => (

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
+import { useT } from "./I18n";
+import { LanguageRow } from "./LanguagePicker";
 import { DOCS_URL, SOCIALS, SUPPORT_EMAIL } from "./site-links";
 
 /** Matches the panel's transition so the exit finishes before it unmounts. */
@@ -73,6 +75,7 @@ export function MobileMenu({
   onLogout: () => void;
   onAddHome?: () => void;
 }) {
+  const t = useT();
   const [mounted, setMounted] = useState(false);
   const [shown, setShown] = useState(false);
   const shownRef = useRef(false);
@@ -160,7 +163,7 @@ export function MobileMenu({
         id="mobile-menu"
         role="dialog"
         aria-modal="true"
-        aria-label="Menu"
+        aria-label={t("menu.menu")}
         tabIndex={-1}
         className={`hedge-drawer absolute inset-y-0 right-0 flex w-[min(20rem,86vw)] flex-col border-l border-white/10 bg-[#171717] shadow-[0_0_60px_rgba(0,0,0,0.6)] outline-none transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           shown ? "translate-x-0" : "pointer-events-none translate-x-full"
@@ -177,7 +180,7 @@ export function MobileMenu({
           <button
             type="button"
             onClick={close}
-            aria-label="Close menu"
+            aria-label={t("menu.close")}
             className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-muted transition hover:text-white"
           >
             <CloseGlyph />
@@ -192,7 +195,7 @@ export function MobileMenu({
             style={stagger(0)}
             className={item(0)}
           >
-            Hedgie
+            {t("nav.hedgie")}
             <span className="text-muted">
               <ChevronRight />
             </span>
@@ -204,7 +207,7 @@ export function MobileMenu({
             style={stagger(1)}
             className={item(1)}
           >
-            Pool
+            {t("nav.pool")}
             <span className="text-muted">
               <ChevronRight />
             </span>
@@ -216,7 +219,7 @@ export function MobileMenu({
             style={stagger(2)}
             className={item(2)}
           >
-            Agent Wall
+            {t("menu.agentWall")}
             <span className="text-muted">
               <ChevronRight />
             </span>
@@ -240,7 +243,7 @@ export function MobileMenu({
             style={stagger(4)}
             className={item(4)}
           >
-            Roadmap
+            {t("menu.roadmap")}
             <span className="text-muted">
               <ChevronRight />
             </span>
@@ -255,7 +258,7 @@ export function MobileMenu({
               style={stagger(5)}
               className={`${item(5)} w-full text-left`}
             >
-              Add to Home Screen
+              {t("menu.addToHome")}
               <span className="text-muted">
                 <ChevronRight />
               </span>
@@ -268,7 +271,7 @@ export function MobileMenu({
             style={stagger(6)}
             className={item(6)}
           >
-            <span className="font-semibold text-gold">App waitlist</span>
+            <span className="font-semibold text-gold">{t("menu.appWaitlist")}</span>
             <span className="text-gold/50">
               <ChevronRight />
             </span>
@@ -281,7 +284,7 @@ export function MobileMenu({
             style={stagger(6)}
             className={item(6)}
           >
-            Docs
+            {t("menu.docs")}
             <span className="text-muted">
               <ArrowUpRight />
             </span>
@@ -292,7 +295,7 @@ export function MobileMenu({
             style={stagger(7)}
             className={item(7)}
           >
-            Support
+            {t("menu.support")}
             <span className="text-muted">
               <ArrowUpRight />
             </span>
@@ -304,11 +307,12 @@ export function MobileMenu({
             style={stagger(8)}
             className={item(8)}
           >
-            Terms and Conditions
+            {t("menu.terms")}
             <span className="text-muted">
               <ChevronRight />
             </span>
           </Link>
+          <LanguageRow style={stagger(9)} className={`${item(9)} w-full`} />
         </nav>
 
         <div className="border-t border-white/10 px-4 pb-[calc(1.1rem+env(safe-area-inset-bottom))] pt-4">
@@ -324,7 +328,7 @@ export function MobileMenu({
                 shown ? "animate-menu-item" : ""
               }`}
             >
-              Log out
+              {t("nav.logOut")}
             </button>
           ) : (
             <button
@@ -338,7 +342,7 @@ export function MobileMenu({
                 shown ? "animate-menu-item" : ""
               }`}
             >
-              Get Started
+              {t("nav.getStarted")}
             </button>
           )}
 
@@ -347,7 +351,7 @@ export function MobileMenu({
             className={shown ? "animate-menu-item" : undefined}
           >
             <p className="mt-5 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#5f5f5f]">
-              Follow Hedge
+              {t("menu.followHedge")}
             </p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {SOCIALS.map((social) => (
@@ -384,7 +388,7 @@ export function MobileMenu({
         ref={buttonRef}
         type="button"
         onClick={() => (shown ? close() : open())}
-        aria-label={shown ? "Close menu" : "Open menu"}
+        aria-label={shown ? t("menu.close") : t("menu.open")}
         aria-expanded={shown}
         aria-controls="mobile-menu"
         className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white transition hover:bg-white/10 lg:hidden"

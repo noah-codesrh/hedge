@@ -1,10 +1,12 @@
+import { numberLocale } from "./i18n";
+
 export function clobTick(price: number) {
   if (!Number.isFinite(price)) return 0.01;
   return Math.min(0.99, Math.max(0.01, Math.round(price * 100) / 100));
 }
 
 export function fiat(n: number) {
-  return n.toLocaleString("en-US", {
+  return n.toLocaleString(numberLocale(), {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,
@@ -59,7 +61,7 @@ export function formatEnd(iso: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-US", {
+  return d.toLocaleString(numberLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",

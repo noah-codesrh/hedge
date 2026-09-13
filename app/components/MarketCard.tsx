@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import type { PolymarketEvent } from "../lib/types";
 import { formatEnd, pct } from "../lib/format";
 import { pickLiveMarket } from "../lib/polymarket";
+import { translateSide, useT } from "./I18n";
 import { RemoteImg } from "./RemoteImg";
 
 export function MarketCard({
@@ -15,6 +16,7 @@ export function MarketCard({
   delay?: number;
   compact?: boolean;
 }) {
+  const t = useT();
   const market = pickLiveMarket(event);
   if (!market) return null;
 
@@ -34,6 +36,7 @@ export function MarketCard({
         prefetch="intent"
         className="absolute inset-0 z-[1] rounded-3xl"
         aria-label={title}
+        translate="no"
       />
       <div className="relative z-[2] flex min-w-0 items-start gap-2.5 sm:gap-3">
         {event.icon || event.image ? (
@@ -46,7 +49,10 @@ export function MarketCard({
         ) : (
           <div className="h-8 w-8 shrink-0 rounded-full bg-gold/20 sm:h-9 sm:w-9" />
         )}
-        <p className="min-w-0 line-clamp-2 text-[13px] leading-snug text-[#d8d8d8]">
+        <p
+          className="min-w-0 line-clamp-2 text-[13px] leading-snug text-[#d8d8d8]"
+          translate="no"
+        >
           {title}
         </p>
       </div>
@@ -68,7 +74,7 @@ export function MarketCard({
             compact ? "px-2 py-1.5 text-[12px] sm:px-2.5 sm:text-[13px]" : "px-2 py-2 text-[12px] sm:px-3 sm:text-sm"
           }`}
         >
-          {market.yes.label}
+          {translateSide(market.yes.label, t)}
         </Link>
         <Link
           to={`${href}?s=no`}
@@ -78,12 +84,14 @@ export function MarketCard({
             compact ? "px-2 py-1.5 text-[12px] sm:px-2.5 sm:text-[13px]" : "px-2 py-2 text-[12px] sm:px-3 sm:text-sm"
           }`}
         >
-          {market.no.label}
+          {translateSide(market.no.label, t)}
         </Link>
       </div>
 
       <div className="relative z-[2] flex items-center justify-end gap-2 border-t border-white/5 pt-2.5 text-[12px] text-muted sm:pt-3 sm:text-[13px]">
-        <span className="shrink-0">{formatEnd(event.endDate) ?? "Open"}</span>
+        <span className="shrink-0">
+          {formatEnd(event.endDate) ?? t("card.open")}
+        </span>
       </div>
     </article>
   );

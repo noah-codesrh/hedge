@@ -20,16 +20,28 @@ import {
   SearchIcon,
   SparkleIcon,
 } from "./icons";
+import { useT } from "./I18n";
 import { RemoteImg } from "./RemoteImg";
+import type { MessageKey } from "../locales/messages";
 
 const TABS = [
-  { id: "trending", label: "Trending", icon: FlameIcon },
-  { id: "pool", label: "Pool", icon: LayersIcon, href: "/pool" },
-  { id: "rewards", label: "Rewards", icon: DiamondIcon },
-  { id: "new", label: "New", icon: SparkleIcon },
-  { id: "leverage", label: "Leverage", icon: LayersIcon },
-  { id: "ending", label: "Ending soon", icon: ClockIcon },
+  { id: "trending", labelKey: "nav.trending" as const, icon: FlameIcon },
+  { id: "pool", labelKey: "nav.pool" as const, icon: LayersIcon, href: "/pool" },
+  { id: "rewards", labelKey: "nav.rewards" as const, icon: DiamondIcon },
+  { id: "new", labelKey: "nav.new" as const, icon: SparkleIcon },
+  { id: "leverage", labelKey: "nav.leverage" as const, icon: LayersIcon },
+  { id: "ending", labelKey: "nav.ending" as const, icon: ClockIcon },
 ] as const;
+
+const CAT_KEYS: Record<string, MessageKey> = {
+  all: "cat.all",
+  politics: "cat.politics",
+  sports: "cat.sports",
+  crypto: "cat.crypto",
+  finance: "cat.finance",
+  tech: "cat.tech",
+  "pop-culture": "cat.culture",
+};
 
 export function MarketNav({
   tag,
@@ -42,6 +54,7 @@ export function MarketNav({
   q?: string;
   section?: string | null;
 }) {
+  const t = useT();
   return (
     <div className="space-y-4">
       <Form
@@ -60,7 +73,7 @@ export function MarketNav({
         <input
           name="q"
           defaultValue={q ?? ""}
-          placeholder="Search markets"
+          placeholder={t("nav.searchMarkets")}
           className="w-full bg-transparent text-sm text-white placeholder-muted outline-none"
         />
       </Form>
@@ -81,7 +94,7 @@ export function MarketNav({
               return (
                 <span key={tab.id} className={`${className} cursor-default`}>
                   <Icon size={14} />
-                  {tab.label}
+                  {t(tab.labelKey)}
                   <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-gold sm:px-2 sm:text-[11px]">
                     Soon
                   </span>
@@ -104,11 +117,11 @@ export function MarketNav({
                 <Icon size={14} />
                 {tab.id === "ending" ? (
                   <>
-                    <span className="sm:hidden">Ending</span>
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{t("nav.endingShort")}</span>
+                    <span className="hidden sm:inline">{t(tab.labelKey)}</span>
                   </>
                 ) : (
-                  tab.label
+                  t(tab.labelKey)
                 )}
               </Link>
             );
@@ -134,7 +147,7 @@ export function MarketNav({
                   : "text-muted hover:text-white"
               }`}
             >
-              {cat.label}
+              {CAT_KEYS[cat.id] ? t(CAT_KEYS[cat.id]) : cat.label}
             </Link>
           );
         })}

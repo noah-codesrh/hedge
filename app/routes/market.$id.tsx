@@ -18,6 +18,7 @@ import { stockBySymbol } from "../lib/stock-tokens";
 import { formatEnd } from "../lib/format";
 import { parseSpotAmount } from "../lib/spot-ticket";
 import type { Market, Side } from "../lib/types";
+import { localeFromRequest } from "../lib/i18n";
 import { originFromMatches, siteMeta } from "../lib/seo";
 import { RemoteImg } from "../components/RemoteImg";
 
@@ -38,7 +39,7 @@ export function meta({ loaderData, matches }: Route.MetaArgs) {
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
-  const event = await getEvent(params.id);
+  const event = await getEvent(params.id, localeFromRequest(request));
   if (!event) return { event: null, history: [] as PricePoint[], defaultMarketId: null };
   const url = new URL(request.url);
   const wanted = url.searchParams.get("m");

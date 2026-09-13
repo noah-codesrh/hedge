@@ -1,8 +1,10 @@
 import { Link } from "react-router";
 import type { PolymarketEvent } from "../lib/types";
+import { useT } from "./I18n";
 import { RemoteImg } from "./RemoteImg";
 
 export function FeaturedBanner({ event }: { event: PolymarketEvent }) {
+  const t = useT();
   return (
     <div className="relative h-full min-h-[140px] overflow-hidden rounded-3xl ring-1 ring-white/5 sm:min-h-[200px]">
       {event.image ? (
@@ -19,9 +21,12 @@ export function FeaturedBanner({ event }: { event: PolymarketEvent }) {
       <div className="relative flex h-full min-h-[140px] flex-col justify-end p-4 sm:min-h-[200px] sm:p-6">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-down animate-pulse-dot" />
-          <p className="text-sm font-medium text-gold">Markets live</p>
+          <p className="text-sm font-medium text-gold">{t("card.marketsLive")}</p>
         </div>
-        <h3 className="mt-1 max-w-md text-xl font-bold leading-tight sm:text-2xl">
+        <h3
+          className="mt-1 max-w-md text-xl font-bold leading-tight sm:text-2xl"
+          translate="no"
+        >
           {event.title}
         </h3>
         <Link
@@ -29,7 +34,7 @@ export function FeaturedBanner({ event }: { event: PolymarketEvent }) {
           prefetch="intent"
           className="mt-4 inline-flex w-fit rounded-full bg-gold px-4 py-2 text-sm font-semibold text-black transition hover:brightness-105"
         >
-          Trade now
+          {t("nav.tradeNow")}
         </Link>
       </div>
     </div>

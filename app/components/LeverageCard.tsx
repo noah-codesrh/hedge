@@ -3,6 +3,7 @@ import type { LeverageListing } from "../lib/polymarket";
 import { formatEnd, pct } from "../lib/format";
 import { isWithinBand, PRICE_BAND } from "../lib/leverage";
 import { LayersIcon } from "./icons";
+import { translateSide, useT } from "./I18n";
 import { RemoteImg } from "./RemoteImg";
 
 /**
@@ -19,6 +20,7 @@ export function LeverageCard({
   listing: LeverageListing;
   delay?: number;
 }) {
+  const t = useT();
   const { event, market, config } = listing;
   const href = `/market/${event.slug}?m=${market.id}`;
   const price = market.yes.price;
@@ -47,7 +49,10 @@ export function LeverageCard({
           <div className="h-8 w-8 shrink-0 rounded-full bg-gold/20 sm:h-9 sm:w-9" />
         )}
         <div className="min-w-0 flex-1">
-          <p className="min-w-0 line-clamp-2 text-[13px] leading-snug text-[#d8d8d8]">
+          <p
+            className="min-w-0 line-clamp-2 text-[13px] leading-snug text-[#d8d8d8]"
+            translate="no"
+          >
             {market.groupItemTitle
               ? `${event.title} — ${market.groupItemTitle}`
               : market.question}
@@ -70,7 +75,7 @@ export function LeverageCard({
           onClick={(e) => e.stopPropagation()}
           className="min-w-0 flex-1 truncate rounded-full border border-up/40 px-2 py-2 text-center text-[12px] font-semibold text-up transition hover:bg-up/10 sm:px-3 sm:text-sm"
         >
-          {market.yes.label}
+          {translateSide(market.yes.label, t)}
         </Link>
         <Link
           to={`${href}&s=no`}
@@ -78,7 +83,7 @@ export function LeverageCard({
           onClick={(e) => e.stopPropagation()}
           className="min-w-0 flex-1 truncate rounded-full border border-down/40 px-2 py-2 text-center text-[12px] font-semibold text-down transition hover:bg-down/10 sm:px-3 sm:text-sm"
         >
-          {market.no.label}
+          {translateSide(market.no.label, t)}
         </Link>
       </div>
 
@@ -96,7 +101,7 @@ export function LeverageCard({
           </span>
         )}
         <span className="shrink-0">
-          {formatEnd(market.endDate ?? event.endDate) ?? "Open"}
+          {formatEnd(market.endDate ?? event.endDate) ?? t("card.open")}
         </span>
       </div>
     </article>

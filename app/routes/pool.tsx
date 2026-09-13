@@ -4,6 +4,7 @@ import type { ShouldRevalidateFunctionArgs } from "react-router";
 import type { Route } from "./+types/pool";
 import { NativeCard, NativeLongRace } from "../components/NativeCard";
 import { NativeTickets } from "../components/NativeTickets";
+import { PoolTicketGuide } from "../components/PoolTicketGuide";
 import { RemoteImg } from "../components/RemoteImg";
 import { listNativeMarkets } from "../lib/server/native-markets";
 import {
@@ -251,6 +252,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
         )}
       </div>
 
+      <PoolTicketGuide />
+
       <NativeTickets />
 
       {kind === "community" && longRaces.length > 0 ? (
@@ -374,7 +377,8 @@ export default function Pool({ loaderData }: Route.ComponentProps) {
       ) : null}
 
       <p className="mt-10 text-[13px] text-muted">
-        At expiry the pools pay winners automatically.{" "}
+        After expiry, tap Redeem if you won. USDG comes back to your cash
+        wallet.{" "}
         <Link to="/roadmap" className="font-semibold text-gold hover:underline">
           Roadmap
         </Link>
