@@ -360,7 +360,10 @@ export function Header() {
         <HeaderShell
           authenticated={hinted}
           onGetStarted={openModal}
-          onLogout={() => {}}
+          onLogout={() => {
+            writeSessionHint(false);
+            setHinted(false);
+          }}
           onAddHome={() => setInstallOpen(true)}
         />
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { privyRestoreDone } from "./privy-session";
+import { forgetAccessToken } from "./privy-session";
 
 const KEY = "hedge-session";
 
@@ -16,15 +16,17 @@ export function hasPrivyStorage() {
   }
 }
 
-/** Real Privy keys only. A leftover hedge-session sticker is not a login. */
+/**
+ * First paint only. After Privy is ready, `authenticated` is the login.
+ * Dead `privy:*` keys used to keep Log out on screen after a refresh.
+ */
 export function sessionStillHeld() {
-  return hasPrivyStorage();
+  return readSessionHint();
 }
 
 /**
- * Stay on the signed-in chrome while Privy restores.
- * Never clear just because `authenticated` flickered false.
- * Give up only after Privy storage is empty.
+ * Signed-in chrome while Privy is still mounting.
+ * Once ready, a false `authenticated` is a logout. Leftover tokens are not.
  */
 export function useHeldSession(authenticated: boolean, ready: boolean) {
   const [held, setHeld] = useState(false);
@@ -40,10 +42,7 @@ export function useHeldSession(authenticated: boolean, ready: boolean) {
       return;
     }
     if (!ready) return;
-    if (hasPrivyStorage() || !privyRestoreDone()) {
-      setHeld(true);
-      return;
-    }
+    forgetAccessToken();
     writeSessionHint(false);
     setHeld(false);
   }, [authenticated, ready]);
