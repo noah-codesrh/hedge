@@ -59,7 +59,6 @@ export function I18nProvider({
 }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [ready, setReady] = useState(false);
 
   useLayoutEffect(() => {
     const next = resolveLocale();
@@ -67,7 +66,6 @@ export function I18nProvider({
     setNumberLocale(next);
     document.documentElement.lang = next;
     persistLocale(next);
-    setReady(true);
   }, []);
 
   const setLocale = useCallback((next: Locale) => {
@@ -87,11 +85,11 @@ export function I18nProvider({
       locale,
       setLocale,
       t,
-      pickerOpen: ready && pickerOpen,
+      pickerOpen,
       openLanguagePicker: () => setPickerOpen(true),
       closeLanguagePicker: () => setPickerOpen(false),
     }),
-    [locale, pickerOpen, ready, setLocale, t],
+    [locale, pickerOpen, setLocale, t],
   );
 
   return (

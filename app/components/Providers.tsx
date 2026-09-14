@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import { ENV } from "../lib/env";
@@ -50,21 +51,29 @@ function MarkPrivyReady({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+const PRIVY_OVERLAYS =
+  "#privy-dialog, #privy-dialog-backdrop, #privy-modal-content";
+
 /**
- * Privy's dialog is z-index 999999. On a cold Chrome profile it often mounts
- * a spinner or an empty shell and eats Get Started. Keep it inert unless it
- * actually has a control the trader can use (wallet list, captcha, MFA).
+ * Privy's dialog is z-index 999999. Some Chrome profiles mount it on boot
+ * (restore spinner, empty shell, a lone close button). That used to flip
+ * pointer-events back on and swallow Log in / language. Only unlock it when
+ * we opened Connect wallet.
  */
 function NeutralizePrivyOverlay() {
   const { walletLayer, closeWalletLayer } = useAuthModal();
+  const allowRef = useRef(walletLayer);
+  allowRef.current = walletLayer;
 
   useEffect(() => {
     const apply = () => {
-      const dialog = document.getElementById("privy-dialog");
-      const interactive = Boolean(
-        dialog?.querySelector("button, input, a, iframe, [role='button']"),
-      );
-      document.documentElement.classList.toggle("privy-interact", interactive);
+      const allow = allowRef.current;
+      document.documentElement.classList.toggle("privy-interact", allow);
+      document.querySelectorAll(PRIVY_OVERLAYS).forEach((node) => {
+        if (!(node instanceof HTMLElement)) return;
+        if (allow) node.removeAttribute("inert");
+        else node.setAttribute("inert", "");
+      });
     };
     apply();
     const observer = new MutationObserver(apply);
@@ -73,7 +82,7 @@ function NeutralizePrivyOverlay() {
       observer.disconnect();
       document.documentElement.classList.remove("privy-interact");
     };
-  }, []);
+  }, [walletLayer]);
 
   useEffect(() => {
     if (!walletLayer) return;

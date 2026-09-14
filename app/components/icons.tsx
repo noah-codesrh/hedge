@@ -79,6 +79,19 @@ export function GlobeIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function ChevronDownIcon({ size = 12 }: { size?: number }) {
+  return stroke(size, <path d="m5 8 7 7 7-7" />);
+}
+
+export function CloseIcon({ size = 14 }: { size?: number }) {
+  return stroke(
+    size,
+    <>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </>,
+  );
+}
+
 export function SearchIcon({ size = 18 }: { size?: number }) {
   return stroke(
     size,

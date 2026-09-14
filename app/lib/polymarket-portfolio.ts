@@ -56,7 +56,52 @@ export type LiveActivity = {
   eventSlug: string | null;
   marketSlug: string | null;
   timestamp: number;
+  /** Explorer or in-app destination. Market rows still use the slugs. */
+  href?: string | null;
+  symbol?: string | null;
 };
+
+export function activityHref(item: LiveActivity) {
+  if (item.href) return item.href;
+  if (item.eventSlug) return `/market/${item.eventSlug}`;
+  if (item.marketSlug) {
+    return item.marketSlug.startsWith("/")
+      ? item.marketSlug
+      : `/market/${item.marketSlug}`;
+  }
+  return "/";
+}
+
+export function activityWhen(timestamp: number) {
+  if (!timestamp) return "";
+  const ms = timestamp > 1e12 ? timestamp : timestamp * 1000;
+  return new Date(ms).toLocaleString();
+}
+
+export function activityAmountLabel(item: LiveActivity) {
+  if (!(item.amount > 0)) return item.type;
+  const symbol = item.symbol ?? "USDG";
+  const n = item.amount.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: item.amount < 1 && item.amount > 0 ? 2 : 2,
+  });
+  if (item.type === "SEND") return `−${n} ${symbol}`;
+  if (item.type === "RECEIVE") return `+${n} ${symbol}`;
+  return `${n} ${symbol}`;
+}
+
+export function mergeActivity(...lists: LiveActivity[][]) {
+  const byId = new Map<string, LiveActivity>();
+  for (const list of lists) {
+    for (const item of list) {
+      const key = item.id.toLowerCase();
+      if (!byId.has(key)) byId.set(key, item);
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 50);
+}
 
 function num(value: unknown) {
   const n = typeof value === "number" ? value : Number(value);

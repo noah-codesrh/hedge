@@ -1,5 +1,6 @@
 import type { Route } from "./+types/api.pm.portfolio";
-import { loadPolymarketPortfolio } from "../lib/polymarket-portfolio";
+import { loadPolymarketPortfolio, mergeActivity } from "../lib/polymarket-portfolio";
+import { listWalletTransfers } from "../lib/wallet-activity";
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
@@ -20,7 +21,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
   }
   try {
-    return await loadPolymarketPortfolio(addresses);
+    const [portfolio, transfers] = await Promise.all([
+      loadPolymarketPortfolio(addresses),
+      listWalletTransfers(addresses).catch(() => []),
+    ]);
+    return {
+      ...portfolio,
+      activity: mergeActivity(transfers, portfolio.activity),
+    };
   } catch {
     return {
       open: [],

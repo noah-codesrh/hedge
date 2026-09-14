@@ -7,9 +7,8 @@ import { Hero } from "../components/Hero";
 import { LeverageCard } from "../components/LeverageCard";
 import { LeverageWipNotice } from "../components/LeverageWipNotice";
 import { leverageEnabled } from "../lib/leverage";
-import { NATIVE_POOL_OPEN } from "../lib/native";
 import { MarketCard } from "../components/MarketCard";
-import { CategoryBar, MarketNav } from "../components/MarketNav";
+import { CategoryBar, ChallengeChips } from "../components/MarketNav";
 import { OutrightCard } from "../components/OutrightCard";
 import {
   listEvents,
@@ -304,33 +303,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto min-w-0 max-w-7xl space-y-4 px-3 pt-3 pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:pt-4 lg:pb-8">
       {!split && !leverageTab ? <Hero featured={heroCards} /> : null}
-      <MarketNav
-        tag={tag}
-        sort={sort}
-        q={q || undefined}
-        section={section}
-      />
-
       {!leverageTab && !q ? (
-        <Link
-          to="/pool"
-          prefetch="intent"
-          className="flex flex-col gap-2 rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <p className="text-sm text-white">
-            <span className="font-semibold text-gold">
-              {NATIVE_POOL_OPEN
-                ? "Pool is open."
-                : "Pool is under maintenance."}
-            </span>{" "}
-            {NATIVE_POOL_OPEN
-              ? "Community matchups on Robinhood memes. Live tape odds. Chat. $1,000 desk cap."
-              : "USDG parimutuel on Robinhood memes. Tape is still live. New tickets are paused."}
-          </p>
-          <span className="shrink-0 rounded-full bg-gold px-3.5 py-2 text-center text-sm font-semibold text-black">
-            View pool
-          </span>
-        </Link>
+        <ChallengeChips tag={tag} section={section} />
       ) : null}
 
       {tag === CHALLENGE_TAG && !leverageTab ? (

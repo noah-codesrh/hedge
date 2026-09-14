@@ -8,13 +8,16 @@ import {
   writeSessionHint,
 } from "../lib/session-hint";
 import { useAuthModal, usePrivyMounted } from "./Providers";
-import { DepositButton, useBook } from "./Book";
+import { useBook } from "./Book";
 import { ReferralBind } from "./ReferralCapture";
-import { FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
+import { ChevronDownIcon, FlameIcon, PiggyBankIcon, SearchIcon, WalletIcon } from "./icons";
 import { InstallHedge } from "./InstallHedge";
-import { useT } from "./I18n";
+import { useI18n, useT } from "./I18n";
 import { LanguageTrigger } from "./LanguagePicker";
+import { HeaderMarketNav } from "./MarketNav";
+import { AccountMenu } from "./AccountMenu";
 import { MobileMenu } from "./MobileMenu";
+import { PoolBanner } from "./PoolBanner";
 import { fiat } from "../lib/format";
 
 function SearchBar() {
@@ -43,12 +46,12 @@ function SearchBar() {
       key={`${tag}-${sort}-${section}-${q}`}
       action="/"
       method="get"
-      className="mx-auto hidden min-w-0 flex-1 max-w-md items-center gap-2.5 rounded-full border border-white/10 bg-[#1e1e1e] px-4 py-2.5 md:flex"
+      className="hidden min-w-0 w-[322px] items-center gap-2.5 rounded-full border border-white/10 bg-[#1e1e1e] px-[17px] py-0.5 lg:flex"
     >
       {tag ? <input type="hidden" name="tag" value={tag} /> : null}
       {sort ? <input type="hidden" name="sort" value={sort} /> : null}
       {section ? <input type="hidden" name="section" value={section} /> : null}
-      <SearchIcon />
+      <SearchIcon size={16} />
       <input
         ref={inputRef}
         name="q"
@@ -56,7 +59,7 @@ function SearchBar() {
         placeholder={t("nav.searchMarkets")}
         className="w-full bg-transparent text-sm text-white placeholder-muted outline-none"
       />
-      <kbd className="text-base font-medium text-muted">/</kbd>
+      <kbd className="font-mono text-base text-muted">/</kbd>
     </Form>
   );
 }
@@ -75,161 +78,243 @@ function HeaderShell({
   book?: boolean;
 }) {
   const t = useT();
+  const { pathname } = useLocation();
+  const { openLanguagePicker } = useI18n();
+  const { openDeposit } = useBook();
+  const onMarkets = pathname === "/";
   return (
-    <header className="sticky top-0 z-40 border-b border-white/5 bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur">
-      <div className="mx-auto flex h-14 min-w-0 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-3 lg:gap-4">
-        <Link to="/" prefetch="intent" className="shrink-0">
-          <img
-            src="/logo-full.png"
-            alt="Hedge"
-            width={160}
-            height={32}
-            fetchPriority="high"
-            decoding="async"
-            className="h-7 w-auto max-w-[118px] sm:h-8 sm:max-w-none"
-          />
-        </Link>
+    <header className="sticky top-0 z-40 bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur-[8px]">
+      <PoolBanner />
+      <div className="border-b border-white/15 bg-black/30">
+        <div className="mx-auto flex h-14 min-w-0 max-w-[1256px] items-center justify-between gap-4 px-3 sm:h-[67px]">
+          <div className="flex min-w-0 items-center gap-4">
+            <Link to="/" prefetch="intent" className="shrink-0">
+              <img
+                src="/logo-full.png"
+                alt="Hedge"
+                width={160}
+                height={32}
+                fetchPriority="high"
+                decoding="async"
+                className="h-7 w-auto max-w-[118px] sm:h-8 sm:max-w-none"
+              />
+            </Link>
 
-        <nav className="hidden shrink-0 items-center gap-0.5 lg:flex">
-          <Link
-            to="/"
-            prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
-          >
-            {t("nav.markets")}
-          </Link>
-          <Link
-            to="/earn"
-            prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
-          >
-            {t("nav.earn")}
-          </Link>
-          <Link
-            to="/rewards"
-            prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
-          >
-            {t("nav.rewards")}
-          </Link>
+            <nav className="hidden shrink-0 items-center gap-[26px] px-3 lg:flex">
+              <Link
+                to="/"
+                prefetch="intent"
+                className="text-sm font-medium text-[#cfcfcf] transition hover:text-white"
+              >
+                {t("nav.markets")}
+              </Link>
+              <Link
+                to="/earn"
+                prefetch="intent"
+                className="text-sm font-medium text-[#cfcfcf] transition hover:text-white"
+              >
+                {t("nav.earn")}
+              </Link>
+              <Link
+                to="/rewards"
+                prefetch="intent"
+                className="text-sm font-medium text-[#cfcfcf] transition hover:text-white"
+              >
+                {t("nav.rewards")}
+              </Link>
+              <Link
+                to="/token"
+                prefetch="intent"
+                className="text-sm font-semibold text-gold transition hover:text-gold-soft"
+              >
+                $HEDGE
+              </Link>
+              <MoreMenu
+                authenticated={authenticated}
+                onLanguage={openLanguagePicker}
+              />
+            </nav>
+
+            <SearchBar />
+          </div>
+
+          <div className="relative z-10 flex shrink-0 items-center gap-3">
+            {authenticated ? (
+              <>
+                {book ? (
+                  <button
+                    type="button"
+                    onClick={openDeposit}
+                    className="rounded-full bg-gold px-2.5 py-1.5 text-sm font-semibold leading-5 text-black transition hover:brightness-105"
+                  >
+                    {t("nav.deposit")}
+                  </button>
+                ) : null}
+                {book ? <HeaderCash /> : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={onGetStarted}
+                className="rounded-full bg-gold px-2.5 py-1.5 text-sm font-semibold leading-5 text-black transition hover:brightness-105"
+              >
+                {t("nav.logIn")}
+              </button>
+            )}
+            <LanguageTrigger compact />
+            {authenticated ? <AccountMenu onLogout={onLogout} /> : null}
+            <MobileMenu
+              authenticated={authenticated}
+              onGetStarted={onGetStarted}
+              onLogout={onLogout}
+              onAddHome={onAddHome}
+            />
+          </div>
+        </div>
+      </div>
+      {onMarkets ? (
+        <>
+          <div className="mx-auto hidden w-full max-w-[1256px] px-3 pb-1.5 pt-1 lg:block">
+            <HeaderMarketNav />
+          </div>
+          <div className="border-b border-white/10 px-3 pb-2 pt-2 lg:hidden">
+            <HeaderMarketNav />
+          </div>
+        </>
+      ) : null}
+    </header>
+  );
+}
+
+function MoreMenu({
+  authenticated,
+  onLanguage,
+}: {
+  authenticated: boolean;
+  onLanguage: () => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const item =
+    "block w-full px-3 py-2 text-left text-sm text-[#cfcfcf] transition hover:bg-white/5 hover:text-white";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 text-sm font-medium text-[#cfcfcf] transition hover:text-white"
+      >
+        {t("nav.more")}
+        <ChevronDownIcon size={12} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-50 mt-2 min-w-[180px] overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl">
           <Link
             to="/pool"
             prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
+            className={item}
+            onClick={() => setOpen(false)}
           >
             {t("nav.pool")}
           </Link>
           <Link
             to="/wall"
             prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
+            className={item}
+            onClick={() => setOpen(false)}
           >
             {t("nav.wall")}
           </Link>
-          <Link
-            to="/token"
-            prefetch="intent"
-            className="rounded-full px-3 py-1.5 text-sm font-semibold text-gold transition hover:bg-gold/10"
-          >
-            $HEDGE
-          </Link>
-          {authenticated && (
+          {authenticated ? (
             <Link
               to="/profile"
               prefetch="intent"
-              className="rounded-full px-3 py-1.5 text-sm font-medium text-[#cfcfcf] transition hover:bg-white/5 hover:text-white"
+              className={item}
+              onClick={() => setOpen(false)}
             >
               {t("nav.profile")}
             </Link>
-          )}
-        </nav>
-
-        <SearchBar />
-
-        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          ) : null}
+          <Link
+            to="/roadmap"
+            prefetch="intent"
+            className={item}
+            onClick={() => setOpen(false)}
+          >
+            {t("menu.roadmap")}
+          </Link>
           <Link
             to="/ai"
             prefetch="intent"
-            aria-label={t("nav.hedgie")}
-            title={t("nav.askHedgie")}
-            className="group relative grid h-10 w-10 place-items-center rounded-full ring-1 ring-white/10 transition hover:ring-gold/60"
+            className={item}
+            onClick={() => setOpen(false)}
           >
-            <span className="absolute inset-0 rounded-full bg-gold/20 opacity-0 blur-md transition group-hover:opacity-100" />
-            <img
-              src="/hedgie-ai-tag.jpg"
-              alt="Hedgie"
-              className="animate-hedgie-nudge h-8 w-8 rounded-full object-cover"
-            />
+            {t("nav.hedgie")}
           </Link>
-          {authenticated ? (
-            <>
-              {book ? <HeaderBook /> : null}
-              {book ? <DepositButton /> : null}
-              <button
-                type="button"
-                onClick={onLogout}
-                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-[#cfcfcf] transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-2 sm:text-sm"
-              >
-                {t("nav.logOut")}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={onGetStarted}
-              className="rounded-full bg-gold px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-105 sm:px-5 sm:py-2 sm:text-sm"
-            >
-              {t("nav.getStarted")}
-            </button>
-          )}
-
-          <LanguageTrigger compact className="hidden lg:grid" />
-
-          <MobileMenu
-            authenticated={authenticated}
-            onGetStarted={onGetStarted}
-            onLogout={onLogout}
-            onAddHome={onAddHome}
-          />
+          <button
+            type="button"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              onLanguage();
+            }}
+          >
+            {t("menu.language")}
+          </button>
         </div>
-      </div>
-    </header>
+      ) : null}
+    </div>
   );
 }
 
-function HeaderBook() {
-  const t = useT();
-  const { cash, portfolio } = useBook();
+function HeaderCash() {
+  const { cash } = useBook();
   return (
-    <>
+    <div className="hidden items-center gap-2.5 sm:flex">
       <Link
         to="/profile"
-        className="hidden items-center gap-4 pr-1 md:flex"
+        prefetch="intent"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-white"
       >
-        <span className="text-right">
-          <span className="block text-[11px] leading-none text-muted">
-            {t("nav.portfolio")}
-          </span>
-          <span className="mt-1 block text-sm font-semibold tabular-nums">
-            {fiat(portfolio)}
-          </span>
-        </span>
-        <span className="text-right">
-          <span className="block text-[11px] leading-none text-muted">{t("nav.cash")}</span>
-          <span className="mt-1 block text-sm font-semibold tabular-nums">
-            {fiat(cash)}
-          </span>
-        </span>
+        <WalletIcon size={20} />
+        <span className="tabular-nums">{fiat(cash)}</span>
       </Link>
-      <Link to="/profile" className="text-right md:hidden">
-        <span className="block text-[10px] leading-none text-muted">
-          {t("nav.portfolio")}
-        </span>
-        <span className="mt-0.5 block text-sm font-semibold tabular-nums">
-          {fiat(portfolio)}
-        </span>
+      <span aria-hidden className="h-[17px] w-px bg-white/20" />
+      <Link
+        to="/ai"
+        prefetch="intent"
+        aria-label="Hedgie"
+        className="grid h-7 w-7 place-items-center overflow-hidden rounded-full"
+      >
+        <img
+          src="/hedgie-ai-tag.jpg"
+          alt=""
+          width={28}
+          height={28}
+          className="h-7 w-7 rounded-full object-cover"
+        />
       </Link>
-    </>
+    </div>
   );
 }
 

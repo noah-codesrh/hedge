@@ -146,7 +146,7 @@ export function MobileMenu({
 
   const drawer = (
     <div
-      className={`fixed inset-0 z-[60] lg:hidden ${
+      className={`fixed inset-0 z-[60] ${
         shown ? "" : "pointer-events-none invisible"
       }`}
     >

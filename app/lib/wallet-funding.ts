@@ -9,6 +9,7 @@ import { useAuthModal } from "../components/auth-modal";
 import { convertOnrampToCash } from "./cash-in";
 import { base } from "./chains";
 import { notifyBalancesChanged } from "./positions";
+import { recordWalletTx } from "./wallet-activity";
 import { useEnsureTradingWallet } from "./wallet";
 
 /**
@@ -109,6 +110,14 @@ export function useWalletFunding() {
         const usdgBefore = await usdgBalance(address);
         await onramp(address);
         await convert(address, usdgBefore);
+        const usdgAfter = await usdgBalance(address);
+        if (usdgAfter > usdgBefore) {
+          recordWalletTx({
+            type: "RECEIVE",
+            symbol: "USDG",
+            amount: usdgAfter - usdgBefore,
+          });
+        }
       } catch (err) {
         if (!isFundingDismissed(err)) setError(fundingMessage(err));
       } finally {

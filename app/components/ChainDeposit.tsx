@@ -14,6 +14,7 @@ import {
 } from "../lib/deposit-chains";
 import { fiat } from "../lib/format";
 import { notifyBalancesChanged } from "../lib/positions";
+import { recordWalletTx } from "../lib/wallet-activity";
 
 const USDC_LOGO = "/tokens/usdc.svg";
 
@@ -279,6 +280,11 @@ export function TransferCryptoModal({
       landed = true;
       if (amountOut != null && Number.isFinite(amountOut) && amountOut > 0) {
         setDelivered(amountOut);
+        recordWalletTx({
+          type: "RECEIVE",
+          symbol: "USDG",
+          amount: amountOut,
+        });
       }
       setStatus("done");
       notifyBalancesChanged();

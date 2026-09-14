@@ -30,18 +30,26 @@ body {
 }
 
 /*
- * Privy's dialog is z-index 999999. A cold Chrome profile often leaves it
- * mounted (spinner or empty shell) which swallows Get Started. Keep the
- * whole shell inert unless we have flipped on a real wallet/MFA UI.
+ * Privy's dialog is z-index 999999. Some Chrome profiles leave the shell
+ * mounted (spinner, empty card, close button) which swallows header clicks.
+ * Stay inert unless Connect wallet flipped on html.privy-interact.
  */
 #privy-dialog,
-#privy-dialog-backdrop {
+#privy-dialog-backdrop,
+#privy-modal-content {
   pointer-events: none !important;
 }
 
+html:not(.privy-interact) #privy-dialog,
+html:not(.privy-interact) #privy-dialog-backdrop {
+  visibility: hidden !important;
+}
+
 html.privy-interact #privy-dialog,
-html.privy-interact #privy-dialog-backdrop {
+html.privy-interact #privy-dialog-backdrop,
+html.privy-interact #privy-modal-content {
   pointer-events: auto !important;
+  visibility: visible !important;
 }
 
 #hedge-login-methods:not(:empty) + .hedge-login-fallback {
@@ -204,6 +212,11 @@ body > div {
 .honeycomb {
   background-color: #f1d65a;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 28 50'%3E%3Cpath fill='none' stroke='%23e0c24a' stroke-width='0.8' d='M14 0v10.5l12 7v14l-12 7-12-7v-14l12-7z'/%3E%3C/svg%3E");
+  animation: honeycomb-drift 22s linear infinite;
+}
+
+.honeycomb-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 28 50'%3E%3Cpath fill='none' stroke='%23f1d65a' stroke-width='0.8' d='M14 0v10.5l12 7v14l-12 7-12-7v-14l12-7z'/%3E%3C/svg%3E");
   animation: honeycomb-drift 22s linear infinite;
 }
 

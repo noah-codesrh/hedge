@@ -122,9 +122,8 @@ export function LanguageSettings() {
 
 export function LanguagePickerHost() {
   const { pickerOpen, closeLanguagePicker } = useI18n();
-  return (
-    <LanguagePicker open={pickerOpen} onClose={closeLanguagePicker} />
-  );
+  if (!pickerOpen) return null;
+  return <LanguagePicker open onClose={closeLanguagePicker} />;
 }
 
 function LanguagePicker({
@@ -153,12 +152,10 @@ function LanguagePicker({
     };
   }, [open, onClose]);
 
-  if (typeof document === "undefined") return null;
+  if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div
-      className={`fixed inset-0 z-[70] ${open ? "" : "pointer-events-none invisible"}`}
-    >
+    <div className="fixed inset-0 z-[70]">
       <div
         onClick={onClose}
         aria-hidden
